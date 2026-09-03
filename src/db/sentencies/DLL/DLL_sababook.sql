@@ -31,7 +31,8 @@ CREATE TABLE libro (
     descripcion TEXT,
     portada_url TEXT,
     nivel_educativo VARCHAR(50),
-    calificacion_promedio FLOAT
+    calificacion_promedio FLOAT,
+    activo BOOLEAN NOT NULL DEFAULT true
 );
 
 -- Tabla: lista
