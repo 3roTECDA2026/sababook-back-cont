@@ -20,6 +20,7 @@
     "leo-profanity": "^1.8.0",
     "nodemon": "^3.1.10",
     "pg-promise": "^11.5.4",
-    "postgres": "^3.4.7"
+    "postgres": "^3.4.7",
+    "zod": "^4.5.4"
   }
 }
