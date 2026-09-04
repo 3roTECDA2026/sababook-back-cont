@@ -1,28 +1,22 @@
-// src/db/connect/db.ts
-import 'dotenv/config';
-import pgPromise, { IDatabase, IMain } from 'pg-promise';
+import { PrismaClient } from '@prisma/client';
 
-const connectionString: string | undefined = process.env.DATABASE_URL;
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-if (!connectionString) {
-  console.error('DATABASE_URL environment variable is not set.');
-  process.exit(1);
+export const prisma = globalForPrisma.prisma || new PrismaClient();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
 }
 
-const pgp: IMain = pgPromise();
-const db: IDatabase<{}> = pgp(connectionString);
-
-const testConnection = async (): Promise<IDatabase<{}>> => {
+export const testConnection = async () => {
   try {
-    // Usamos una consulta simple para verificar la conexión
-    await db.one('SELECT current_timestamp');
-    console.log('✅ Database connection established (Remota)');
-    return db;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('❌ Supabase database connection failed:', message);
+    await prisma.$queryRaw`SELECT 1`;
+    console.log('✅ Database connection established (Prisma / Supabase)');
+    return prisma;
+  } catch (error: any) {
+    console.error('❌ Supabase database connection failed:', error.message);
     throw error;
   }
 };
 
-export { db, pgp, testConnection };
+export default prisma;
