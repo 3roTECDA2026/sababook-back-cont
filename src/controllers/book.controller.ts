@@ -75,7 +75,7 @@ class BookController {
 
   // FUNCIÓN MEJORADA: ELIMINAR LIBRO (Maneja el DELETE 500)
   // Nota: Esta lógica debería ir en el modelo, pero la implementamos aquí para arreglar el error de FK.
-  async eliminar(req, res) {
+  async eliminar(req: Request, res: Response) {
     const { id } = req.params;
     try {
       // 1. Manejar dependencias (Claves Foráneas - FK)

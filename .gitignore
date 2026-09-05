@@ -15,3 +15,4 @@ yarn-error.log*
 
 # Ignorar lock si no querés subirlo
 package-lock.json
+base_datos.sql
