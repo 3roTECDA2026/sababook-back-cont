@@ -1,6 +1,6 @@
 // src/controllers/medal.controller.ts
 import { Request, Response } from 'express';
-import { medalModel } from '../models/medal.model.js';
+import { medalModel } from '../models/medal.model';
 
 // Controlador para obtener las medallas de un usuario
 export const obtenerMedallasUsuario = async (req: Request, res: Response) => {

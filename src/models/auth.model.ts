@@ -1,5 +1,5 @@
 // src/models/auth.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 interface UserAuth {
   usuario_id: number;

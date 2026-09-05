@@ -1,5 +1,5 @@
 // src/models/user.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 import bcrypt from 'bcrypt';
 
 export interface User {

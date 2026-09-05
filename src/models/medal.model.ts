@@ -1,5 +1,5 @@
 // src/models/medal.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 interface Medalla {
   medalla_id: number;

@@ -1,5 +1,5 @@
 // src/models/listaLectura.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 interface ListaLectura {
   lista_id: number;

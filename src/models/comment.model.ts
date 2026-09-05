@@ -1,5 +1,5 @@
 // src/models/comment.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 interface ComentarioForo {
   comentario_id: number;

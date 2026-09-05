@@ -7,7 +7,7 @@ import {
   obtenerForoPorIdDB,
   actualizarForoDB,
   eliminarForoDB,
-} from '../models/foro.model.js';
+} from '../models/foro.model';
 
 // Crear un foro
 export const crearForo = async (req: Request, res: Response) => {

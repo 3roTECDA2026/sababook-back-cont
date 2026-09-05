@@ -1,5 +1,5 @@
 // src/models/foro.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 interface Foro {
   foro_id: number;

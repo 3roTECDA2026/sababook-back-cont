@@ -7,9 +7,9 @@ import {
   obtenerComentarioPorId,
   actualizarComentarioPorId,
   eliminarComentarioPorId,
-} from '../models/comment.model.js';
-import { medalModel } from '../models/medal.model.js';
-import { obtenerForoConComentariosDB } from '../models/foro.model.js';
+} from '../models/comment.model';
+import { medalModel } from '../models/medal.model';
+import { obtenerForoConComentariosDB } from '../models/foro.model';
 
 export const crearComentario = async (req: Request, res: Response) => {
   try {

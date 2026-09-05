@@ -1,8 +1,8 @@
 // src/controllers/opinion.controller.ts
 import { Request, Response } from 'express';
-import { AuthRequest } from '../middleware/auth.middleware.js';
-import { opinionModel } from '../models/opinion.model.js';
-import { medalModel } from '../models/medal.model.js';
+import { AuthRequest } from '../middleware/auth.middleware';
+import { opinionModel } from '../models/opinion.model';
+import { medalModel } from '../models/medal.model';
 import leoProfanity from 'leo-profanity';
 
 // Inicializamos los diccionarios de malas palabras

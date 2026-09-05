@@ -1,20 +1,9 @@
 // src/models/book.model.ts
-import { prisma } from '../db/connect/db.js';
+import { Prisma, libro as Libro } from '@prisma/client';
+import { prisma } from '../db/connect/db';
 
-export interface Libro {
-  libro_id: number;
-  titulo: string;
-  autor: string;
-  genero: string;
-  nivel_educativo: string;
-  descripcion: string;
-  portada_url: string;
-  calificacion_promedio: number;
-  activo?: boolean;
-}
-
-type CrearLibroData = Partial<Omit<Libro, 'libro_id'>>;
-type ActualizarLibroData = Partial<Omit<Libro, 'libro_id'>>;
+type CrearLibroData = Prisma.libroCreateInput;
+type ActualizarLibroData = Prisma.libroUpdateInput;
 
 interface BuscarLibrosFiltros {
   query?: string;
@@ -25,10 +14,9 @@ interface BuscarLibrosFiltros {
 // Crear libro
 export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
   try {
-    const nuevoLibro = await prisma.libro.create({
-      data: datos as any,
+    return await prisma.libro.create({
+      data: datos,
     });
-    return nuevoLibro as unknown as Libro;
   } catch (error) {
     console.error('Error al crear libro:', error);
     throw error;
@@ -38,8 +26,7 @@ export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
 // Obtener todos los libros
 export const obtenerTodos = async (): Promise<Libro[]> => {
   try {
-    const result = await prisma.libro.findMany();
-    return result as unknown as Libro[];
+    return await prisma.libro.findMany();
   } catch (error) {
     console.error('Error al obtener todos los libros:', error);
     throw error;
@@ -48,10 +35,9 @@ export const obtenerTodos = async (): Promise<Libro[]> => {
 
 // Obtener libro por ID
 export const obtenerPorId = async (id: number): Promise<Libro | null> => {
-  const result = await prisma.libro.findUnique({
+  return await prisma.libro.findUnique({
     where: { libro_id: id },
   });
-  return (result as unknown as Libro) || null;
 };
 
 // Buscar libros con filtros
@@ -60,7 +46,7 @@ export const buscarLibros = async ({
   genero,
   nivel_educativo,
 }: BuscarLibrosFiltros): Promise<Libro[]> => {
-  const whereClause: any = {};
+  const whereClause: Prisma.libroWhereInput = {};
 
   if (query) {
     whereClause.OR = [
@@ -77,38 +63,30 @@ export const buscarLibros = async ({
     whereClause.nivel_educativo = nivel_educativo;
   }
 
-  const result = await prisma.libro.findMany({
+  return await prisma.libro.findMany({
     where: whereClause,
   });
-
-  return result as unknown as Libro[];
 };
 
 // Actualizar libro
 export const actualizarLibro = async (id: number, datos: ActualizarLibroData): Promise<void> => {
-  const { libro_id, ...datosAActualizar } = datos as any;
-
   await prisma.libro.update({
     where: { libro_id: id },
-    data: datosAActualizar,
+    data: datos,
   });
 };
 
-// Eliminar libro físicamente (Maneja transacciones mediante Prisma $transaction)
+// Eliminar libro físicamente (mediante transacción)
 export const eliminarLibro = async (id: number): Promise<boolean> => {
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Eliminar opiniones asociadas
       await tx.opinion.deleteMany({
         where: { libro_id: id },
       });
 
-      // 2. Eliminar el libro principal
-      const deletedBook = await tx.libro.delete({
+      return await tx.libro.delete({
         where: { libro_id: id },
       });
-
-      return deletedBook;
     });
 
     return !!result;

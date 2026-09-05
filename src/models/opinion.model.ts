@@ -1,5 +1,5 @@
 // src/models/opinion.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 export interface Opinion {
   opinion_id: number;

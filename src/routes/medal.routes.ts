@@ -1,6 +1,6 @@
 // src/routes/medal.routes.ts
 import { Router } from 'express';
-import { obtenerMedallasUsuario } from '../controllers/medal.controller.js';
+import { obtenerMedallasUsuario } from '../controllers/medal.controller';
 
 const router = Router();
 

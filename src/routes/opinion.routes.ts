@@ -1,7 +1,7 @@
 // src/routes/opinion.routes.ts
 import { Router } from 'express';
-import OpinionController from '../controllers/opinion.controller.js';
-import { verifyToken } from '../middleware/auth.middleware.js';
+import OpinionController from '../controllers/opinion.controller';
+import { verifyToken } from '../middleware/auth.middleware';
 
 const router = Router();
 

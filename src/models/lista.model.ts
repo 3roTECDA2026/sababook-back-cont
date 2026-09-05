@@ -1,5 +1,5 @@
 // src/models/lista.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from "../db/connect/db";
 
 interface Lista {
   lista_id: number;
@@ -16,7 +16,11 @@ interface CamposActualizarLista {
 }
 
 class ListaModel {
-  async crearLista(nombre: string, descripcion: string, tipo: string): Promise<Lista> {
+  async crearLista(
+    nombre: string,
+    descripcion: string,
+    tipo: string,
+  ): Promise<Lista> {
     try {
       const nuevaLista = await prisma.lista.create({
         data: {
@@ -34,13 +38,13 @@ class ListaModel {
 
       return {
         ...nuevaLista,
-        descripcion: nuevaLista.descripcion ?? '',
-        tipo: nuevaLista.tipo ?? '',
+        descripcion: nuevaLista.descripcion ?? "",
+        tipo: nuevaLista.tipo ?? "",
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error en ListaModel.crearLista:', message);
-      throw new Error('No se pudo crear la lista.');
+      console.error("Error en ListaModel.crearLista:", message);
+      throw new Error("No se pudo crear la lista.");
     }
   }
 
@@ -48,7 +52,7 @@ class ListaModel {
     try {
       const listas = await prisma.lista.findMany({
         orderBy: {
-          lista_id: 'asc',
+          lista_id: "asc",
         },
         select: {
           lista_id: true,
@@ -60,13 +64,13 @@ class ListaModel {
 
       return listas.map((l) => ({
         ...l,
-        descripcion: l.descripcion ?? '',
-        tipo: l.tipo ?? '',
+        descripcion: l.descripcion ?? "",
+        tipo: l.tipo ?? "",
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error en ListaModel.obtenerTodas:', message);
-      throw new Error('No se pudieron obtener las listas.');
+      console.error("Error en ListaModel.obtenerTodas:", message);
+      throw new Error("No se pudieron obtener las listas.");
     }
   }
 
@@ -86,13 +90,13 @@ class ListaModel {
 
       return {
         ...lista,
-        descripcion: lista.descripcion ?? '',
-        tipo: lista.tipo ?? '',
+        descripcion: lista.descripcion ?? "",
+        tipo: lista.tipo ?? "",
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Error en ListaModel.obtenerPorId (${listaId}):`, message);
-      throw new Error('No se pudo obtener la lista.');
+      throw new Error("No se pudo obtener la lista.");
     }
   }
 
@@ -100,10 +104,14 @@ class ListaModel {
     listaId: number,
     nombre?: string,
     descripcion?: string,
-    tipo?: string
+    tipo?: string,
   ): Promise<Lista> {
     try {
-      const camposAActualizar: CamposActualizarLista = { nombre, descripcion, tipo };
+      const camposAActualizar: CamposActualizarLista = {
+        nombre,
+        descripcion,
+        tipo,
+      };
 
       // Limpieza de campos undefined
       Object.keys(camposAActualizar).forEach((key) => {
@@ -113,7 +121,7 @@ class ListaModel {
       });
 
       if (Object.keys(camposAActualizar).length === 0) {
-        throw new Error('No hay campos para actualizar.');
+        throw new Error("No hay campos para actualizar.");
       }
 
       const updated = await prisma.lista.update({
@@ -129,15 +137,15 @@ class ListaModel {
 
       return {
         ...updated,
-        descripcion: updated.descripcion ?? '',
-        tipo: updated.tipo ?? '',
+        descripcion: updated.descripcion ?? "",
+        tipo: updated.tipo ?? "",
       };
     } catch (error: any) {
-      if (error.code === 'P2025') {
+      if (error.code === "P2025") {
         throw new Error(`Lista con ID ${listaId} no encontrada.`);
       }
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error en ListaModel.actualizarLista:', message);
+      console.error("Error en ListaModel.actualizarLista:", message);
       throw error;
     }
   }
@@ -150,12 +158,12 @@ class ListaModel {
 
       return true;
     } catch (error: any) {
-      if (error.code === 'P2025') {
+      if (error.code === "P2025") {
         throw new Error(`Lista con ID ${listaId} no encontrada.`);
       }
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error en ListaModel.eliminarLista:', message);
-      throw new Error('No se pudo eliminar la lista.');
+      console.error("Error en ListaModel.eliminarLista:", message);
+      throw new Error("No se pudo eliminar la lista.");
     }
   }
 }

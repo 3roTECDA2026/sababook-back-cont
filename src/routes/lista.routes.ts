@@ -1,6 +1,6 @@
 // src/routes/lista.routes.ts
 import { Router } from 'express';
-import ListaController from '../controllers/lista.controller.js';
+import ListaController from '../controllers/lista.controller';
 
 const router = Router();
 

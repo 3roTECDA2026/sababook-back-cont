@@ -1,5 +1,5 @@
 // src/models/favorite.model.ts
-import { prisma } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 interface Favorite {
   usuario_id: number;
