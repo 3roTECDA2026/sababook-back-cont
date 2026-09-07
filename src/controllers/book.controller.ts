@@ -76,7 +76,7 @@ class BookController {
   // FUNCIÓN MEJORADA: ELIMINAR LIBRO (Maneja el DELETE 500)
   // Nota: Esta lógica debería ir en el modelo, pero la implementamos aquí para arreglar el error de FK.
   async eliminar(req: Request, res: Response) {
-    const id = parseInt(String(req.params.id));
+    const { id } = req.params;
     try {
       // 1. Manejar dependencias (Claves Foráneas - FK)
       // Si tu modelo tiene funciones para eliminar opiniones, debes usarlas aquí.
@@ -95,8 +95,8 @@ class BookController {
       // Estándar HTTP: 204 No Content para eliminación exitosa sin cuerpo de respuesta.
       res.status(204).send();
     } catch (error) {
-      console.error('Error al eliminar:', error);
-      res.status(500).json({ mensaje: 'Error al eliminar libro y sus dependencias' });
+      console.error('Error al eliminar libro:', error);
+      res.status(500).json({ mensaje: 'Error al eliminar el libro' });
     }
   }
 
