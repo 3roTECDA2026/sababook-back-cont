@@ -13,5 +13,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Ignorar carpeta de build / compilación
+dist/
+
 # Ignorar lock si no querés subirlo
 package-lock.json

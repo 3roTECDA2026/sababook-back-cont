@@ -3,17 +3,17 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 
 // Como server.ts está en la raíz, volvemos a apuntar a ./src/...
-import foroRoutes from './src/routes/foro.routes.js';
-import comentarioRoutes from './src/routes/comentario.routes.js';
-import userRoutes from './src/routes/user.routes.js';
-import { testConnection } from './src/db/connect/db.js';
-import listaRoutes from './src/routes/lista.routes.js';
-import listaLecturaRoutes from './src/routes/listaLectura.routes.js';
-import authRoutes from './src/routes/auth.routes.js';
-import bookRoutes from './src/routes/book.routes.js';
-import opinionRoutes from './src/routes/opinion.routes.js';
-import favoriteRoutes from './src/routes/favorite.routes.js';
-import medalRoutes from './src/routes/medal.routes.js';
+import foroRoutes from './src/routes/foro.routes';
+import comentarioRoutes from './src/routes/comentario.routes';
+import userRoutes from './src/routes/user.routes';
+import { testConnection } from './src/db/connect/db';
+import listaRoutes from './src/routes/lista.routes';
+import listaLecturaRoutes from './src/routes/listaLectura.routes';
+import authRoutes from './src/routes/auth.routes';
+import bookRoutes from './src/routes/book.routes';
+import opinionRoutes from './src/routes/opinion.routes';
+import favoriteRoutes from './src/routes/favorite.routes';
+import medalRoutes from './src/routes/medal.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
