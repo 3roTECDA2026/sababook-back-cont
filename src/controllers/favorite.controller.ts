@@ -1,7 +1,7 @@
 // src/controllers/favorite.controller.ts
 import { Response } from 'express';
-import { AuthRequest } from '../middleware/auth.middleware.js';
-import { favoriteModel } from '../models/favorite.model.js';
+import { AuthRequest } from '../middleware/auth.middleware';
+import { favoriteModel } from '../models/favorite.model';
 
 class FavoriteController {
   //  GET: Obtener todos los favoritos (opcional, para testing o admin)

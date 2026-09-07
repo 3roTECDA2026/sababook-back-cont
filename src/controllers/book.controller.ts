@@ -8,7 +8,7 @@ import {
   eliminarLibro, // Necesita ser mejorado en el modelo o aquí
   crearLibro,
   eliminacionLogica as eliminacionLogicaModel,
-} from '../models/book.model.js';
+} from '../models/book.model';
 
 class BookController {
   // NUEVA FUNCIÓN: CREAR LIBRO (Maneja el POST 404)

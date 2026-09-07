@@ -1,5 +1,5 @@
 // src/models/listaLectura.model.ts
-import { db, pgp } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 interface ListaLectura {
   lista_id: number;
@@ -32,13 +32,22 @@ class ListaLecturaModel {
     nivel: string
   ): Promise<ListaLectura> {
     try {
-      const nueva = await db.one<ListaLectura>(`
-        INSERT INTO lista_lectura (lista_id, docente_id, descripcion, nivel)
-        VALUES ($1, $2, $3, $4)
-        RETURNING lista_id, docente_id, descripcion, nivel, fecha_creacion;
-      `, [lista_id, docente_id, descripcion, nivel]);
+      const nueva = await prisma.lista_lectura.create({
+        data: {
+          lista_id,
+          docente_id,
+          descripcion,
+          nivel,
+        },
+      });
 
-      return nueva;
+      return {
+        lista_id: nueva.lista_id,
+        docente_id: nueva.docente_id,
+        descripcion: nueva.descripcion ?? '',
+        nivel: nueva.nivel ?? '',
+        fecha_creacion: nueva.fecha_creacion ?? new Date(),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error en ListaLecturaModel.crearListaLectura:', message);
@@ -48,19 +57,27 @@ class ListaLecturaModel {
 
   async obtenerTodas(): Promise<ListaLecturaConNombre[]> {
     try {
-      const listas = await db.any<ListaLecturaConNombre>(`
-        SELECT 
-          ll.lista_id,
-          ll.docente_id,
-          l.nombre AS nombre_lista,
-          ll.descripcion,
-          ll.nivel,
-          ll.fecha_creacion
-        FROM lista_lectura ll
-        JOIN lista l ON ll.lista_id = l.lista_id
-        ORDER BY ll.fecha_creacion DESC;
-      `);
-      return listas;
+      const listas = await prisma.lista_lectura.findMany({
+        include: {
+          lista: {
+            select: {
+              nombre: true,
+            },
+          },
+        },
+        orderBy: {
+          fecha_creacion: 'desc',
+        },
+      });
+
+      return listas.map((item) => ({
+        lista_id: item.lista_id,
+        docente_id: item.docente_id,
+        nombre_lista: item.lista?.nombre ?? '',
+        descripcion: item.descripcion ?? '',
+        nivel: item.nivel ?? '',
+        fecha_creacion: item.fecha_creacion ?? new Date(),
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error en ListaLecturaModel.obtenerTodas:', message);
@@ -70,20 +87,27 @@ class ListaLecturaModel {
 
   async obtenerPorDocente(docente_id: number): Promise<ListaLecturaConNombre[]> {
     try {
-      const listas = await db.any<ListaLecturaConNombre>(`
-        SELECT 
-          ll.lista_id,
-          l.nombre AS nombre_lista,
-          ll.descripcion,
-          ll.nivel,
-          ll.fecha_creacion
-        FROM lista_lectura ll
-        JOIN lista l ON ll.lista_id = l.lista_id
-        WHERE ll.docente_id = $1
-        ORDER BY ll.fecha_creacion DESC;
-      `, [docente_id]);
+      const listas = await prisma.lista_lectura.findMany({
+        where: { docente_id },
+        include: {
+          lista: {
+            select: {
+              nombre: true,
+            },
+          },
+        },
+        orderBy: {
+          fecha_creacion: 'desc',
+        },
+      });
 
-      return listas;
+      return listas.map((item) => ({
+        lista_id: item.lista_id,
+        nombre_lista: item.lista?.nombre ?? '',
+        descripcion: item.descripcion ?? '',
+        nivel: item.nivel ?? '',
+        fecha_creacion: item.fecha_creacion ?? new Date(),
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Error en ListaLecturaModel.obtenerPorDocente (${docente_id}):`, message);
@@ -108,22 +132,27 @@ class ListaLecturaModel {
         throw new Error('No hay campos para actualizar.');
       }
 
-      const setClause = pgp.helpers.sets(campos);
-      const query = `
-        UPDATE lista_lectura
-        SET ${setClause}
-        WHERE lista_id = $1 AND docente_id = $2
-        RETURNING lista_id, docente_id, descripcion, nivel, fecha_creacion;
-      `;
+      const updated = await prisma.lista_lectura.update({
+        where: {
+          lista_id_docente_id: {
+            lista_id,
+            docente_id,
+          },
+        },
+        data: campos,
+      });
 
-      const updated = await db.oneOrNone<ListaLectura>(query, [lista_id, docente_id]);
-
-      if (!updated) {
+      return {
+        lista_id: updated.lista_id,
+        docente_id: updated.docente_id,
+        descripcion: updated.descripcion ?? '',
+        nivel: updated.nivel ?? '',
+        fecha_creacion: updated.fecha_creacion ?? new Date(),
+      };
+    } catch (error: any) {
+      if (error.code === 'P2025') {
         throw new Error(`No se encontró lista_lectura con lista_id ${lista_id} y docente_id ${docente_id}.`);
       }
-
-      return updated;
-    } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error en ListaLecturaModel.actualizarListaLectura:', message);
       throw error;
@@ -132,17 +161,20 @@ class ListaLecturaModel {
 
   async eliminarListaLectura(lista_id: number, docente_id: number): Promise<boolean> {
     try {
-      const result = await db.result(`
-        DELETE FROM lista_lectura
-        WHERE lista_id = $1 AND docente_id = $2
-      `, [lista_id, docente_id]);
-
-      if (result.rowCount === 0) {
-        throw new Error(`No se encontró lista_lectura con lista_id ${lista_id} y docente_id ${docente_id}.`);
-      }
+      await prisma.lista_lectura.delete({
+        where: {
+          lista_id_docente_id: {
+            lista_id,
+            docente_id,
+          },
+        },
+      });
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw new Error(`No se encontró lista_lectura con lista_id ${lista_id} y docente_id ${docente_id}.`);
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error en ListaLecturaModel.eliminarListaLectura:', message);
       throw new Error('No se pudo eliminar la lista de lectura.');

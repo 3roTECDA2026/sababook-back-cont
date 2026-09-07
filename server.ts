@@ -1,9 +1,11 @@
-// src/server.ts
+import 'dotenv/config'; // <-- Mantiene la carga del .env
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+
+// Como server.ts está en la raíz, volvemos a apuntar a ./src/...
 import foroRoutes from './src/routes/foro.routes.js';
 import comentarioRoutes from './src/routes/comentario.routes.js';
-import userRoutes from './src/routes/user.routes.js'; // viene de main
+import userRoutes from './src/routes/user.routes.js';
 import { testConnection } from './src/db/connect/db.js';
 import listaRoutes from './src/routes/lista.routes.js';
 import listaLecturaRoutes from './src/routes/listaLectura.routes.js';
@@ -14,7 +16,7 @@ import favoriteRoutes from './src/routes/favorite.routes.js';
 import medalRoutes from './src/routes/medal.routes.js';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(

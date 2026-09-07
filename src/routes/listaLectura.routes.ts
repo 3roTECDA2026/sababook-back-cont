@@ -1,6 +1,6 @@
 // src/routes/listaLectura.routes.ts
 import { Router } from 'express';
-import ListaLecturaController from '../controllers/listaLectura.controller.js';
+import ListaLecturaController from '../controllers/listaLectura.controller';
 
 const router = Router();
 

@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model rol {
+  rol_id     Int       @id @default(autoincrement())
+  nombre_rol String    @unique @db.VarChar(50)
+  usuario    usuario[]
+}
+
+model usuario {
+  usuario_id           Int                    @id @default(autoincrement())
+  nombre               String                 @db.VarChar(100)
+  email                String                 @unique @db.VarChar(255)
+  contrasena           String                 @db.Text
+  rol_id               Int?
+  fecha_registro       DateTime               @default(now()) @db.Timestamptz(6)
+  perfil_completo      Boolean                @default(false)
+  avatar_url           String?                @db.Text
+  nivel_educativo      String?                @db.VarChar(50)
+  
+  // Relaciones
+  rol                  rol?                   @relation(fields: [rol_id], references: [rol_id], onDelete: NoAction, onUpdate: NoAction)
+  comentario_foro      comentario_foro[]
+  exportacion          exportacion[]
+  favorito             favorito[]
+  foro                 foro[]
+  lista_lectura        lista_lectura[]
+  opinion              opinion[]
+  usuario_club_lectura usuario_club_lectura[]
+  usuario_medalla      usuario_medalla[]
+
+  @@index([rol_id])
+}
+
+model libro {
+  libro_id              Int                 @id @default(autoincrement())
+  titulo                String              @db.VarChar(255)
+  autor                 String              @db.VarChar(255)
+  genero                String?             @db.VarChar(100)
+  descripcion           String?             @db.Text
+  portada_url           String?             @db.Text
+  nivel_educativo       String?             @db.VarChar(50)
+  calificacion_promedio Float?
+  activo                Boolean             @default(true)
+  
+  // Relaciones
+  favorito              favorito[]
+  lista_libro           lista_libro[]
+  opinion               opinion[]
+  recurso_educativo     recurso_educativo[]
+}
+
+model lista {
+  lista_id       Int             @id @default(autoincrement())
+  nombre         String          @db.VarChar(255)
+  descripcion    String?         @db.Text
+  tipo           String?         @db.VarChar(50)
+  fecha_creacion DateTime        @default(now()) @db.Timestamptz(6)
+  lista_lectura  lista_lectura[]
+  lista_libro    lista_libro[]
+}
+
+model lista_lectura {
+  lista_id       Int
+  docente_id     Int
+  descripcion    String?   @db.Text
+  nivel          String?   @db.VarChar(50)
+  fecha_creacion DateTime? @default(now()) @db.Timestamptz(6)
+  usuario        usuario   @relation(fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+  lista          lista     @relation(fields: [lista_id], references: [lista_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([lista_id, docente_id])
+}
+
+model lista_libro {
+  lista_id Int
+  libro_id Int
+  libro    libro @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+  lista    lista @relation(fields: [lista_id], references: [lista_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([lista_id, libro_id])
+}
+
+model recurso_educativo {
+  recurso_id  Int     @id @default(autoincrement())
+  libro_id    Int
+  tipo        String  @db.VarChar(50)
+  url         String  @db.Text
+  descripcion String? @db.Text
+  libro       libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([libro_id])
+}
+
+model opinion {
+  opinion_id   Int       @id @default(autoincrement())
+  usuario_id   Int
+  libro_id     Int
+  calificacion Int?      @db.SmallInt
+  comentario   String?   @db.Text
+  fecha        DateTime? @default(now()) @db.Timestamptz(6)
+  libro        libro     @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario      usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([libro_id])
+  @@index([usuario_id])
+}
+
+model foro {
+  foro_id         Int               @id @default(autoincrement())
+  titulo          String            @db.VarChar(255)
+  descripcion     String?           @db.Text
+  creador_id      Int?
+  fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
+  comentario_foro comentario_foro[]
+  usuario         usuario?          @relation(fields: [creador_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model comentario_foro {
+  comentario_id Int       @id @default(autoincrement())
+  foro_id       Int
+  usuario_id    Int
+  contenido     String    @db.Text
+  fecha         DateTime? @default(now()) @db.Timestamptz(6)
+  foro          foro      @relation(fields: [foro_id], references: [foro_id], onDelete: Cascade, onUpdate: NoAction)
+  usuario       usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([foro_id])
+  @@index([usuario_id])
+}
+
+model club_lectura {
+  club_id              Int                    @id @default(autoincrement())
+  nombre               String                 @db.VarChar(255)
+  descripcion          String?                @db.Text
+  fecha_inicio         DateTime?              @db.Date
+  fecha_fin            DateTime?              @db.Date
+  orador               String?                @db.VarChar(255)
+  usuario_club_lectura usuario_club_lectura[]
+}
+
+model usuario_club_lectura {
+  usuario_id    Int
+  club_id       Int
+  fecha_ingreso DateTime?    @default(now()) @db.Timestamptz(6)
+  rol_en_club   String?      @db.VarChar(50)
+  club_lectura  club_lectura @relation(fields: [club_id], references: [club_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario       usuario      @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([usuario_id, club_id])
+}
+
+model medalla {
+  medalla_id      Int               @id @default(autoincrement())
+  nombre          String            @unique @db.VarChar(100)
+  descripcion     String?           @db.Text
+  tipo_accion     String?           @db.VarChar(50)
+  fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
+  usuario_medalla usuario_medalla[]
+}
+
+model usuario_medalla {
+  usuario_id     Int
+  medalla_id     Int
+  fecha_obtenida DateTime? @default(now()) @db.Timestamptz(6)
+  medalla        medalla   @relation(fields: [medalla_id], references: [medalla_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario        usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([usuario_id, medalla_id])
+}
+
+model exportacion {
+  exportacion_id                Int       @id @default(autoincrement())
+  fecha_exportacion             DateTime? @default(now()) @db.Timestamptz(6)
+  usuario_admin_id              Int?
+  cantidad_opiniones_exportadas Int?
+  formato_archivo               String?   @db.VarChar(50)
+  estado                        String?   @db.VarChar(50)
+  usuario                       usuario?  @relation(fields: [usuario_admin_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model favorito {
+  usuario_id Int
+  libro_id   Int
+  libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
+  usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
+
+  @@id([usuario_id, libro_id])
+}

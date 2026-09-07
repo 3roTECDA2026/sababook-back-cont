@@ -1,6 +1,6 @@
 // src/controllers/lista.controller.ts
 import { Request, Response } from 'express';
-import { listaModel } from '../models/lista.model.js';
+import { listaModel } from '../models/lista.model';
 
 class ListaController {
   async crear(req: Request, res: Response) {

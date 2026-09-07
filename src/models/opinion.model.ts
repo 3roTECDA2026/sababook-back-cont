@@ -1,5 +1,5 @@
 // src/models/opinion.model.ts
-import { db, pgp } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 export interface Opinion {
   opinion_id: number;
@@ -23,23 +23,31 @@ type UpdateOpinionFields = Partial<Omit<Opinion, 'opinion_id' | 'usuario_nombre'
 
 class OpinionModel {
   async getAllOpinions(): Promise<Opinion[]> {
-    const sql = `
-      SELECT 
-        o.opinion_id,
-        o.usuario_id,
-        u.nombre AS usuario_nombre,
-        o.libro_id,
-        l.titulo AS libro_titulo,
-        o.calificacion,
-        o.comentario,
-        o.fecha
-      FROM opinion o
-      INNER JOIN usuario u ON o.usuario_id = u.usuario_id
-      INNER JOIN libro l ON o.libro_id = l.libro_id
-      ORDER BY o.fecha DESC;
-    `;
     try {
-      return await db.any<Opinion>(sql);
+      const opiniones = await prisma.opinion.findMany({
+        include: {
+          usuario: {
+            select: { nombre: true },
+          },
+          libro: {
+            select: { titulo: true },
+          },
+        },
+        orderBy: {
+          fecha: 'desc',
+        },
+      });
+
+      return opiniones.map((o) => ({
+        opinion_id: o.opinion_id,
+        usuario_id: o.usuario_id,
+        usuario_nombre: o.usuario?.nombre ?? '',
+        libro_id: o.libro_id,
+        libro_titulo: o.libro?.titulo ?? '',
+        calificacion: o.calificacion,
+        comentario: o.comentario ?? '',
+        fecha: o.fecha ?? new Date(),
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error OpinionModel.getAllOpinions:', message);
@@ -49,22 +57,30 @@ class OpinionModel {
 
   async getOpinionById(opinionId: number): Promise<Opinion | null> {
     try {
-      const sql = `
-        SELECT 
-          o.opinion_id,
-          o.usuario_id,
-          u.nombre AS usuario_nombre,
-          o.libro_id,
-          l.titulo AS libro_titulo,
-          o.calificacion,
-          o.comentario,
-          o.fecha
-        FROM opinion o
-        INNER JOIN usuario u ON o.usuario_id = u.usuario_id
-        INNER JOIN libro l ON o.libro_id = l.libro_id
-        WHERE o.opinion_id = $1;
-      `;
-      return await db.oneOrNone<Opinion>(sql, [opinionId]);
+      const o = await prisma.opinion.findUnique({
+        where: { opinion_id: opinionId },
+        include: {
+          usuario: {
+            select: { nombre: true },
+          },
+          libro: {
+            select: { titulo: true },
+          },
+        },
+      });
+
+      if (!o) return null;
+
+      return {
+        opinion_id: o.opinion_id,
+        usuario_id: o.usuario_id,
+        usuario_nombre: o.usuario?.nombre ?? '',
+        libro_id: o.libro_id,
+        libro_titulo: o.libro?.titulo ?? '',
+        calificacion: o.calificacion,
+        comentario: o.comentario ?? '',
+        fecha: o.fecha ?? new Date(),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error OpinionModel.getOpinionById:', message);
@@ -77,18 +93,30 @@ class OpinionModel {
     const fecha = new Date();
 
     try {
-      // Insertamos la opinión y devolvemos el registro con el nombre del usuario
-      const sql = `
-        WITH nueva AS (
-          INSERT INTO opinion (usuario_id, libro_id, calificacion, comentario, fecha)
-          VALUES ($1, $2, $3, $4, $5)
-          RETURNING opinion_id, usuario_id, libro_id, calificacion, comentario, fecha
-        )
-        SELECT n.*, u.nombre AS usuario_nombre
-        FROM nueva n
-        JOIN usuario u ON n.usuario_id = u.usuario_id;
-      `;
-      return await db.one<Opinion>(sql, [usuario_id, libro_id, calificacion, comentario, fecha]);
+      const nuevaOpinion = await prisma.opinion.create({
+        data: {
+          usuario_id,
+          libro_id,
+          calificacion,
+          comentario,
+          fecha,
+        },
+        include: {
+          usuario: {
+            select: { nombre: true },
+          },
+        },
+      });
+
+      return {
+        opinion_id: nuevaOpinion.opinion_id,
+        usuario_id: nuevaOpinion.usuario_id,
+        usuario_nombre: nuevaOpinion.usuario?.nombre ?? '',
+        libro_id: nuevaOpinion.libro_id,
+        calificacion: nuevaOpinion.calificacion,
+        comentario: nuevaOpinion.comentario ?? '',
+        fecha: nuevaOpinion.fecha ?? fecha,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error OpinionModel.createOpinion:', message);
@@ -97,21 +125,37 @@ class OpinionModel {
   }
 
   async updateOpinion(opinionId: number, updatedFields: UpdateOpinionFields): Promise<Opinion> {
-    if (Object.keys(updatedFields).length === 0) {
+    // Filtrar campos undefined
+    const dataToUpdate: Record<string, any> = {};
+    Object.keys(updatedFields).forEach((key) => {
+      const val = (updatedFields as any)[key];
+      if (val !== undefined) {
+        dataToUpdate[key] = val;
+      }
+    });
+
+    if (Object.keys(dataToUpdate).length === 0) {
       throw new Error('No data provided for update.');
     }
+
     try {
-      const setClause = pgp.helpers.sets(updatedFields);
-      const sql = `
-        UPDATE opinion
-        SET ${setClause}
-        WHERE opinion_id = $1
-        RETURNING opinion_id, usuario_id, libro_id, calificacion, comentario, fecha;
-      `;
-      const result = await db.oneOrNone<Opinion>(sql, [opinionId]);
-      if (!result) throw new Error(`Opinion ID ${opinionId} not found.`);
-      return result;
-    } catch (error) {
+      const updated = await prisma.opinion.update({
+        where: { opinion_id: opinionId },
+        data: dataToUpdate,
+      });
+
+      return {
+        opinion_id: updated.opinion_id,
+        usuario_id: updated.usuario_id,
+        libro_id: updated.libro_id,
+        calificacion: updated.calificacion,
+        comentario: updated.comentario ?? '',
+        fecha: updated.fecha ?? new Date(),
+      };
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw new Error(`Opinion ID ${opinionId} not found.`);
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error OpinionModel.updateOpinion:', message);
       throw error;
@@ -120,10 +164,14 @@ class OpinionModel {
 
   async deleteOpinion(opinionId: number): Promise<boolean> {
     try {
-      const result = await db.result('DELETE FROM opinion WHERE opinion_id = $1', [opinionId]);
-      if (result.rowCount === 0) throw new Error(`Opinion ID ${opinionId} not found.`);
+      await prisma.opinion.delete({
+        where: { opinion_id: opinionId },
+      });
       return true;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw new Error(`Opinion ID ${opinionId} not found.`);
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error OpinionModel.deleteOpinion:', message);
       throw error;
@@ -131,22 +179,28 @@ class OpinionModel {
   }
 
   async getOpinionsByLibro(libroId: number): Promise<Opinion[]> {
-    const sql = `
-      SELECT 
-        o.opinion_id,
-        o.usuario_id,
-        u.nombre AS usuario_nombre,
-        o.libro_id,
-        o.calificacion,
-        o.comentario,
-        o.fecha
-      FROM opinion o
-      INNER JOIN usuario u ON o.usuario_id = u.usuario_id
-      WHERE o.libro_id = $1
-      ORDER BY o.fecha DESC;
-    `;
     try {
-      return await db.any<Opinion>(sql, [libroId]);
+      const opiniones = await prisma.opinion.findMany({
+        where: { libro_id: libroId },
+        include: {
+          usuario: {
+            select: { nombre: true },
+          },
+        },
+        orderBy: {
+          fecha: 'desc',
+        },
+      });
+
+      return opiniones.map((o) => ({
+        opinion_id: o.opinion_id,
+        usuario_id: o.usuario_id,
+        usuario_nombre: o.usuario?.nombre ?? '',
+        libro_id: o.libro_id,
+        calificacion: o.calificacion,
+        comentario: o.comentario ?? '',
+        fecha: o.fecha ?? new Date(),
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error OpinionModel.getOpinionsByLibro:', message);

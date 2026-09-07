@@ -1,5 +1,5 @@
 // src/models/lista.model.ts
-import { db, pgp } from '../db/connect/db.js';
+import { prisma } from "../db/connect/db";
 
 interface Lista {
   lista_id: number;
@@ -16,51 +16,87 @@ interface CamposActualizarLista {
 }
 
 class ListaModel {
-  async crearLista(nombre: string, descripcion: string, tipo: string): Promise<Lista> {
+  async crearLista(
+    nombre: string,
+    descripcion: string,
+    tipo: string,
+  ): Promise<Lista> {
     try {
-      const nuevaLista = await db.one<Lista>(`
-        INSERT INTO lista (nombre, descripcion, tipo)
-        VALUES ($1, $2, $3)
-        RETURNING lista_id, nombre, descripcion, tipo;
-      `, [nombre, descripcion, tipo]);
+      const nuevaLista = await prisma.lista.create({
+        data: {
+          nombre,
+          descripcion,
+          tipo,
+        },
+        select: {
+          lista_id: true,
+          nombre: true,
+          descripcion: true,
+          tipo: true,
+        },
+      });
 
-      return nuevaLista;
+      return {
+        ...nuevaLista,
+        descripcion: nuevaLista.descripcion ?? "",
+        tipo: nuevaLista.tipo ?? "",
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error en ListaModel.crearLista:', message);
-      throw new Error('No se pudo crear la lista.');
+      console.error("Error en ListaModel.crearLista:", message);
+      throw new Error("No se pudo crear la lista.");
     }
   }
 
   async obtenerTodas(): Promise<Lista[]> {
     try {
-      const listas = await db.any<Lista>(`
-        SELECT lista_id, nombre, descripcion, tipo
-        FROM lista
-        ORDER BY lista_id;
-      `);
+      const listas = await prisma.lista.findMany({
+        orderBy: {
+          lista_id: "asc",
+        },
+        select: {
+          lista_id: true,
+          nombre: true,
+          descripcion: true,
+          tipo: true,
+        },
+      });
 
-      return listas;
+      return listas.map((l) => ({
+        ...l,
+        descripcion: l.descripcion ?? "",
+        tipo: l.tipo ?? "",
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error en ListaModel.obtenerTodas:', message);
-      throw new Error('No se pudieron obtener las listas.');
+      console.error("Error en ListaModel.obtenerTodas:", message);
+      throw new Error("No se pudieron obtener las listas.");
     }
   }
 
   async obtenerPorId(listaId: number): Promise<Lista | null> {
     try {
-      const lista = await db.oneOrNone<Lista>(`
-        SELECT lista_id, nombre, descripcion, tipo
-        FROM lista
-        WHERE lista_id = $1;
-      `, [listaId]);
+      const lista = await prisma.lista.findUnique({
+        where: { lista_id: listaId },
+        select: {
+          lista_id: true,
+          nombre: true,
+          descripcion: true,
+          tipo: true,
+        },
+      });
 
-      return lista;
+      if (!lista) return null;
+
+      return {
+        ...lista,
+        descripcion: lista.descripcion ?? "",
+        tipo: lista.tipo ?? "",
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Error en ListaModel.obtenerPorId (${listaId}):`, message);
-      throw new Error('No se pudo obtener la lista.');
+      throw new Error("No se pudo obtener la lista.");
     }
   }
 
@@ -68,12 +104,16 @@ class ListaModel {
     listaId: number,
     nombre?: string,
     descripcion?: string,
-    tipo?: string
+    tipo?: string,
   ): Promise<Lista> {
     try {
-      const camposAActualizar: CamposActualizarLista = { nombre, descripcion, tipo };
+      const camposAActualizar: CamposActualizarLista = {
+        nombre,
+        descripcion,
+        tipo,
+      };
 
-      // Validación: eliminar campos undefined para evitar errores
+      // Limpieza de campos undefined
       Object.keys(camposAActualizar).forEach((key) => {
         if (camposAActualizar[key] === undefined) {
           delete camposAActualizar[key];
@@ -81,47 +121,49 @@ class ListaModel {
       });
 
       if (Object.keys(camposAActualizar).length === 0) {
-        throw new Error('No hay campos para actualizar.');
+        throw new Error("No hay campos para actualizar.");
       }
 
-      const setClause = pgp.helpers.sets(camposAActualizar);
-      const query = `
-        UPDATE lista
-        SET ${setClause}
-        WHERE lista_id = $1
-        RETURNING lista_id, nombre, descripcion, tipo;
-      `;
+      const updated = await prisma.lista.update({
+        where: { lista_id: listaId },
+        data: camposAActualizar,
+        select: {
+          lista_id: true,
+          nombre: true,
+          descripcion: true,
+          tipo: true,
+        },
+      });
 
-      const updated = await db.oneOrNone<Lista>(query, [listaId]);
-
-      if (!updated) {
+      return {
+        ...updated,
+        descripcion: updated.descripcion ?? "",
+        tipo: updated.tipo ?? "",
+      };
+    } catch (error: any) {
+      if (error.code === "P2025") {
         throw new Error(`Lista con ID ${listaId} no encontrada.`);
       }
-
-      return updated;
-    } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error en ListaModel.actualizarLista:', message);
+      console.error("Error en ListaModel.actualizarLista:", message);
       throw error;
     }
   }
 
   async eliminarLista(listaId: number): Promise<boolean> {
     try {
-      const result = await db.result(`
-        DELETE FROM lista
-        WHERE lista_id = $1
-      `, [listaId]);
-
-      if (result.rowCount === 0) {
-        throw new Error(`Lista con ID ${listaId} no encontrada.`);
-      }
+      await prisma.lista.delete({
+        where: { lista_id: listaId },
+      });
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === "P2025") {
+        throw new Error(`Lista con ID ${listaId} no encontrada.`);
+      }
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error en ListaModel.eliminarLista:', message);
-      throw new Error('No se pudo eliminar la lista.');
+      console.error("Error en ListaModel.eliminarLista:", message);
+      throw new Error("No se pudo eliminar la lista.");
     }
   }
 }

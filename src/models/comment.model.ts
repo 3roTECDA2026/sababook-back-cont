@@ -1,5 +1,5 @@
 // src/models/comment.model.ts
-import { db } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 
 interface ComentarioForo {
   comentario_id: number;
@@ -20,13 +20,18 @@ export const insertarComentario = async (
   contenido: string
 ): Promise<{ comentario_id: number }> => {
   try {
-    const sql = `
-      INSERT INTO comentario_foro (foro_id, usuario_id, contenido)
-      VALUES ($1, $2, $3)
-      RETURNING comentario_id
-    `;
+    const nuevoComentario = await prisma.comentario_foro.create({
+      data: {
+        foro_id,
+        usuario_id,
+        contenido,
+      },
+      select: {
+        comentario_id: true,
+      },
+    });
 
-    return await db.one<{ comentario_id: number }>(sql, [foro_id, usuario_id, contenido]);
+    return nuevoComentario;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('Error OpinionModel.createOpinion:', message);
@@ -35,44 +40,81 @@ export const insertarComentario = async (
 };
 
 export const obtenerComentariosPorForo = async (foro_id: number): Promise<ComentarioConUsuario[]> => {
-  return await db.any<ComentarioConUsuario>(`
-      SELECT cf.*, u.usuario_id, u.nombre, u.email
-      FROM comentario_foro cf
-      INNER JOIN usuario u ON cf.usuario_id = u.usuario_id
-      WHERE cf.foro_id = ${foro_id}
-      ORDER BY cf.fecha ASC
-    `);
+  const comentarios = await prisma.comentario_foro.findMany({
+    where: { foro_id },
+    include: {
+      usuario: {
+        select: {
+          usuario_id: true,
+          nombre: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: {
+      fecha: 'asc',
+    },
+  });
+
+  return comentarios.map((item) => ({
+    comentario_id: item.comentario_id,
+    foro_id: item.foro_id,
+    usuario_id: item.usuario_id,
+    contenido: item.contenido,
+    fecha: item.fecha ?? new Date(),
+    nombre: item.usuario?.nombre ?? '',
+    email: item.usuario?.email ?? '',
+  }));
 };
 
 export const obtenerTodosComentarios = async (): Promise<ComentarioForo[]> => {
-  return await db.any<ComentarioForo>(`SELECT * FROM comentario_foro ORDER BY fecha ASC`);
+  const result = await prisma.comentario_foro.findMany({
+    orderBy: {
+      fecha: 'asc',
+    },
+  });
+
+  return result.map((item) => ({
+    ...item,
+    fecha: item.fecha ?? new Date(),
+  }));
 };
 
 export const obtenerComentarioPorId = async (comentario_id: number): Promise<ComentarioForo | undefined> => {
-  const result = await db.any<ComentarioForo>(`
-    SELECT * FROM comentario_foro WHERE comentario_id = ${comentario_id}
-  `);
-  return result[0];
+  const result = await prisma.comentario_foro.findUnique({
+    where: { comentario_id },
+  });
+
+  if (!result) return undefined;
+
+  return {
+    ...result,
+    fecha: result.fecha ?? new Date(),
+  };
 };
 
 export const actualizarComentarioPorId = async (
   comentario_id: number,
   contenido: string
 ): Promise<{ comentario_id: number }> => {
-  const sql = `
-    UPDATE comentario_foro
-    SET contenido = $1
-    WHERE comentario_id = $2
-    RETURNING comentario_id
-  `;
-  return await db.one<{ comentario_id: number }>(sql, [contenido, comentario_id]);
+  const result = await prisma.comentario_foro.update({
+    where: { comentario_id },
+    data: { contenido },
+    select: {
+      comentario_id: true,
+    },
+  });
+
+  return result;
 };
 
 export const eliminarComentarioPorId = async (comentario_id: number): Promise<{ comentario_id: number }> => {
-  const sql = `
-    DELETE FROM comentario_foro
-    WHERE comentario_id = $1
-    RETURNING comentario_id
-  `;
-  return await db.one<{ comentario_id: number }>(sql, [comentario_id]);
+  const result = await prisma.comentario_foro.delete({
+    where: { comentario_id },
+    select: {
+      comentario_id: true,
+    },
+  });
+
+  return result;
 };

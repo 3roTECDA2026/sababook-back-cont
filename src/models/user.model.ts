@@ -1,5 +1,5 @@
 // src/models/user.model.ts
-import { db, pgp } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
 import bcrypt from 'bcrypt';
 
 export interface User {
@@ -47,25 +47,30 @@ type UpdateUserData = Partial<Omit<User, 'usuario_id'>>;
 
 class UserModel {
   async getAllUsers(): Promise<UserConRol[]> {
-    const sqlQuery = `
-            SELECT
-                u.usuario_id,
-                u.nombre,
-                u.email,
-                r.nombre_rol AS rol,
-                u.fecha_registro,
-                u.perfil_completo,
-                u.avatar_url,
-                u.nivel_educativo
-            FROM
-                usuario u
-            INNER JOIN
-                rol r ON u.rol_id = r.rol_id
-            ORDER BY u.usuario_id;
-        `;
     try {
-      const users = await db.any<UserConRol>(sqlQuery);
-      return users;
+      const users = await prisma.usuario.findMany({
+        include: {
+          rol: {
+            select: {
+              nombre_rol: true,
+            },
+          },
+        },
+        orderBy: {
+          usuario_id: 'asc',
+        },
+      });
+
+      return users.map((u) => ({
+        usuario_id: u.usuario_id,
+        nombre: u.nombre,
+        email: u.email,
+        rol: u.rol?.nombre_rol ?? '',
+        fecha_registro: u.fecha_registro ?? new Date(),
+        perfil_completo: u.perfil_completo ?? false,
+        avatar_url: u.avatar_url,
+        nivel_educativo: u.nivel_educativo,
+      }));
     } catch (error) {
       console.error('Error UserModel.getAllUsers:', error);
       throw new Error('Failed to retrieve users.');
@@ -88,25 +93,31 @@ class UserModel {
 
     try {
       const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
-      const newUser = await db.one<NewUserResult>(`
-                INSERT INTO 
-                    usuario (nombre, email, contrasena, rol_id, fecha_registro, perfil_completo, avatar_url, nivel_educativo) 
-                VALUES 
-                    ($1, $2, $3, $4, $5, $6, $7, $8)
-                RETURNING 
-                    usuario_id, nombre, email, fecha_registro, rol_id;
-            `, [
-        nombre,
-        email,
-        hashedPassword,
-        rol_id,
-        fecha_registro,
-        perfil_completo,
-        avatar_url,
-        nivel_educativo,
-      ]);
 
-      return newUser;
+      const newUser = await prisma.usuario.create({
+        data: {
+          nombre,
+          email,
+          contrasena: hashedPassword,
+          rol_id,
+          fecha_registro,
+          perfil_completo,
+          avatar_url,
+          nivel_educativo,
+        },
+        select: {
+          usuario_id: true,
+          nombre: true,
+          email: true,
+          fecha_registro: true,
+          rol_id: true,
+        },
+      });
+
+      return {
+        ...newUser,
+        fecha_registro: newUser.fecha_registro ?? fecha_registro,
+      };
     } catch (error) {
       console.error('Error en UserModel.createUser:', error);
       throw error;
@@ -114,28 +125,40 @@ class UserModel {
   }
 
   async updateUser(userId: number, userData: UpdateUserData): Promise<User> {
-    try {
-      if (Object.keys(userData).length === 0) {
-        throw new Error('No data provided for update.');
+    // Filtrar valores undefined
+    const dataToUpdate: Record<string, any> = {};
+    Object.keys(userData).forEach((key) => {
+      const val = (userData as any)[key];
+      if (val !== undefined) {
+        dataToUpdate[key] = val;
       }
-      const setClause = pgp.helpers.sets(userData);
-      const sqlQuery = `
-            UPDATE 
-                usuario
-            SET 
-                ${setClause}
-            WHERE 
-                usuario_id = $1
-            RETURNING 
-                usuario_id, nombre, email, rol_id, perfil_completo, fecha_registro, avatar_url, nivel_educativo;
-        `;
-      const updatedUser = await db.oneOrNone<User>(sqlQuery, [userId]);
+    });
 
-      if (!updatedUser) {
+    if (Object.keys(dataToUpdate).length === 0) {
+      throw new Error('No data provided for update.');
+    }
+
+    try {
+      const updatedUser = await prisma.usuario.update({
+        where: { usuario_id: userId },
+        data: dataToUpdate,
+      });
+
+      return {
+        usuario_id: updatedUser.usuario_id,
+        nombre: updatedUser.nombre,
+        email: updatedUser.email,
+        contrasena: updatedUser.contrasena,
+        rol_id: updatedUser.rol_id,
+        fecha_registro: updatedUser.fecha_registro ?? new Date(),
+        perfil_completo: updatedUser.perfil_completo ?? false,
+        avatar_url: updatedUser.avatar_url,
+        nivel_educativo: updatedUser.nivel_educativo,
+      };
+    } catch (error: any) {
+      if (error.code === 'P2025') {
         throw new Error(`User ID ${userId} not found.`);
       }
-      return updatedUser;
-    } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error in UserModel.updateUser:', message);
       throw error;
@@ -143,26 +166,30 @@ class UserModel {
   }
 
   async getUserById(userId: number): Promise<UserConRol | null> {
-    const sqlQuery = `
-            SELECT
-                u.usuario_id,
-                u.nombre,
-                u.email,
-                u.fecha_registro,
-                u.perfil_completo,
-                u.avatar_url,
-                u.nivel_educativo,
-                r.nombre_rol AS rol
-            FROM
-                usuario u
-            INNER JOIN
-                rol r ON u.rol_id = r.rol_id
-            WHERE
-                u.usuario_id = $1; 
-        `;
     try {
-      const user = await db.oneOrNone<UserConRol>(sqlQuery, [userId]);
-      return user;
+      const user = await prisma.usuario.findUnique({
+        where: { usuario_id: userId },
+        include: {
+          rol: {
+            select: {
+              nombre_rol: true,
+            },
+          },
+        },
+      });
+
+      if (!user) return null;
+
+      return {
+        usuario_id: user.usuario_id,
+        nombre: user.nombre,
+        email: user.email,
+        rol: user.rol?.nombre_rol ?? '',
+        fecha_registro: user.fecha_registro ?? new Date(),
+        perfil_completo: user.perfil_completo ?? false,
+        avatar_url: user.avatar_url,
+        nivel_educativo: user.nivel_educativo,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(message);
@@ -172,19 +199,15 @@ class UserModel {
 
   async deleteUser(userId: number): Promise<boolean> {
     try {
-      const result = await db.result(`
-                DELETE FROM 
-                    usuario
-                WHERE 
-                    usuario_id = $1
-            `, [userId]);
-
-      if (result.rowCount === 0) {
-        throw new Error(`User ID ${userId} not found.`);
-      }
+      await prisma.usuario.delete({
+        where: { usuario_id: userId },
+      });
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw new Error(`User ID ${userId} not found.`);
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Error UserModel.deleteUser (ID: ${userId}):`, message);
       throw new Error('Failed to delete user from the database.');

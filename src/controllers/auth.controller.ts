@@ -1,7 +1,7 @@
 // src/controllers/auth.controller.ts
 import { Request, Response } from 'express';
-import authModel from '../models/auth.model.js';
-import { userModel } from '../models/user.model.js';
+import authModel from '../models/auth.model';
+import { userModel } from '../models/user.model';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 

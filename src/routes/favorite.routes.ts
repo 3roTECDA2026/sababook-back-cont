@@ -1,7 +1,7 @@
 // src/routes/favorite.routes.ts
 import { Router } from 'express';
-import favoriteController from '../controllers/favorite.controller.js';
-import { verifyToken } from '../middleware/auth.middleware.js';
+import favoriteController from '../controllers/favorite.controller';
+import { verifyToken } from '../middleware/auth.middleware';
 
 const router = Router();
 
