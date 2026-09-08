@@ -1,6 +1,6 @@
-// src/controllers/lista.controller.ts
+
 import { Request, Response } from 'express';
-import { listaModel } from '../models/lista.model';
+import { listService } from '../services/list.service';
 
 class ListaController {
   async crear(req: Request, res: Response) {
@@ -11,7 +11,7 @@ class ListaController {
         return res.status(400).json({ error: 'Faltan campos obligatorios (nombre, tipo).' });
       }
 
-      await listaModel.crearLista(nombre, descripcion, tipo);
+      await listService.crearLista(nombre, descripcion, tipo);
       return res.status(201).json({ message: 'Lista creada correctamente.' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -22,7 +22,7 @@ class ListaController {
 
   async obtenerTodas(req: Request, res: Response) {
     try {
-      const listas = await listaModel.obtenerTodas();
+      const listas = await listService.obtenerTodas();
       return res.status(200).json(listas);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -33,12 +33,12 @@ class ListaController {
 
   async obtenerPorId(req: Request, res: Response) {
     try {
-      const id = parseInt(String(req.params.id));
+      const id = parseInt(String(req.params.id), 10);
       if (isNaN(id)) {
         return res.status(400).json({ error: 'ID inválido.' });
       }
 
-      const lista = await listaModel.obtenerPorId(id);
+      const lista = await listService.obtenerPorId(id);
       if (!lista) {
         return res.status(404).json({ error: 'Lista no encontrada.' });
       }
@@ -53,14 +53,14 @@ class ListaController {
 
   async actualizar(req: Request, res: Response) {
     try {
-      const id = parseInt(String(req.params.id));
+      const id = parseInt(String(req.params.id), 10);
       const { nombre, descripcion, tipo } = req.body;
 
       if (isNaN(id)) {
         return res.status(400).json({ error: 'ID inválido.' });
       }
 
-      await listaModel.actualizarLista(id, nombre, descripcion, tipo);
+      await listService.actualizarLista(id, nombre, descripcion, tipo);
       return res.status(200).json({ message: 'Lista actualizada.' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -71,12 +71,12 @@ class ListaController {
 
   async eliminar(req: Request, res: Response) {
     try {
-      const id = parseInt(String(req.params.id));
+      const id = parseInt(String(req.params.id), 10);
       if (isNaN(id)) {
         return res.status(400).json({ error: 'ID inválido.' });
       }
 
-      await listaModel.eliminarLista(id);
+      await listService.eliminarLista(id);
       return res.status(200).json({ message: 'Lista eliminada.' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
