@@ -1,7 +1,9 @@
 // src/controllers/favorite.controller.ts
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { favoriteModel } from '../models/favorite.model';
+import { favoriteModel, ReadingStatus } from '../models/favorite.model';
+
+const READING_STATUSES: ReadingStatus[] = ['general', 'quiero-leer', 'leyendo', 'leido'];
 
 class FavoriteController {
   //  GET: Obtener todos los favoritos (opcional, para testing o admin)
@@ -58,6 +60,47 @@ class FavoriteController {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error getting user favorites:', message);
       res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getReadingStatuses(req: AuthRequest, res: Response) {
+    try {
+      const usuario_id = req.userId;
+
+      if (!usuario_id) {
+        return res.status(400).json({ error: 'User ID missing in token' });
+      }
+
+      const statuses = await favoriteModel.getReadingStatusesByUser(usuario_id);
+      return res.status(200).json(statuses);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error getting reading statuses:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async updateReadingStatus(req: AuthRequest, res: Response) {
+    try {
+      const usuario_id = req.userId;
+      const libro_id = Number(req.body.libro_id);
+      const estado_lectura = req.body.estado_lectura as ReadingStatus;
+
+      if (!usuario_id || !Number.isInteger(libro_id) || !READING_STATUSES.includes(estado_lectura)) {
+        return res.status(400).json({ error: 'Invalid book ID or reading status' });
+      }
+
+      const updated = await favoriteModel.updateReadingStatus(usuario_id, libro_id, estado_lectura);
+
+      if (!updated) {
+        return res.status(404).json({ error: 'Favorite not found' });
+      }
+
+      return res.status(200).json(updated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error updating reading status:', message);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 

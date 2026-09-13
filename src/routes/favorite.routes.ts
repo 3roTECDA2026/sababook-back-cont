@@ -7,6 +7,8 @@ const router = Router();
 
 router.post('/', verifyToken, favoriteController.create);
 router.get('/', verifyToken, favoriteController.getByUser);
+router.get('/statuses', verifyToken, favoriteController.getReadingStatuses);
+router.patch('/status', verifyToken, favoriteController.updateReadingStatus);
 router.delete('/', verifyToken, favoriteController.delete);
 
 router.get('/all', verifyToken, favoriteController.getAll);
