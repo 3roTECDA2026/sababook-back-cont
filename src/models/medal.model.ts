@@ -94,6 +94,32 @@ class MedalModel {
       throw error;
     }
   }
+  // Obtener el catálogo completo de insignias, marcando cuáles tiene el usuario
+  async obtenerCatalogoConEstado(usuario_id: number) {
+    try {
+      const medallas = await prisma.medalla.findMany({
+        orderBy: { medalla_id: 'asc' },
+        include: {
+          usuario_medalla: {
+            where: { usuario_id },
+          },
+        },
+      });
+
+      return medallas.map((m) => ({
+        medalla_id: m.medalla_id,
+        nombre: m.nombre,
+        descripcion: m.descripcion ?? '',
+        tipo_accion: m.tipo_accion ?? '',
+        obtenida: m.usuario_medalla.length > 0,
+        fecha_obtenida: m.usuario_medalla[0]?.fecha_obtenida ?? null,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error al obtener el catálogo de insignias:', message);
+      throw error;
+    }
+  }
 }
 
 export const medalModel = new MedalModel();
