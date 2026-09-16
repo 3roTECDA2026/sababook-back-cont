@@ -5,12 +5,12 @@ import { verifyToken } from '../middleware/auth.middleware';
 
 const router = Router();
 
-router.get('/evaluacion/libro/:libroId', TriviaController.getEvaluacionesByLibro);
-router.post('/evaluacion', verifyToken, TriviaController.createEvaluacion);
-router.get('/evaluacion/:evaluacionId', TriviaController.getEvaluacionById);
+router.get('/evaluacion/libro/:bookId', TriviaController.getEvaluationsByBook);
+router.post('/evaluacion', verifyToken, TriviaController.createEvaluation);
+router.get('/evaluacion/:evaluationId', TriviaController.getEvaluationById);
 
-router.get('/libro/:libroId', TriviaController.getByLibro);
+router.get('/libro/:bookId', TriviaController.getByBook);
 router.post('/', verifyToken, TriviaController.create);
-router.delete('/:preguntaId', verifyToken, TriviaController.delete);
+router.delete('/:questionId', verifyToken, TriviaController.delete);
 
 export default router;

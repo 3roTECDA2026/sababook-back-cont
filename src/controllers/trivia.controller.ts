@@ -3,18 +3,18 @@ import { Request, Response } from 'express';
 import { triviaModel, CreateTriviaData } from '../models/trivia.model';
 
 class TriviaController {
-  async getByLibro(req: Request, res: Response) {
+  async getByBook(req: Request, res: Response) {
     try {
-      const libroId = parseInt(String(req.params.libroId), 10);
-      if (isNaN(libroId)) {
-        return res.status(400).json({ error: 'Invalid libro ID' });
+      const bookId = parseInt(String(req.params.bookId), 10);
+      if (isNaN(bookId)) {
+        return res.status(400).json({ error: 'Invalid book ID' });
       }
 
-      const questions = await triviaModel.getByLibro(libroId);
+      const questions = await triviaModel.getByBook(bookId);
       return res.status(200).json(questions);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error getting trivia by libro:', message);
+      console.error('Error getting trivia by book:', message);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -22,64 +22,64 @@ class TriviaController {
   async create(req: Request, res: Response) {
     try {
       const {
-        libro_id,
-        evaluacion_id,
-        modo,
-        formato,
-        pregunta,
-        fechaLimite,
-        opciones,
-        correcta,
-        pares,
-        texto,
-        respuestas,
+        bookId,
+        evaluationId,
+        mode,
+        format,
+        question,
+        deadline,
+        options,
+        correctAnswer,
+        pairs,
+        text,
+        answers,
       } = req.body;
 
-      if (!libro_id || !modo || !formato) {
-        return res.status(400).json({ error: 'Missing required fields: libro_id, modo, formato' });
+      if (!bookId || !mode || !format) {
+        return res.status(400).json({ error: 'Missing required fields: bookId, mode, format' });
       }
 
-      if (!['trivia', 'evaluacion'].includes(modo)) {
-        return res.status(400).json({ error: 'modo must be trivia or evaluacion' });
+      if (!['trivia', 'evaluacion'].includes(mode)) {
+        return res.status(400).json({ error: 'mode must be trivia or evaluacion' });
       }
-      if (!['multiple', 'truefalse', 'conexion', 'completar'].includes(formato)) {
-        return res.status(400).json({ error: 'formato must be multiple, truefalse, conexion, or completar' });
+      if (!['multiple', 'truefalse', 'conexion', 'completar'].includes(format)) {
+        return res.status(400).json({ error: 'format must be multiple, truefalse, conexion, or completar' });
       }
 
-      if (formato === 'multiple' || formato === 'truefalse') {
-        if (!opciones || !Array.isArray(opciones) || opciones.length < 2) {
-          return res.status(400).json({ error: 'At least 2 opciones are required for multiple/truefalse' });
+      if (format === 'multiple' || format === 'truefalse') {
+        if (!options || !Array.isArray(options) || options.length < 2) {
+          return res.status(400).json({ error: 'At least 2 options are required for multiple/truefalse' });
         }
-        if (correcta === undefined || correcta < 0 || correcta >= opciones.length) {
-          return res.status(400).json({ error: 'correcta must be a valid option index' });
-        }
-      }
-      if (formato === 'conexion') {
-        if (!pares || !Array.isArray(pares) || pares.length < 2) {
-          return res.status(400).json({ error: 'At least 2 pares are required for conexion format' });
+        if (correctAnswer === undefined || correctAnswer < 0 || correctAnswer >= options.length) {
+          return res.status(400).json({ error: 'correctAnswer must be a valid option index' });
         }
       }
-      if (formato === 'completar') {
-        if (!texto || !String(texto).trim()) {
-          return res.status(400).json({ error: 'texto is required for completar format' });
+      if (format === 'conexion') {
+        if (!pairs || !Array.isArray(pairs) || pairs.length < 2) {
+          return res.status(400).json({ error: 'At least 2 pairs are required for conexion format' });
         }
-        if (!respuestas || !Array.isArray(respuestas) || respuestas.length === 0) {
-          return res.status(400).json({ error: 'At least 1 respuesta is required for completar format' });
+      }
+      if (format === 'completar') {
+        if (!text || !String(text).trim()) {
+          return res.status(400).json({ error: 'text is required for completar format' });
+        }
+        if (!answers || !Array.isArray(answers) || answers.length === 0) {
+          return res.status(400).json({ error: 'At least 1 answer is required for completar format' });
         }
       }
 
       const data: CreateTriviaData = {
-        libro_id,
-        evaluacion_id,
-        modo,
-        formato,
-        pregunta,
-        fechaLimite: fechaLimite || null,
-        opciones: opciones || [],
-        correcta: correcta ?? -1,
-        pares: pares || [],
-        texto: texto || '',
-        respuestas: respuestas || [],
+        bookId,
+        evaluationId,
+        mode,
+        format,
+        question,
+        deadline: deadline || null,
+        options: options || [],
+        correctAnswer: correctAnswer ?? -1,
+        pairs: pairs || [],
+        text: text || '',
+        answers: answers || [],
       };
 
       const newQuestion = await triviaModel.create(data);
@@ -93,12 +93,12 @@ class TriviaController {
 
   async delete(req: Request, res: Response) {
     try {
-      const preguntaId = parseInt(String(req.params.preguntaId), 10);
-      if (isNaN(preguntaId)) {
-        return res.status(400).json({ error: 'Invalid pregunta ID' });
+      const questionId = parseInt(String(req.params.questionId), 10);
+      if (isNaN(questionId)) {
+        return res.status(400).json({ error: 'Invalid question ID' });
       }
 
-      await triviaModel.delete(preguntaId);
+      await triviaModel.delete(questionId);
       return res.status(204).end();
     } catch (error: any) {
       if (error.message?.includes('not found')) {
@@ -110,55 +110,55 @@ class TriviaController {
     }
   }
 
-  async getEvaluacionesByLibro(req: Request, res: Response) {
+  async getEvaluationsByBook(req: Request, res: Response) {
     try {
-      const libroId = parseInt(String(req.params.libroId), 10);
-      if (isNaN(libroId)) {
-        return res.status(400).json({ error: 'Invalid libro ID' });
+      const bookId = parseInt(String(req.params.bookId), 10);
+      if (isNaN(bookId)) {
+        return res.status(400).json({ error: 'Invalid book ID' });
       }
 
-      const evaluaciones = await triviaModel.getEvaluacionesByLibro(libroId);
-      return res.status(200).json(evaluaciones);
+      const evaluations = await triviaModel.getEvaluationsByBook(bookId);
+      return res.status(200).json(evaluations);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error getting evaluaciones:', message);
+      console.error('Error getting evaluations:', message);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
 
-  async createEvaluacion(req: Request, res: Response) {
+  async createEvaluation(req: Request, res: Response) {
     try {
-      const { libro_id, fecha_limite } = req.body;
+      const { bookId, deadline } = req.body;
 
-      if (!libro_id) {
-        return res.status(400).json({ error: 'Missing required field: libro_id' });
+      if (!bookId) {
+        return res.status(400).json({ error: 'Missing required field: bookId' });
       }
 
-      const nuevaEvaluacion = await triviaModel.createEvaluacion(libro_id, fecha_limite);
-      return res.status(201).json(nuevaEvaluacion);
+      const newEvaluation = await triviaModel.createEvaluation(bookId, deadline);
+      return res.status(201).json(newEvaluation);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error creating evaluacion:', message);
+      console.error('Error creating evaluation:', message);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
 
-  async getEvaluacionById(req: Request, res: Response) {
+  async getEvaluationById(req: Request, res: Response) {
     try {
-      const evaluacionId = parseInt(String(req.params.evaluacionId), 10);
-      if (isNaN(evaluacionId)) {
-        return res.status(400).json({ error: 'Invalid evaluacion ID' });
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: 'Invalid evaluation ID' });
       }
 
-      const detail = await triviaModel.getEvaluacionById(evaluacionId);
+      const detail = await triviaModel.getEvaluationById(evaluationId);
       if (!detail) {
-        return res.status(404).json({ error: 'Evaluacion not found' });
+        return res.status(404).json({ error: 'Evaluation not found' });
       }
 
       return res.status(200).json(detail);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error getting evaluacion by ID:', message);
+      console.error('Error getting evaluation by ID:', message);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
