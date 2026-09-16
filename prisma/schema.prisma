@@ -32,8 +32,9 @@ model usuario {
   foro                 foro[]
   lista_lectura        lista_lectura[]
   opinion              opinion[]
-  usuario_club_lectura usuario_club_lectura[]
-  usuario_medalla      usuario_medalla[]
+  usuario_club_lectura  usuario_club_lectura[]
+  usuario_medalla       usuario_medalla[]
+  incidencia_moderacion incidencia_moderacion[]
 
   @@index([rol_id])
 }
@@ -192,4 +193,25 @@ model favorito {
   usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
   @@id([usuario_id, libro_id])
+}
+
+model configuracion_sistema {
+  clave       String   @id @db.VarChar(100)
+  valor       String   @db.Text
+  descripcion String?  @db.Text
+  actualizado DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+}
+
+model incidencia_moderacion {
+  incidencia_id       Int       @id @default(autoincrement())
+  usuario_id          Int?
+  contexto            String    @db.VarChar(50)
+  contenido_bloqueado String    @db.Text
+  motivo              String    @db.Text
+  categoria           String?   @db.VarChar(100)
+  fecha               DateTime  @default(now()) @db.Timestamptz(6)
+  usuario             usuario?  @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([usuario_id])
+  @@index([fecha])
 }
