@@ -54,6 +54,8 @@ model libro {
   lista_libro           lista_libro[]
   opinion               opinion[]
   recurso_educativo     recurso_educativo[]
+  trivia_evaluacion     trivia_evaluacion[]
+  trivia_pregunta       trivia_pregunta[]
 }
 
 model lista {
@@ -192,4 +194,67 @@ model favorito {
   usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
   @@id([usuario_id, libro_id])
+}
+
+model trivia_pregunta {
+  pregunta_id    Int                @id @default(autoincrement())
+  libro_id       Int
+  evaluacion_id  Int?
+  modo           String             @default("trivia") @db.VarChar(20)
+  formato        String             @default("multiple") @db.VarChar(20)
+  consigna       String             @db.Text
+  fecha_limite   DateTime?          @db.Date
+  fecha_creacion DateTime           @default(now()) @db.Timestamptz(6)
+  libro          libro              @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+  evaluacion     trivia_evaluacion? @relation(fields: [evaluacion_id], references: [evaluacion_id], onDelete: Cascade, onUpdate: NoAction)
+  opciones       trivia_opcion[]
+  pares          trivia_par[]
+  respuestas     trivia_respuesta[]
+
+  @@index([libro_id])
+  @@index([modo])
+  @@index([evaluacion_id])
+}
+
+model trivia_evaluacion {
+  evaluacion_id  Int               @id @default(autoincrement())
+  libro_id       Int
+  fecha_limite   DateTime?         @db.Date
+  descripcion    String?           @db.Text
+  fecha_creacion DateTime          @default(now()) @db.Timestamptz(6)
+  libro          libro             @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+  trivia_pregunta trivia_pregunta[]
+
+  @@index([libro_id])
+}
+
+model trivia_opcion {
+  opcion_id   Int             @id @default(autoincrement())
+  pregunta_id Int
+  texto       String          @db.Text
+  es_correcta Boolean?
+  pregunta    trivia_pregunta @relation(fields: [pregunta_id], references: [pregunta_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([pregunta_id])
+}
+
+model trivia_par {
+  par_id      Int             @id @default(autoincrement())
+  pregunta_id Int
+  orden       Int
+  izquierda   String          @db.Text
+  derecha     String          @db.Text
+  pregunta    trivia_pregunta @relation(fields: [pregunta_id], references: [pregunta_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([pregunta_id])
+}
+
+model trivia_respuesta {
+  respuesta_id Int             @id @default(autoincrement())
+  pregunta_id  Int
+  orden        Int
+  texto        String          @db.Text
+  pregunta     trivia_pregunta @relation(fields: [pregunta_id], references: [pregunta_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([pregunta_id])
 }
