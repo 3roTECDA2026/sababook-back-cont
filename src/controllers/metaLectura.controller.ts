@@ -1,6 +1,6 @@
 // src/controllers/metaLectura.controller.ts
 import { Request, Response } from 'express';
-import { crearMeta, obtenerMetasPorUsuario, eliminarMeta } from '../models/metaLectura.model';
+import { crearMeta, obtenerMetasPorUsuario, eliminarMeta, obtenerTodasLasMetas, actualizarMeta } from '../models/metaLectura.model';
 
 // Interfaz para extender Request cuando el middleware de autenticación inyecta el usuario
 interface AuthenticatedRequest extends Request {
@@ -52,23 +52,65 @@ class MetaLecturaController {
       res.status(500).json({ mensaje: 'Error al obtener las metas' });
     }
   }
+  //----------------------------------------------------------------
+  async obtenerTodas(req: AuthenticatedRequest, res: Response) {
+    try {
+      const metas = await obtenerTodasLasMetas();
+      res.json(metas);
+    } catch (error) {
+      console.error('Error al obtener todas las metas:', error);
+      res.status(500).json({ mensaje: 'Error al obtener todas las metas' });
+    }
+  }
 
-  async eliminar(req: AuthenticatedRequest, res: Response) {
+  async actualizar(req: AuthenticatedRequest, res: Response) {
     try {
       const metaId = parseInt(String(req.params.id));
-      const usuarioId = req.user?.usuario_id || req.body.usuario_id;
+      const { cantidad_libros, periodo_nombre, fecha_inicio, fecha_fin } = req.body;
 
-      const eliminado = await eliminarMeta(metaId, usuarioId);
-
-      if (!eliminado) {
-        return res.status(404).json({ mensaje: 'Meta no encontrada o no pertenece al usuario' });
+      if (!metaId) {
+        return res.status(400).json({ mensaje: 'ID de meta no especificado' });
       }
 
-      res.status(204).send();
+      const datosActualizar: any = {};
+      if (cantidad_libros) datosActualizar.cantidad_libros = parseInt(String(cantidad_libros));
+      if (periodo_nombre) datosActualizar.periodo_nombre = periodo_nombre;
+      if (fecha_inicio) datosActualizar.fecha_inicio = new Date(fecha_inicio);
+      if (fecha_fin) datosActualizar.fecha_fin = new Date(fecha_fin);
+
+      const metaActualizada = await actualizarMeta(metaId, datosActualizar);
+
+      res.json({
+        mensaje: 'Meta actualizada correctamente',
+        meta: metaActualizada,
+      });
     } catch (error) {
-      console.error('Error al eliminar meta:', error);
-      res.status(500).json({ mensaje: 'Error al eliminar la meta' });
+      console.error('Error al actualizar la meta:', error);
+      res.status(500).json({ mensaje: 'Error al actualizar la meta' });
     }
+  }
+  //---------------------------------------------------------------
+
+  async eliminar(req: AuthenticatedRequest, res: Response) {
+  try {
+    const metaId = parseInt(String(req.params.id));
+
+    if (!metaId) {
+      return res.status(400).json({ mensaje: 'ID de meta no especificado' });
+    }
+
+    // Pasamos solo el metaId para que el Admin pueda eliminar cualquier meta
+    const eliminado = await eliminarMeta(metaId);
+
+    if (!eliminado) {
+      return res.status(404).json({ mensaje: 'Meta no encontrada' });
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error al eliminar meta:', error);
+    res.status(500).json({ mensaje: 'Error al eliminar la meta' });
+  }
   }
 }
 
