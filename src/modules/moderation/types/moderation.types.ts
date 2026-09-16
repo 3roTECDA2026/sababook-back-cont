@@ -7,7 +7,7 @@ export interface ModerationResult {
 }
 
 export interface ModeratorProvider {
-  moderate(text: string): Promise<ModerationResult>;
+  moderate(text: string, contextDescription?: string): Promise<ModerationResult>;
 }
 
 export interface CreateIncidentDTO {
