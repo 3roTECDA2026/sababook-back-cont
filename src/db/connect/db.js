@@ -19,8 +19,10 @@ const testConnection = async () => {
     return db;
   } catch (error) {
     console.error('❌ Supabase database connection failed:', error.message);
-    throw error; 
+    console.warn('⚠️  Tu proyecto en Supabase está PAUSADO o la DATABASE_URL del .env ha cambiado.');
+    console.warn('👉 Por favor reanuda tu proyecto en https://supabase.com/dashboard');
   }
 };
+
 
 export { db, pgp ,testConnection};

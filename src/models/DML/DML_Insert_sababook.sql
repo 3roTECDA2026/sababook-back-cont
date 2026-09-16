@@ -3,9 +3,9 @@ INSERT INTO rol (nombre_rol) VALUES ('alumno'), ('docente'), ('administrador');
 
 -- Insertar usuarios con diferentes roles
 INSERT INTO usuario (nombre, email, contrasena, rol_id, perfil_completo) VALUES
-('Ana García', 'ana.garcia@email.com', 'hashed_pass_123', 2, TRUE),
-('Juan Pérez', 'juan.perez@email.com', 'hashed_pass_456', 1, FALSE),
-('Laura Martínez', 'laura.martinez@email.com', 'hashed_pass_789', 3, TRUE);
+('Ana García', 'ana.garcia@email.com', '$2b$10$M0/gUqCCa/AKt5HD1CXj8OncNH1d5gBhWIQ8c2rJgf8HwYz2nZCYm', 2, TRUE),
+('Juan Pérez', 'juan.perez@email.com', '$2b$10$M0/gUqCCa/AKt5HD1CXj8OncNH1d5gBhWIQ8c2rJgf8HwYz2nZCYm', 1, FALSE),
+('Laura Martínez', 'laura.martinez@email.com', '$2b$10$Q9SZH9hI6U0vLVLgagVKFuXsIOieBQpanEEiViuztxmV6N7gm0HqK', 3, TRUE);
 
 -- Insertar libros
 INSERT INTO libro (titulo, autor, genero, nivel_educativo) VALUES
@@ -21,8 +21,9 @@ INSERT INTO opinion (usuario_id, libro_id, calificacion, comentario) VALUES
 
 -- Más usuarios
 INSERT INTO usuario (nombre, email, contrasena, rol_id, perfil_completo, avatar_url) VALUES
-('Pedro Gómez', 'pedro.gomez@email.com', 'hashed_pass_001', 1, TRUE, 'https://ejemplo.com/avatars/pedro.jpg'),
-('Sofía Torres', 'sofia.torres@email.com', 'hashed_pass_002', 2, TRUE, 'https://ejemplo.com/avatars/sofia.jpg');
+('Pedro Gómez', 'pedro.gomez@email.com', '$2b$10$M0/gUqCCa/AKt5HD1CXj8OncNH1d5gBhWIQ8c2rJgf8HwYz2nZCYm', 1, TRUE, 'https://ejemplo.com/avatars/pedro.jpg'),
+('Sofía Torres', 'sofia.torres@email.com', '$2b$10$M0/gUqCCa/AKt5HD1CXj8OncNH1d5gBhWIQ8c2rJgf8HwYz2nZCYm', 2, TRUE, 'https://ejemplo.com/avatars/sofia.jpg');
+
 
 -- Más libros
 INSERT INTO libro (titulo, autor, genero, descripcion, portada_url, nivel_educativo) VALUES

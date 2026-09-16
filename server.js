@@ -12,6 +12,7 @@ import bookRoutes from "./src/routes/book.routes.js";
 import opinionRoutes from "./src/routes/opinion.routes.js";
 import favoriteRoutes from "./src/routes/favorite.routes.js";
 import medalRoutes from "./src/routes/medal.routes.js";
+import cafeRoutes from "./src/routes/cafe.routes.js";
 
 
 const app = express();
@@ -44,6 +45,8 @@ app.use("/api/v1/libros", bookRoutes);
 app.use("/api/v1/opinion", opinionRoutes);
 app.use("/api/v1/favorites", favoriteRoutes);
 app.use("/api/v1/medal", medalRoutes);
+app.use("/api/v1/cafes", cafeRoutes);
+
 
 
 app.get("/", (req, res) => {
@@ -51,11 +54,14 @@ app.get("/", (req, res) => {
 });
 
 // Iniciar servidor
-testConnection().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+const server = app.listen(PORT, () => {
+  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+  testConnection().catch((error) => {
+    console.warn('⚠️ Advertencia: La base de datos no está conectada aún. Error:', error.message);
   });
-}).catch((error) => {
-  console.error('Error al conectar a la base de datos:', error);
-  process.exit(1);
 });
+
+// Evitar que el proceso de Node.js finalice prematuramente
+setInterval(() => {}, 1000 * 60 * 60);
+
+
