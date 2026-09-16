@@ -34,6 +34,7 @@ model usuario {
   opinion              opinion[]
   usuario_club_lectura usuario_club_lectura[]
   usuario_medalla      usuario_medalla[]
+  triviaAttempt        triviaAttempt[]
 
   @@index([rol_id])
 }
@@ -223,9 +224,28 @@ model trivia_evaluacion {
   descripcion    String?           @db.Text
   fecha_creacion DateTime          @default(now()) @db.Timestamptz(6)
   libro          libro             @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
-  trivia_pregunta trivia_pregunta[]
+  trivia_pregunta  trivia_pregunta[]
+  triviaAttempt    triviaAttempt[]
 
   @@index([libro_id])
+}
+
+model triviaAttempt {
+  attemptId      Int               @id @default(autoincrement())
+  evaluationId   Int               @map("evaluacion_id")
+  userId         Int               @map("usuario_id")
+  correctCount   Int               @map("aciertos")
+  totalQuestions Int               @map("total_preguntas")
+  score          Int               @map("puntaje")
+  answersJson    Json              @map("respuestas_json") @db.Json
+  submittedAt    DateTime          @map("fecha_entrega") @default(now()) @db.Timestamptz(6)
+  evaluation     trivia_evaluacion @relation(fields: [evaluationId], references: [evaluacion_id], onDelete: Cascade, onUpdate: NoAction)
+  user           usuario           @relation(fields: [userId], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([evaluationId, userId], name: "evaluationUserAttempt")
+  @@index([evaluationId])
+  @@index([userId])
+  @@map("trivia_intento")
 }
 
 model trivia_opcion {
