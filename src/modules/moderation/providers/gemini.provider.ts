@@ -3,10 +3,11 @@ import { ModeratorProvider, ModerationResult } from '../types/moderation.types';
 export class GeminiModeratorProvider implements ModeratorProvider {
   constructor(private readonly apiKey: string) {}
 
-  async moderate(text: string): Promise<ModerationResult> {
+  async moderate(text: string, contextDescription?: string): Promise<ModerationResult> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.apiKey}`;
+    const contextInfo = contextDescription ? `Contexto del espacio:\n"${contextDescription}"\n\n` : '';
     const prompt = `Actua como moderador estricto para una plataforma escolar de lectura (alumnos de secundaria).
-Analiza el siguiente texto y determina si es apropiado o si contiene insultos, acoso, odio, discriminacion o amenazas.
+${contextInfo}Analiza el siguiente texto en dicho contexto y determina si es apropiado o si contiene insultos, acoso, odio, discriminacion o amenazas hacia otros participantes.
 Responde UNICAMENTE en formato JSON con la siguiente estructura:
 {
   "isAppropriate": boolean,

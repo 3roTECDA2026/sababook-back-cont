@@ -6,7 +6,7 @@ const OFFENSIVE_TERMS = [
 ];
 
 export class FallbackModeratorProvider implements ModeratorProvider {
-  async moderate(text: string): Promise<ModerationResult> {
+  async moderate(text: string, _contextDescription?: string): Promise<ModerationResult> {
     const normalized = text.toLowerCase();
     const found = OFFENSIVE_TERMS.find(term => normalized.includes(term));
 
