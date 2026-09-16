@@ -3,6 +3,7 @@ import { AuthRequest } from '../../../middleware/auth.middleware';
 import { ModerationContext } from '../types/moderation.types';
 import { moderateText } from '../services/moderate-text.service';
 import { saveIncident } from '../repositories/save-incident.repository';
+import { resolveContext } from '../helpers/resolve-context';
 
 export const moderateContent = (fields: string[], context: ModerationContext) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -16,7 +17,8 @@ export const moderateContent = (fields: string[], context: ModerationContext) =>
       }
 
       const combinedText = textsToInspect.join('\n');
-      const result = await moderateText(combinedText);
+      const contextDescription = await resolveContext(req, context);
+      const result = await moderateText(combinedText, contextDescription);
 
       if (!result.isAppropriate) {
         await saveIncident({
