@@ -15,3 +15,6 @@ yarn-error.log*
 
 # Ignorar lock si no querés subirlo
 package-lock.json
+
+antes de arrancar a cambiar:  git pull origin main
+
