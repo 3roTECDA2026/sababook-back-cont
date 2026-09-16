@@ -34,6 +34,7 @@ model usuario {
   opinion              opinion[]
   usuario_club_lectura usuario_club_lectura[]
   usuario_medalla      usuario_medalla[]
+  meta_lectura         meta_lectura[]
 
   @@index([rol_id])
 }
@@ -192,4 +193,18 @@ model favorito {
   usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
   @@id([usuario_id, libro_id])
+}
+
+model meta_lectura {
+  meta_id         Int       @id @default(autoincrement())
+  usuario_id      Int
+  periodo_nombre  String    @db.VarChar(100) // Ej: "1º Cuatrimestre 2026", "Meta Anual 2026"
+  cantidad_libros Int
+  fecha_inicio    DateTime  @db.Date
+  fecha_fin       DateTime  @db.Date
+  fecha_creacion  DateTime? @default(now()) @db.Timestamptz(6)
+
+  usuario usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([usuario_id])
 }
