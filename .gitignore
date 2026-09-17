@@ -15,3 +15,13 @@ yarn-error.log*
 
 # Ignorar lock si no querés subirlo
 package-lock.json
+
+# Agentes y herramientas locales
+.agents/
+.claude/
+
+# Locks de herramientas locales
+skills-lock.json
+
+# Dumps de base de datos (no subir)
+dump.sql
