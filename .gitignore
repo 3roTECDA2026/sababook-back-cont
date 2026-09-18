@@ -1,8 +1,13 @@
 # Ignorar dependencias
 node_modules/
 
+# Ignorar compilación generada
+dist/
+
 # Ignorar archivos de entorno
 .env
+.env.*
+!.env.example
 
 # Ignorar archivos del sistema
 .DS_Store
@@ -13,5 +18,16 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Ignorar lock si no querés subirlo
-package-lock.json
+# Archivos locales del editor
+.vscode/
+.idea/
+
+# Agentes y herramientas locales
+.agents/
+.claude/
+
+# Locks de herramientas locales
+skills-lock.json
+
+# Dumps de base de datos (no subir)
+dump.sql

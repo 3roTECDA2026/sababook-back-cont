@@ -34,6 +34,9 @@ model usuario {
   opinion              opinion[]
   usuario_club_lectura usuario_club_lectura[]
   usuario_medalla      usuario_medalla[]
+  cafe_literario       cafe_literario[]
+  asistencia_cafe      asistencia_cafe[]
+  voto_cafe            voto_cafe[]
 
   @@index([rol_id])
 }
@@ -54,6 +57,7 @@ model libro {
   lista_libro           lista_libro[]
   opinion               opinion[]
   recurso_educativo     recurso_educativo[]
+  cafe_literario        cafe_literario[]
 }
 
 model lista {
@@ -117,9 +121,11 @@ model foro {
   titulo          String            @db.VarChar(255)
   descripcion     String?           @db.Text
   creador_id      Int?
+  cafe_id         Int?
   fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
   comentario_foro comentario_foro[]
   usuario         usuario?          @relation(fields: [creador_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+  cafe_literario  cafe_literario?   @relation(fields: [cafe_id], references: [cafe_id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model comentario_foro {
@@ -192,4 +198,50 @@ model favorito {
   usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
   @@id([usuario_id, libro_id])
+}
+
+model cafe_literario {
+  cafe_id        Int               @id @default(autoincrement())
+  titulo         String            @db.VarChar(255)
+  descripcion    String?           @db.Text
+  libro_id       Int?
+  docente_id     Int?
+  fecha_evento   DateTime          @db.Timestamptz(6)
+  lugar          String?           @default("Biblioteca Ernesto Sábato") @db.VarChar(255)
+  estado         String?           @default("programado") @db.VarChar(50)
+  fecha_creacion DateTime?         @default(now()) @db.Timestamptz(6)
+  libro          libro?            @relation(fields: [libro_id], references: [libro_id], onDelete: SetNull, onUpdate: NoAction)
+  usuario        usuario?          @relation(fields: [docente_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+  asistencia_cafe asistencia_cafe[]
+  voto_cafe       voto_cafe[]
+  foro            foro[]
+
+  @@index([libro_id])
+  @@index([docente_id])
+}
+
+model asistencia_cafe {
+  asistencia_id  Int             @id @default(autoincrement())
+  cafe_id        Int
+  usuario_id     Int
+  estado         String?         @default("confirmado") @db.VarChar(50)
+  fecha_registro DateTime?       @default(now()) @db.Timestamptz(6)
+  cafe_literario cafe_literario  @relation(fields: [cafe_id], references: [cafe_id], onDelete: Cascade, onUpdate: NoAction)
+  usuario        usuario         @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([cafe_id, usuario_id])
+  @@index([usuario_id])
+}
+
+model voto_cafe {
+  voto_id        Int             @id @default(autoincrement())
+  cafe_id        Int
+  usuario_id     Int
+  voto           Boolean
+  fecha_voto     DateTime?       @default(now()) @db.Timestamptz(6)
+  cafe_literario cafe_literario  @relation(fields: [cafe_id], references: [cafe_id], onDelete: Cascade, onUpdate: NoAction)
+  usuario        usuario         @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([cafe_id, usuario_id])
+  @@index([usuario_id])
 }

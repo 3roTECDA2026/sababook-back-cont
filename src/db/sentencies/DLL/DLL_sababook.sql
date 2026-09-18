@@ -155,6 +155,7 @@ CREATE TABLE exportacion (
 CREATE TABLE favorito (
     usuario_id INTEGER NOT NULL,
     libro_id INTEGER NOT NULL,
+    estado_lectura VARCHAR(20) NOT NULL DEFAULT 'general',
 
     -- Define las claves foráneas (Foreign Keys)
     CONSTRAINT fk_usuario
@@ -170,3 +171,39 @@ CREATE TABLE favorito (
     -- Definir una clave primaria compuesta para evitar favoritos duplicados
     PRIMARY KEY (usuario_id, libro_id)
 );
+
+-- Tabla: cafe_literario (Eventos de Cafés Literarios)
+CREATE TABLE IF NOT EXISTS cafe_literario (
+    cafe_id SERIAL PRIMARY KEY,
+    titulo VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    libro_id INTEGER REFERENCES libro(libro_id) ON DELETE SET NULL,
+    docente_id INTEGER REFERENCES usuario(usuario_id) ON DELETE SET NULL,
+    fecha_evento TIMESTAMPTZ NOT NULL,
+    lugar VARCHAR(255) DEFAULT 'Biblioteca Ernesto Sábato',
+    estado VARCHAR(50) DEFAULT 'programado',
+    fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabla: asistencia_cafe (RSVP y control de presencia)
+CREATE TABLE IF NOT EXISTS asistencia_cafe (
+    asistencia_id SERIAL PRIMARY KEY,
+    cafe_id INTEGER REFERENCES cafe_literario(cafe_id) ON DELETE CASCADE,
+    usuario_id INTEGER REFERENCES usuario(usuario_id) ON DELETE CASCADE,
+    estado VARCHAR(50) DEFAULT 'confirmado',
+    fecha_registro TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_asistencia_usuario_cafe UNIQUE (cafe_id, usuario_id)
+);
+
+-- Tabla: voto_cafe (Votación post-lectura "¿Te gustó el libro?")
+CREATE TABLE IF NOT EXISTS voto_cafe (
+    voto_id SERIAL PRIMARY KEY,
+    cafe_id INTEGER REFERENCES cafe_literario(cafe_id) ON DELETE CASCADE,
+    usuario_id INTEGER REFERENCES usuario(usuario_id) ON DELETE CASCADE,
+    voto BOOLEAN NOT NULL,
+    fecha_voto TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_voto_usuario_cafe UNIQUE (cafe_id, usuario_id)
+);
+
+-- Modificar tabla foro para vincularla opcionalmente a un Café Literario
+ALTER TABLE foro ADD COLUMN IF NOT EXISTS cafe_id INTEGER REFERENCES cafe_literario(cafe_id) ON DELETE CASCADE;
