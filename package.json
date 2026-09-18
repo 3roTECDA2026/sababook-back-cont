@@ -1,31 +1,38 @@
 {
   "name": "sababook-back",
   "version": "1.0.0",
-  "description": "Backend Sababook alineado al estándar del equipo, usando MySQL",
-  "main": "server.js",
+  "description": "Backend Sababook alineado al estándar del equipo, usando TypeScript y Prisma",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "dump": "node scripts/dump.js",
-    "setup-db": "node scripts/setup-db.js"
-
-
+    "build": "tsup server.ts --format esm --clean",
+    "start": "node dist/server.js",
+    "dev": "tsx watch server.ts",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/ssr": "^0.12.5",
-    "@supabase/supabase-js": "^2.112.4",
+    "@prisma/client": "^6.19.3",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
-    "leo-profanity": "^1.8.0",
-    "nodemon": "^3.1.10",
-    "pg-promise": "^11.5.4",
+    "leo-profanity": "^1.9.0",
     "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/leo-profanity": "^1.5.5",
+    "@types/node": "^26.4.1",
+    "prisma": "^6.19.3",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^5.4.5"
   }
 }
