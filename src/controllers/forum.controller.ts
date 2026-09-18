@@ -1,20 +1,13 @@
 // src/controllers/foro.controller.ts
 import { Request, Response } from 'express';
-import {
-  obtenerForoConComentariosDB,
-  crearForoDB,
-  obtenerTodosForosDB,
-  obtenerForoPorIdDB,
-  actualizarForoDB,
-  eliminarForoDB,
-} from '../models/foro.model';
+import { forumService } from '../services/forum.service';
 
 // Crear un foro
 export const crearForo = async (req: Request, res: Response) => {
   try {
     console.log('🟡 Datos recibidos desde frontend:', req.body);
     const { titulo, descripcion, creador_id } = req.body;
-    const nuevoForo = await crearForoDB(titulo, descripcion, creador_id);
+    const nuevoForo = await forumService.crearForo(titulo, descripcion, creador_id);
     res.status(201).json({ foro_id: nuevoForo.foro_id });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -26,7 +19,7 @@ export const crearForo = async (req: Request, res: Response) => {
 // Obtener todos los foros
 export const obtenerForos = async (req: Request, res: Response) => {
   try {
-    const foros = await obtenerTodosForosDB();
+    const foros = await forumService.obtenerTodosForos();
     res.json(foros);
   } catch (error) {
     console.error('❌ Error al obtener foros:', error);
@@ -37,8 +30,8 @@ export const obtenerForos = async (req: Request, res: Response) => {
 // Obtener un foro por ID
 export const obtenerForo = async (req: Request, res: Response) => {
   try {
-    const foro_id = parseInt(String(req.params.id));
-    const foro = await obtenerForoPorIdDB(foro_id);
+    const foro_id = parseInt(String(req.params.id), 10);
+    const foro = await forumService.obtenerForoPorId(foro_id);
 
     if (!foro) {
       return res.status(404).json({ mensaje: 'Foro no encontrado' });
@@ -58,8 +51,9 @@ export const obtenerForo = async (req: Request, res: Response) => {
 // Actualizar un foro
 export const actualizarForo = async (req: Request, res: Response) => {
   try {
+    const id = parseInt(String(req.params.id), 10);
     const { titulo, descripcion } = req.body;
-    const foroActualizado = await actualizarForoDB(parseInt(String(req.params.id)), titulo, descripcion);
+    const foroActualizado = await forumService.actualizarForo(id, titulo, descripcion);
 
     if (!foroActualizado) return res.status(404).json({ mensaje: 'Foro no encontrado' });
 
@@ -73,7 +67,8 @@ export const actualizarForo = async (req: Request, res: Response) => {
 // Eliminar un foro
 export const eliminarForo = async (req: Request, res: Response) => {
   try {
-    const foroEliminado = await eliminarForoDB(parseInt(String(req.params.id)));
+    const id = parseInt(String(req.params.id), 10);
+    const foroEliminado = await forumService.eliminarForo(id);
 
     if (!foroEliminado) return res.status(404).json({ mensaje: 'Foro no encontrado' });
 
@@ -87,8 +82,8 @@ export const eliminarForo = async (req: Request, res: Response) => {
 // Obtener foro con comentarios
 export const obtenerForoConComentarios = async (req: Request, res: Response) => {
   try {
-    const foro_id = parseInt(String(req.params.id));
-    const foroConComentarios = await obtenerForoConComentariosDB(foro_id);
+    const foro_id = parseInt(String(req.params.id), 10);
+    const foroConComentarios = await forumService.obtenerForoConComentarios(foro_id);
 
     if (!foroConComentarios) return res.status(404).json({ mensaje: 'Foro no encontrado' });
 

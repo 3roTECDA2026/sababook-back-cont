@@ -1,20 +1,12 @@
-// src/controllers/opinion.controller.ts
+// src/controllers/review.controller.ts
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { opinionModel } from '../models/opinion.model';
-import { medalModel } from '../models/medal.model';
-import leoProfanity from 'leo-profanity';
+import { reviewService } from '../services/review.service';
 
-// Inicializamos los diccionarios de malas palabras
-leoProfanity.loadDictionary('en');
-leoProfanity.loadDictionary('es');
-
-leoProfanity.add(['mierda', 'pelotudo', 'boludo', 'Estupido']);
-
-class OpinionController {
+class ReviewController {
   async getAllOpinions(req: Request, res: Response) {
     try {
-      const opinions = await opinionModel.getAllOpinions();
+      const opinions = await reviewService.getAllOpinions();
       return res.status(200).json(opinions);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -30,7 +22,7 @@ class OpinionController {
         return res.status(400).json({ error: 'Invalid opinion ID' });
       }
 
-      const opinion = await opinionModel.getOpinionById(opinionId);
+      const opinion = await reviewService.getOpinionById(opinionId);
       if (!opinion) {
         return res.status(404).json({ error: 'Opinion not found' });
       }
@@ -51,20 +43,12 @@ class OpinionController {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
-      // Moderación automática
-      const comentarioLimpio = leoProfanity.clean(comentario);
-
-      const newOpinion = await opinionModel.createOpinion({
+      const newOpinion = await reviewService.createOpinion({
         usuario_id,
         libro_id,
         calificacion,
-        comentario: comentarioLimpio,
+        comentario,
       });
-
-      console.log(newOpinion);
-
-      // Verificar y asignar medallas después de crear el comentario del usuario
-      await medalModel.verificarYAsignarMedallas(usuario_id);
 
       return res.status(201).json(newOpinion);
     } catch (error) {
@@ -81,12 +65,12 @@ class OpinionController {
         return res.status(400).json({ error: 'Invalid opinion ID' });
       }
 
-      const existingOpinion = await opinionModel.getOpinionById(opinionId);
+      const existingOpinion = await reviewService.getOpinionById(opinionId);
       if (!existingOpinion) {
         return res.status(404).json({ error: 'Opinion not found' });
       }
 
-      // Verifica permisos: solo autor o admin
+      // Permisos: admin (rol 3) o dueño de la publicación
       const userId = req.userId;
       const userRole = req.userRole;
 
@@ -94,13 +78,8 @@ class OpinionController {
         return res.status(403).json({ error: 'Not authorized to modify this opinion' });
       }
 
-      // Limpiar comentario si viene texto nuevo
       const updatedFields = req.body;
-      if (updatedFields.comentario) {
-        updatedFields.comentario = leoProfanity.clean(updatedFields.comentario);
-      }
-
-      const updatedOpinion = await opinionModel.updateOpinion(opinionId, updatedFields);
+      const updatedOpinion = await reviewService.updateOpinion(opinionId, updatedFields);
       return res.status(200).json(updatedOpinion);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -116,12 +95,11 @@ class OpinionController {
         return res.status(400).json({ error: 'Invalid opinion ID' });
       }
 
-      const existingOpinion = await opinionModel.getOpinionById(opinionId);
+      const existingOpinion = await reviewService.getOpinionById(opinionId);
       if (!existingOpinion) {
         return res.status(404).json({ error: 'Opinion not found' });
       }
 
-      // Solo el autor o admin pueden borrar
       const userId = req.userId;
       const userRole = req.userRole;
 
@@ -129,7 +107,7 @@ class OpinionController {
         return res.status(403).json({ error: 'Not authorized to delete this opinion' });
       }
 
-      await opinionModel.deleteOpinion(opinionId);
+      await reviewService.deleteOpinion(opinionId);
       return res.status(204).end();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -140,12 +118,13 @@ class OpinionController {
 
   async getOpinionsByLibro(req: Request, res: Response) {
     try {
-      const libroId = parseInt(String(req.params.libro_id), 10);
+      const libroIdParam = req.params.bookId || req.params.libro_id;
+      const libroId = parseInt(String(libroIdParam), 10);
       if (isNaN(libroId)) {
         return res.status(400).json({ error: 'Invalid libro ID' });
       }
 
-      const sqlOpinions = await opinionModel.getOpinionsByLibro(libroId);
+      const sqlOpinions = await reviewService.getOpinionsByLibro(libroId);
       return res.status(200).json(sqlOpinions);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -155,4 +134,4 @@ class OpinionController {
   }
 }
 
-export default new OpinionController();
+export default new ReviewController();
