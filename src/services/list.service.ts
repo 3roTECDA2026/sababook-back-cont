@@ -1,4 +1,3 @@
-// src/services/list.service.ts
 import { listaModel } from '../models/lista.model';
 
 class ListService {
@@ -14,7 +13,7 @@ class ListService {
     return await listaModel.obtenerPorId(id);
   }
 
-  async actualizarLista(id: number, nombre: string, descripcion: string, tipo: string) {
+  async actualizarLista(id: number, nombre?: string, descripcion?: string, tipo?: string) {
     return await listaModel.actualizarLista(id, nombre, descripcion, tipo);
   }
 

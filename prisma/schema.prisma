@@ -7,6 +7,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------
+
+enum TipoActividad {
+  NUEVO_LIBRO
+  RADIO_EPISODIO
+  FORO_APL
+  NUEVA_OPINION
+  AVISO
+}
+
+// ------------------------------------------------------
+// USUARIOS Y ROLES
+// ------------------------------------------------------
+
 model rol {
   rol_id     Int       @id @default(autoincrement())
   nombre_rol String    @unique @db.VarChar(50)
@@ -34,9 +50,32 @@ model usuario {
   opinion              opinion[]
   usuario_club_lectura usuario_club_lectura[]
   usuario_medalla      usuario_medalla[]
+  actividad_feed       actividad_feed[]
 
   @@index([rol_id])
 }
+
+// ------------------------------------------------------
+// REQ-05: FEED DE ACTIVIDAD
+// ------------------------------------------------------
+
+model actividad_feed {
+  actividad_id Int           @id @default(autoincrement())
+  usuario_id   Int?
+  tipo         TipoActividad
+  titulo       String        @db.VarChar(255)
+  descripcion  String?       @db.Text
+  entidad_id   Int?          // ID referencial opcional (libro_id, foro_id, episodio_id)
+  fecha        DateTime      @default(now()) @db.Timestamptz(6)
+
+  usuario      usuario?      @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull)
+
+  @@index([fecha(sort: Desc)])
+}
+
+// ------------------------------------------------------
+// CATÁLOGO Y LIBROS
+// ------------------------------------------------------
 
 model libro {
   libro_id              Int                 @id @default(autoincrement())
@@ -55,6 +94,44 @@ model libro {
   opinion               opinion[]
   recurso_educativo     recurso_educativo[]
 }
+
+model favorito {
+  usuario_id Int
+  libro_id   Int
+  libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
+  usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
+
+  @@id([usuario_id, libro_id])
+}
+
+model opinion {
+  opinion_id   Int       @id @default(autoincrement())
+  usuario_id   Int
+  libro_id     Int
+  calificacion Int?      @db.SmallInt
+  comentario   String?   @db.Text
+  fecha        DateTime? @default(now()) @db.Timestamptz(6)
+  libro        libro     @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario      usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([libro_id])
+  @@index([usuario_id])
+}
+
+model recurso_educativo {
+  recurso_id  Int     @id @default(autoincrement())
+  libro_id    Int
+  tipo        String  @db.VarChar(50)
+  url         String  @db.Text
+  descripcion String? @db.Text
+  libro       libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([libro_id])
+}
+
+// ------------------------------------------------------
+// LISTAS DE LECTURA
+// ------------------------------------------------------
 
 model lista {
   lista_id       Int             @id @default(autoincrement())
@@ -87,29 +164,19 @@ model lista_libro {
   @@id([lista_id, libro_id])
 }
 
-model recurso_educativo {
-  recurso_id  Int     @id @default(autoincrement())
-  libro_id    Int
-  tipo        String  @db.VarChar(50)
-  url         String  @db.Text
-  descripcion String? @db.Text
-  libro       libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+// ------------------------------------------------------
+// REQ-11: FOROS APL Y RADIO SÁBATO
+// ------------------------------------------------------
 
-  @@index([libro_id])
-}
-
-model opinion {
-  opinion_id   Int       @id @default(autoincrement())
-  usuario_id   Int
-  libro_id     Int
-  calificacion Int?      @db.SmallInt
-  comentario   String?   @db.Text
-  fecha        DateTime? @default(now()) @db.Timestamptz(6)
-  libro        libro     @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
-  usuario      usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([libro_id])
-  @@index([usuario_id])
+model radio_episodio {
+  episodio_id   Int       @id @default(autoincrement())
+  titulo        String    @db.VarChar(255)
+  descripcion   String?   @db.Text
+  audio_url     String    @db.Text
+  programa      String?   @db.VarChar(100)
+  fecha_emision DateTime? @default(now()) @db.Timestamptz(6)
+  
+  foro          foro[]
 }
 
 model foro {
@@ -117,9 +184,15 @@ model foro {
   titulo          String            @db.VarChar(255)
   descripcion     String?           @db.Text
   creador_id      Int?
+  episodio_id     Int?              // Vinculación opcional con Radio Sábato
+  es_apl          Boolean           @default(false)
   fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
+  
   comentario_foro comentario_foro[]
   usuario         usuario?          @relation(fields: [creador_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+  radio_episodio  radio_episodio?   @relation(fields: [episodio_id], references: [episodio_id], onDelete: SetNull)
+
+  @@index([episodio_id])
 }
 
 model comentario_foro {
@@ -134,6 +207,10 @@ model comentario_foro {
   @@index([foro_id])
   @@index([usuario_id])
 }
+
+// ------------------------------------------------------
+// CLUB DE LECTURA, MEDALLAS Y EXPORTACIÓN
+// ------------------------------------------------------
 
 model club_lectura {
   club_id              Int                    @id @default(autoincrement())
@@ -183,13 +260,4 @@ model exportacion {
   formato_archivo               String?   @db.VarChar(50)
   estado                        String?   @db.VarChar(50)
   usuario                       usuario?  @relation(fields: [usuario_admin_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-model favorito {
-  usuario_id Int
-  libro_id   Int
-  libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
-  usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
-
-  @@id([usuario_id, libro_id])
 }

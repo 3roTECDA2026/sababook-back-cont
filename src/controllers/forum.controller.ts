@@ -2,12 +2,20 @@
 import { Request, Response } from 'express';
 import { forumService } from '../services/forum.service';
 
-// Crear un foro
+// Crear un foro (soporta foros estándar, debates APL y vinculación con Radio Sábato)
 export const crearForo = async (req: Request, res: Response) => {
   try {
     console.log('🟡 Datos recibidos desde frontend:', req.body);
-    const { titulo, descripcion, creador_id } = req.body;
-    const nuevoForo = await forumService.crearForo(titulo, descripcion, creador_id);
+    const { titulo, descripcion, creador_id, es_apl, episodio_id } = req.body;
+
+    const nuevoForo = await forumService.crearForo(
+      titulo,
+      descripcion,
+      creador_id,
+      Boolean(es_apl),
+      episodio_id ? parseInt(String(episodio_id), 10) : undefined
+    );
+
     res.status(201).json({ foro_id: nuevoForo.foro_id });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

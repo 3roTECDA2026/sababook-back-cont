@@ -9,8 +9,14 @@ import {
 } from '../models/foro.model';
 
 class ForumService {
-  async crearForo(titulo: string, descripcion: string, creadorId: number) {
-    return await crearForoDB(titulo, descripcion, creadorId);
+  async crearForo(
+    titulo: string,
+    descripcion?: string,
+    creadorId?: number,
+    esApl: boolean = false,
+    episodioId?: number
+  ) {
+    return await crearForoDB(titulo, descripcion, creadorId, esApl, episodioId);
   }
 
   async obtenerTodosForos() {
@@ -21,7 +27,7 @@ class ForumService {
     return await obtenerForoPorIdDB(id);
   }
 
-  async actualizarForo(id: number, titulo: string, descripcion: string) {
+  async actualizarForo(id: number, titulo?: string, descripcion?: string) {
     return await actualizarForoDB(id, titulo, descripcion);
   }
 
