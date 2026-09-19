@@ -6,6 +6,7 @@ interface Lista {
   nombre: string;
   descripcion: string;
   tipo: string;
+  libros?: any[];
 }
 
 interface CamposActualizarLista {
@@ -22,8 +23,22 @@ class ListaModel {
     tipo: string,
   ): Promise<Lista> {
     try {
+      // 1. Buscamos el ID máximo actual en la tabla para evitar la colisión de secuencia
+      const ultimaLista = await prisma.lista.findFirst({
+        orderBy: {
+          lista_id: "desc",
+        },
+        select: {
+          lista_id: true,
+        },
+      });
+
+      const siguienteId = (ultimaLista?.lista_id ?? 0) + 1;
+
+      // 2. Insertamos la nueva lista asegurando un ID único disponible
       const nuevaLista = await prisma.lista.create({
         data: {
+          lista_id: siguienteId,
           nombre,
           descripcion,
           tipo,
@@ -50,22 +65,26 @@ class ListaModel {
 
   async obtenerTodas(): Promise<Lista[]> {
     try {
+      // Ordenamiento descendente para traer siempre la recomendación más reciente primero
+      // e inclusión de la relación 'lista_libro -> libro' para enviar las portadas y títulos
       const listas = await prisma.lista.findMany({
         orderBy: {
-          lista_id: "asc",
+          lista_id: "desc",
         },
-        select: {
-          lista_id: true,
-          nombre: true,
-          descripcion: true,
-          tipo: true,
+        include: {
+          lista_libro: {
+            include: {
+              libro: true,
+            },
+          },
         },
       });
 
-      return listas.map((l) => ({
+      return listas.map((l: any) => ({
         ...l,
         descripcion: l.descripcion ?? "",
         tipo: l.tipo ?? "",
+        libros: l.lista_libro ? l.lista_libro.map((ll: any) => ll.libro) : [],
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -78,11 +97,12 @@ class ListaModel {
     try {
       const lista = await prisma.lista.findUnique({
         where: { lista_id: listaId },
-        select: {
-          lista_id: true,
-          nombre: true,
-          descripcion: true,
-          tipo: true,
+        include: {
+          lista_libro: {
+            include: {
+              libro: true,
+            },
+          },
         },
       });
 
@@ -92,6 +112,9 @@ class ListaModel {
         ...lista,
         descripcion: lista.descripcion ?? "",
         tipo: lista.tipo ?? "",
+        libros: (lista as any).lista_libro
+          ? (lista as any).lista_libro.map((ll: any) => ll.libro)
+          : [],
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

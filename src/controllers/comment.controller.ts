@@ -1,31 +1,13 @@
-// src/controllers/comentario.controller.ts
+// src/controllers/comment.controller.ts
 import { Request, Response } from 'express';
-import {
-  insertarComentario,
-  obtenerComentariosPorForo,
-  obtenerTodosComentarios,
-  obtenerComentarioPorId,
-  actualizarComentarioPorId,
-  eliminarComentarioPorId,
-} from '../models/comment.model';
-import { medalModel } from '../models/medal.model';
-import { obtenerForoConComentariosDB } from '../models/foro.model';
+import { commentService } from '../services/comment.service';
 
 export const crearComentario = async (req: Request, res: Response) => {
   try {
-    const foro_id = parseInt(String(req.params.id)); // Foro ID desde la URL
+    const foro_id = parseInt(String(req.params.id), 10);
     const { usuario_id, contenido } = req.body;
 
-    const nuevoComentario = await insertarComentario(foro_id, usuario_id, contenido);
-
-    // Asignar medallas si aplica
-    await medalModel.verificarYAsignarMedallas(usuario_id);
-
-    // Obtener el comentario completo desde la DB
-    const foroConComentarios = await obtenerForoConComentariosDB(foro_id);
-    const comentarioCompleto = foroConComentarios?.comentarios.find(
-      (c) => c.comentario_id === nuevoComentario.comentario_id
-    );
+    const comentarioCompleto = await commentService.crearComentario(foro_id, usuario_id, contenido);
 
     res.status(201).json(comentarioCompleto);
   } catch (error) {
@@ -40,12 +22,8 @@ export const crearComentario = async (req: Request, res: Response) => {
 
 export const obtenerComentarios = async (req: Request, res: Response) => {
   try {
-    let comentarios;
-    if (req.params.foro_id) {
-      comentarios = await obtenerComentariosPorForo(parseInt(String(req.params.foro_id)));
-    } else {
-      comentarios = await obtenerTodosComentarios();
-    }
+    const foroId = req.params.foro_id ? parseInt(String(req.params.foro_id), 10) : undefined;
+    const comentarios = await commentService.obtenerComentarios(foroId);
     res.json(comentarios);
   } catch (error) {
     console.error('❌ Error al obtener comentarios:', error);
@@ -55,7 +33,8 @@ export const obtenerComentarios = async (req: Request, res: Response) => {
 
 export const obtenerComentario = async (req: Request, res: Response) => {
   try {
-    const comentario = await obtenerComentarioPorId(parseInt(String(req.params.id)));
+    const id = parseInt(String(req.params.id), 10);
+    const comentario = await commentService.obtenerComentarioPorId(id);
     if (!comentario) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
     res.json(comentario);
   } catch (error) {
@@ -66,7 +45,8 @@ export const obtenerComentario = async (req: Request, res: Response) => {
 
 export const actualizarComentario = async (req: Request, res: Response) => {
   try {
-    const comentarioActualizado = await actualizarComentarioPorId(parseInt(String(req.params.id)), req.body.contenido);
+    const id = parseInt(String(req.params.id), 10);
+    const comentarioActualizado = await commentService.actualizarComentario(id, req.body.contenido);
     if (!comentarioActualizado) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
     res.json({ mensaje: 'Comentario actualizado correctamente' });
   } catch (error) {
@@ -77,7 +57,8 @@ export const actualizarComentario = async (req: Request, res: Response) => {
 
 export const eliminarComentario = async (req: Request, res: Response) => {
   try {
-    const comentarioEliminado = await eliminarComentarioPorId(parseInt(String(req.params.id)));
+    const id = parseInt(String(req.params.id), 10);
+    const comentarioEliminado = await commentService.eliminarComentario(id);
     if (!comentarioEliminado) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
     res.json({ mensaje: 'Comentario eliminado correctamente' });
   } catch (error) {
