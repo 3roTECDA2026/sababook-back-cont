@@ -1,6 +1,7 @@
 // src/controllers/trivia.controller.ts
 import { Request, Response } from 'express';
-import { triviaModel, CreateTriviaData } from '../models/trivia.model';
+import { triviaModel, CreateTriviaData, PlayAnswerEntry } from '../models/trivia.model';
+import { AuthRequest } from '../middleware/auth.middleware';
 
 class TriviaController {
   async getByBook(req: Request, res: Response) {
@@ -159,6 +160,124 @@ class TriviaController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error getting evaluation by ID:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getTriviaForPlay(req: Request, res: Response) {
+    try {
+      const bookId = parseInt(String(req.params.bookId), 10);
+      if (isNaN(bookId)) {
+        return res.status(400).json({ error: 'Invalid book ID' });
+      }
+
+      const questions = await triviaModel.getTriviaForPlay(bookId);
+      return res.status(200).json(questions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error getting trivia for play:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getEvaluationForPlay(req: Request, res: Response) {
+    try {
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: 'Invalid evaluation ID' });
+      }
+
+      const questions = await triviaModel.getEvaluationForPlay(evaluationId);
+      return res.status(200).json(questions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error getting evaluation for play:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async checkAnswers(req: AuthRequest, res: Response) {
+    try {
+      const { answers, evaluationId } = req.body;
+      if (!answers || !Array.isArray(answers) || answers.length === 0) {
+        return res.status(400).json({ error: 'answers array is required' });
+      }
+
+      const result = await triviaModel.checkAnswers(answers as PlayAnswerEntry[]);
+
+      const evaluationNumber = evaluationId ? parseInt(String(evaluationId), 10) : null;
+
+      if (evaluationNumber && req.userId) {
+        const existing = await triviaModel.getAttempt(evaluationNumber, req.userId);
+        if (existing) {
+          return res.status(409).json({
+            error: 'Esta evaluación ya fue respondida por este alumno.',
+            attempt: existing,
+          });
+        }
+        const questions = await triviaModel.getEvaluationForPlay(evaluationNumber);
+        await triviaModel.saveAttempt({
+          evaluationId: evaluationNumber,
+          userId: req.userId,
+          questions,
+          answers: answers as PlayAnswerEntry[],
+          result,
+        });
+      }
+
+      return res.status(200).json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('already been answered')) {
+        return res.status(409).json({ error: 'Esta evaluación ya fue respondida por este alumno.' });
+      }
+      console.error('Error checking trivia answers:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getAttemptStatus(req: AuthRequest, res: Response) {
+    try {
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: 'Invalid evaluation ID' });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const attempt = await triviaModel.getAttempt(evaluationId, req.userId);
+      return res.status(200).json({
+        answered: !!attempt,
+        attempt: attempt
+          ? {
+              attemptId: attempt.attemptId,
+              correctCount: attempt.correctCount,
+              total: attempt.total,
+              percentage: attempt.percentage,
+              submittedAt: attempt.submittedAt,
+            }
+          : null,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error getting attempted status:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getAttemptsByEvaluation(req: Request, res: Response) {
+    try {
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: 'Invalid evaluation ID' });
+      }
+
+      const attempts = await triviaModel.getAttemptsByEvaluation(evaluationId);
+      return res.status(200).json(attempts);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error getting attempts by evaluation:', message);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
