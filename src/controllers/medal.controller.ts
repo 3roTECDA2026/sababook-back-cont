@@ -18,3 +18,19 @@ export const obtenerMedallasUsuario = async (req: Request, res: Response) => {
     res.status(500).json({ mensaje: 'Error al obtener las medallas', detalle: message });
   }
 };
+
+// Controlador para obtener el catálogo completo de insignias (obtenidas + disponibles)
+export const obtenerCatalogoInsignias = async (req: Request, res: Response) => {
+  try {
+    const usuario_id = parseInt(String(req.params.usuario_id));
+    if (isNaN(usuario_id)) {
+      return res.status(400).json({ mensaje: 'ID de usuario inválido' });
+    }
+    const catalogo = await medalModel.obtenerCatalogoConEstado(usuario_id);
+    res.json(catalogo);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Error al obtener el catálogo de insignias:', error);
+    res.status(500).json({ mensaje: 'Error al obtener el catálogo de insignias', detalle: message });
+  }
+};
