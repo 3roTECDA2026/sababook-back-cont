@@ -87,6 +87,8 @@ model libro {
   nivel_educativo       String?             @db.VarChar(50)
   calificacion_promedio Float?
   activo                Boolean             @default(true)
+  pagina_actual         Int?                @default(0)
+  paginas_totales       Int?                @default(100)
   
   // Relaciones
   favorito              favorito[]
