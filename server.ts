@@ -14,6 +14,7 @@ import bookRoutes from './src/routes/book.routes.js';
 import opinionRoutes from './src/routes/opinion.routes.js';
 import favoriteRoutes from './src/routes/favorite.routes.js';
 import medalRoutes from './src/routes/medal.routes.js';
+import triviaRoutes from './src/routes/trivia.routes.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -47,6 +48,7 @@ app.use('/api/v1/libros', bookRoutes);
 app.use('/api/v1/opinion', opinionRoutes);
 app.use('/api/v1/favorites', favoriteRoutes);
 app.use('/api/v1/medal', medalRoutes);
+app.use('/api/v1/trivia', triviaRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.status(200).send('Hello World!\n');
