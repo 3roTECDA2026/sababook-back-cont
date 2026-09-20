@@ -1,6 +1,6 @@
 // src/controllers/listaLectura.controller.ts
 import { Request, Response } from 'express';
-import { listaLecturaModel } from '../models/listaLectura.model';
+import { readingListService } from '../services/readingList.service';
 
 class ListaLecturaController {
   async crear(req: Request, res: Response) {
@@ -11,7 +11,12 @@ class ListaLecturaController {
         return res.status(400).json({ error: 'Faltan campos obligatorios.' });
       }
 
-      const nuevaLista = await listaLecturaModel.crearListaLectura(lista_id, docente_id, descripcion, nivel);
+      const nuevaLista = await readingListService.crearListaLectura(
+        lista_id,
+        docente_id,
+        descripcion,
+        nivel
+      );
 
       res.status(201).json(nuevaLista);
     } catch (error) {
@@ -23,7 +28,7 @@ class ListaLecturaController {
 
   async obtenerTodas(req: Request, res: Response) {
     try {
-      const listas = await listaLecturaModel.obtenerTodas();
+      const listas = await readingListService.obtenerTodas();
       res.status(200).json(listas);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -34,13 +39,13 @@ class ListaLecturaController {
 
   async obtenerPorDocente(req: Request, res: Response) {
     try {
-      const docente_id = parseInt(String(req.params.docente_id));
+      const docente_id = parseInt(String(req.params.docente_id), 10);
 
       if (!req.params.docente_id || isNaN(docente_id)) {
         return res.status(400).json({ error: 'ID de docente es requerido.' });
       }
 
-      const listas = await listaLecturaModel.obtenerPorDocente(docente_id);
+      const listas = await readingListService.obtenerPorDocente(docente_id);
       res.status(200).json(listas);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -51,15 +56,20 @@ class ListaLecturaController {
 
   async actualizar(req: Request, res: Response) {
     try {
-      const lista_id = parseInt(String(req.params.lista_id));
-      const docente_id = parseInt(String(req.params.docente_id));
+      const lista_id = parseInt(String(req.params.lista_id), 10);
+      const docente_id = parseInt(String(req.params.docente_id), 10);
       const { descripcion, nivel } = req.body;
 
       if (!descripcion && !nivel) {
         return res.status(400).json({ error: 'No se proporcionaron datos para actualizar.' });
       }
 
-      const actualizada = await listaLecturaModel.actualizarListaLectura(lista_id, docente_id, descripcion, nivel);
+      const actualizada = await readingListService.actualizarListaLectura(
+        lista_id,
+        docente_id,
+        descripcion,
+        nivel
+      );
 
       res.status(200).json(actualizada);
     } catch (error) {
@@ -76,10 +86,10 @@ class ListaLecturaController {
 
   async eliminar(req: Request, res: Response) {
     try {
-      const lista_id = parseInt(String(req.params.lista_id));
-      const docente_id = parseInt(String(req.params.docente_id));
+      const lista_id = parseInt(String(req.params.lista_id), 10);
+      const docente_id = parseInt(String(req.params.docente_id), 10);
 
-      await listaLecturaModel.eliminarListaLectura(lista_id, docente_id);
+      await readingListService.eliminarListaLectura(lista_id, docente_id);
 
       res.status(204).send(); // Sin contenido
     } catch (error) {

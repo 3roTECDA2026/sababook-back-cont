@@ -7,8 +7,8 @@ import {
   actualizarForo,
   eliminarForo,
   obtenerForoConComentarios,
-} from '../controllers/foro.controller';
-import { crearComentario } from '../controllers/comentario.controller';
+} from '../controllers/forum.controller';
+import { crearComentario } from '../controllers/comment.controller';
 
 const router = Router();
 
