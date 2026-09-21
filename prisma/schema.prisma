@@ -17,21 +17,19 @@ model usuario {
   usuario_id           Int                    @id @default(autoincrement())
   nombre               String                 @db.VarChar(100)
   email                String                 @unique @db.VarChar(255)
-  contrasena           String                 @db.Text
+  contrasena           String
   rol_id               Int?
   fecha_registro       DateTime               @default(now()) @db.Timestamptz(6)
   perfil_completo      Boolean                @default(false)
-  avatar_url           String?                @db.Text
+  avatar_url           String?
   nivel_educativo      String?                @db.VarChar(50)
-  
-  // Relaciones
-  rol                  rol?                   @relation(fields: [rol_id], references: [rol_id], onDelete: NoAction, onUpdate: NoAction)
   comentario_foro      comentario_foro[]
   exportacion          exportacion[]
   favorito             favorito[]
   foro                 foro[]
   lista_lectura        lista_lectura[]
   opinion              opinion[]
+  rol                  rol?                   @relation(fields: [rol_id], references: [rol_id], onDelete: NoAction, onUpdate: NoAction)
   usuario_club_lectura usuario_club_lectura[]
   usuario_medalla      usuario_medalla[]
 
@@ -43,15 +41,13 @@ model libro {
   titulo                String              @db.VarChar(255)
   autor                 String              @db.VarChar(255)
   genero                String?             @db.VarChar(100)
-  descripcion           String?             @db.Text
-  portada_url           String?             @db.Text
+  descripcion           String?
+  portada_url           String?
   nivel_educativo       String?             @db.VarChar(50)
   calificacion_promedio Float?
   activo                Boolean             @default(true)
   pagina_actual         Int?                @default(0)
   paginas_totales       Int?                @default(100)
-  
-  // Relaciones
   favorito              favorito[]
   lista_libro           lista_libro[]
   opinion               opinion[]
@@ -61,7 +57,7 @@ model libro {
 model lista {
   lista_id       Int             @id @default(autoincrement())
   nombre         String          @db.VarChar(255)
-  descripcion    String?         @db.Text
+  descripcion    String?
   tipo           String?         @db.VarChar(50)
   fecha_creacion DateTime        @default(now()) @db.Timestamptz(6)
   lista_lectura  lista_lectura[]
@@ -71,7 +67,7 @@ model lista {
 model lista_lectura {
   lista_id       Int
   docente_id     Int
-  descripcion    String?   @db.Text
+  descripcion    String?
   nivel          String?   @db.VarChar(50)
   fecha_creacion DateTime? @default(now()) @db.Timestamptz(6)
   usuario        usuario   @relation(fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
@@ -93,8 +89,8 @@ model recurso_educativo {
   recurso_id  Int     @id @default(autoincrement())
   libro_id    Int
   tipo        String  @db.VarChar(50)
-  url         String  @db.Text
-  descripcion String? @db.Text
+  url         String
+  descripcion String?
   libro       libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([libro_id])
@@ -105,7 +101,7 @@ model opinion {
   usuario_id   Int
   libro_id     Int
   calificacion Int?      @db.SmallInt
-  comentario   String?   @db.Text
+  comentario   String?
   fecha        DateTime? @default(now()) @db.Timestamptz(6)
   libro        libro     @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
   usuario      usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
@@ -117,9 +113,10 @@ model opinion {
 model foro {
   foro_id         Int               @id @default(autoincrement())
   titulo          String            @db.VarChar(255)
-  descripcion     String?           @db.Text
+  descripcion     String?
   creador_id      Int?
   fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
+  es_apl          Boolean           @default(false)
   comentario_foro comentario_foro[]
   usuario         usuario?          @relation(fields: [creador_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
 }
@@ -128,7 +125,7 @@ model comentario_foro {
   comentario_id Int       @id @default(autoincrement())
   foro_id       Int
   usuario_id    Int
-  contenido     String    @db.Text
+  contenido     String
   fecha         DateTime? @default(now()) @db.Timestamptz(6)
   foro          foro      @relation(fields: [foro_id], references: [foro_id], onDelete: Cascade, onUpdate: NoAction)
   usuario       usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
@@ -140,7 +137,7 @@ model comentario_foro {
 model club_lectura {
   club_id              Int                    @id @default(autoincrement())
   nombre               String                 @db.VarChar(255)
-  descripcion          String?                @db.Text
+  descripcion          String?
   fecha_inicio         DateTime?              @db.Date
   fecha_fin            DateTime?              @db.Date
   orador               String?                @db.VarChar(255)
@@ -161,7 +158,7 @@ model usuario_club_lectura {
 model medalla {
   medalla_id      Int               @id @default(autoincrement())
   nombre          String            @unique @db.VarChar(100)
-  descripcion     String?           @db.Text
+  descripcion     String?
   tipo_accion     String?           @db.VarChar(50)
   fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
   usuario_medalla usuario_medalla[]
