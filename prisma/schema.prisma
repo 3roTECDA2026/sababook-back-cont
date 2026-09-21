@@ -48,6 +48,8 @@ model libro {
   activo                Boolean             @default(true)
   pagina_actual         Int?                @default(0)
   paginas_totales       Int?                @default(100)
+
+  //Relaciones
   favorito              favorito[]
   lista_libro           lista_libro[]
   opinion               opinion[]
