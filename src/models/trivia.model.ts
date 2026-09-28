@@ -4,10 +4,10 @@ import { prisma } from '../db/connect/db';
 export type TriviaModo = 'trivia' | 'evaluacion';
 export type TriviaFormato = 'multiple' | 'truefalse' | 'conexion' | 'completar';
 
-export interface TriviaPar {
+export type TriviaPar = {
   left: string;
   right: string;
-}
+};
 
 export interface TriviaQuestion {
   id: number;
@@ -45,7 +45,7 @@ export interface Evaluacion {
   questionCount: number;
 }
 
-export interface PlayQuestion {
+export type PlayQuestion = {
   id: number;
   mode: TriviaModo;
   format: TriviaFormato;
@@ -56,30 +56,30 @@ export interface PlayQuestion {
   lefts?: string[];
   rights?: string[];
   wordBank?: string[];
-}
+};
 
 export type PlayAnswer =
   | { optionIndex: number }
   | { pairs: { left: string; right: string }[] }
   | { texts: string[] };
 
-export interface PlayAnswerEntry {
+export type PlayAnswerEntry = {
   questionId: number;
   answer: PlayAnswer;
-}
+};
 
-export interface PlayCheckResult {
+export type PlayCheckResult = {
   questionId: number;
   correct: boolean;
   solution: PlayAnswer | null;
-}
+};
 
-export interface PlayCheckResponse {
+export type PlayCheckResponse = {
   total: number;
   correctCount: number;
   percentage: number;
   results: PlayCheckResult[];
-}
+};
 
 export interface TriviaAttempt {
   attemptId: number;
