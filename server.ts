@@ -15,6 +15,7 @@ import readingListRoutes from './src/routes/readingList.routes';
 import reviewRoutes from './src/routes/review.routes';
 import userRoutes from './src/routes/user.routes';
 import radioRoutes from './src/routes/radio.routes';
+import triviaRoutes from './src/routes/trivia.routes';
 
 import { testConnection } from './src/db/connect/db';
 
@@ -52,6 +53,7 @@ app.use('/api/v1/reading-lists', readingListRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/radio', radioRoutes);
+app.use('/api/v1/trivia', triviaRoutes);
 
 // -------------------------------------------------------------
 // ALIAS DE COMPATIBILIDAD CON EL FRONTEND LEGACY

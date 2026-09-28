@@ -17,40 +17,77 @@ Este repositorio contiene el servicio de **API RESTful** para la Biblioteca E. C
 | Componente | Tecnología | Propósito |
 | :--- | :--- | :--- |
 | **Framework** | **Express.js** (Node.js) | Creación rápida de la API REST. |
-| **Base de Datos**| **Supabase (PostgreSQL)** | Persistencia de datos, alta confiabilidad (RNF7). |
+| **Base de Datos**| **PostgreSQL** | Persistencia de datos, alta confiabilidad (RNF7). |
+| **ORM** | **Prisma** | Modelado del esquema y versionado con Prisma Migrate. |
 | **Seguridad** | **JWT** | Mecanismo para la autenticación y control de sesión. |
 
 ##  Instalación y Ejecución Local
 
 ### 1. Prerrequisitos
 * [Node.js](https://nodejs.org/)
-* Una cuenta y proyecto activo en [Supabase](https://supabase.com/).
+* Una instancia de PostgreSQL 14 o superior accessible (local o remota).
 
 ### 2. Clonar el repositorio
 ```bash
-git clone [https://github.com/TurcoDev/sababook-back.git]
-cd sababook-back
+git clone https://github.com/3roTECDA2026/sababook-back-cont.git
+cd sababook-back-cont
+```
+
 ### 3. Instalar Dependencias
 
+```bash
 npm install
+```
+
 ### 4. Configurar Variables de Entorno
 Crea un archivo .env en la raíz con la siguiente información:
-Fragmento de código
+
+```bash
 # Configuración de la API
 PORT=3000
 JWT_SECRET="una_clave_secreta_fuerte_aqui"
 
-# Conexión a Supabase/PostgreSQL
-SUPABASE_URL="https://supabase.com/docs/reference/cli/introduction"
-SUPABASE_KEY="[Clave de servicio (service_role) de Supabase]"
+# Conexión a PostgreSQL (usada por Prisma)
+DATABASE_URL="postgresql://usuario:password@localhost:5432/sababook"
+```
 
-# Opcional: Clave inicial para crear el primer usuario Admin
-ADMIN_INITIAL_KEY="ADMIN1234"
+### 5. Aplicar las migraciones de la base de datos
 
-### 5. Iniciar el Servidor
+El esquema de Prisma (`prisma/schema.prisma`) se versiona con **Prisma Migrate**. Las
+migraciones viven en `prisma/migrations/`, por lo que el esquema queda auditado en el
+repositorio y cualquier equipo puede replicar la base desde cero.
 
+```bash
+# Instala dependencias (postinstall ya corre prisma generate)
+npm install
 
+# Crea/aplica las migraciones en desarrollo y genera el cliente
+npm run prisma:migrate
+
+# Aplica las migraciones ya existentes sin prompts (CI / producción)
+npm run prisma:migrate:deploy
+
+# Verifica el estado de la base frente a las migraciones
+npm run prisma:migrate:status
+
+# Explorador visual de datos
+npm run prisma:studio
+```
+
+> **Importante:** ya no se debe usar `prisma db push` para reflejar cambios en el
+> repositorio, porque no genera archivos de migración. El flujo correcto es
+> `npm run prisma:migrate` (que crea la carpeta en `prisma/migrations/` y hay que
+> commitearla).
+
+La base ya incluye una migración inicial (`0_init`) con el esquema previo. Las
+migraciones nuevas son incrementales y solo agregan sus propias tablas: este
+módulo de trivia entra con `20260928000000_add_trivia`.
+
+### 6. Iniciar el Servidor
+
+```bash
 npm run dev
+```
 
 El servidor estará disponible en http://localhost:3000.
 
