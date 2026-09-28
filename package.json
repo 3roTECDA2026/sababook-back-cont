@@ -8,7 +8,12 @@
     "build": "tsup server.ts --format esm --clean",
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:status": "prisma migrate status",
+    "prisma:studio": "prisma studio"
   },
   "keywords": [],
   "author": "",
