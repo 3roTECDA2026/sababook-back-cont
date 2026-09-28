@@ -74,10 +74,14 @@ npm run prisma:migrate:status
 npm run prisma:studio
 ```
 
-> **Importante:** ya no se debe usar `prisma db push` para reflecting cambios en el
+> **Importante:** ya no se debe usar `prisma db push` para reflejar cambios en el
 > repositorio, porque no genera archivos de migración. El flujo correcto es
 > `npm run prisma:migrate` (que crea la carpeta en `prisma/migrations/` y hay que
 > commitearla).
+
+La base ya incluye una migración inicial (`0_init`) con el esquema previo. Las
+migraciones nuevas son incrementales y solo agregan sus propias tablas: este
+módulo de trivia entra con `20260928000000_add_trivia`.
 
 ### 6. Iniciar el Servidor
 

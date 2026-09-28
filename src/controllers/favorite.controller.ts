@@ -1,13 +1,13 @@
 // src/controllers/favorite.controller.ts
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { favoriteModel } from '../models/favorite.model';
+import { favoriteService } from '../services/favorite.service';
 
 class FavoriteController {
-  //  GET: Obtener todos los favoritos (opcional, para testing o admin)
+  // GET: Obtener todos los favoritos (opcional, para testing o admin)
   async getAll(req: AuthRequest, res: Response) {
     try {
-      const favorites = await favoriteModel.getAllFavorites();
+      const favorites = await favoriteService.getAllFavorites();
       res.status(200).json(favorites);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -16,7 +16,7 @@ class FavoriteController {
     }
   }
 
-  //  POST: Crear un nuevo favorito
+  // POST: Crear un nuevo favorito
   async create(req: AuthRequest, res: Response) {
     try {
       const usuario_id = req.userId; // viene del token (middleware verifyToken)
@@ -26,7 +26,7 @@ class FavoriteController {
         return res.status(400).json({ error: 'Missing required fields: usuario_id or libro_id' });
       }
 
-      const newFavorite = await favoriteModel.createFavorite({ usuario_id, libro_id });
+      const newFavorite = await favoriteService.createFavorite({ usuario_id, libro_id });
       res.status(201).json({
         message: 'Favorite created successfully',
         favorite: newFavorite,
@@ -52,7 +52,7 @@ class FavoriteController {
         return res.status(400).json({ error: 'User ID missing in token' });
       }
 
-      const favorites = await favoriteModel.getFavoritesByUser(usuario_id);
+      const favorites = await favoriteService.getFavoritesByUser(usuario_id);
       res.status(200).json(favorites);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -65,13 +65,13 @@ class FavoriteController {
   async delete(req: AuthRequest, res: Response) {
     try {
       const usuario_id = req.userId; // viene del token (middleware verifyToken)
-      const libro_id = parseInt(String(req.body.libro_id));
+      const libro_id = parseInt(String(req.body.libro_id), 10);
 
       if (!usuario_id || isNaN(libro_id)) {
         return res.status(400).json({ error: 'Invalid or missing IDs' });
       }
 
-      const result = await favoriteModel.deleteFavorite(usuario_id, libro_id);
+      const result = await favoriteService.deleteFavorite(usuario_id, libro_id);
 
       if (!result) {
         return res.status(404).json({ error: 'Favorite not found' });
