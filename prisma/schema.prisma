@@ -209,6 +209,9 @@ model incidencia_moderacion {
   contenido_bloqueado String    @db.Text
   motivo              String    @db.Text
   categoria           String?   @db.VarChar(100)
+  estado              String    @default("pendiente") @db.VarChar(20)
+  revisado_por        Int?
+  fecha_revision      DateTime? @db.Timestamptz(6)
   fecha               DateTime  @default(now()) @db.Timestamptz(6)
   usuario             usuario?  @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
 
