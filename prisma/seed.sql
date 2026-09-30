@@ -7,7 +7,8 @@ TRUNCATE TABLE
   asistencia_cafe, voto_cafe, comentario_foro, foro, cafe_literario,
   usuario_medalla, medalla, usuario_club_lectura, club_lectura,
   favorito, lista_libro, lista_lectura, lista, recurso_educativo,
-  opinion, exportacion, libro, usuario, rol
+  opinion, exportacion, libro, usuario, rol,
+  actividad_feed, meta_lectura, radio_episodio
 RESTART IDENTITY CASCADE;
 
 -- Tabla: rol
@@ -91,11 +92,17 @@ INSERT INTO voto_cafe (voto_id, cafe_id, usuario_id, voto, fecha_voto) VALUES
   (3, 3, 1, true,  '2026-08-27T22:20:19.605Z'),
   (4, 3, 3, true,  '2026-08-27T22:20:19.605Z');
 
+-- Tabla: radio_episodio
+INSERT INTO radio_episodio (episodio_id, titulo, descripcion, audio_url, programa, fecha_emision) VALUES
+  (1, 'Radio Sábato ep. 12 — La lectura en voz alta', 'Conversación con estudiantes sobre la importancia de leer en público.', 'https://ejemplo.com/audio/radio-sabato/ep12.mp3', 'Radio Sábato', '2026-09-02T15:00:00.000Z'),
+  (2, 'Radio Sábato ep. 13 — Conversación con Ana García', 'La docente comenta qué se está leyendo este cuatrimestre.', 'https://ejemplo.com/audio/radio-sabato/ep13.mp3', 'Radio Sábato', '2026-09-09T15:00:00.000Z');
+
 -- Tabla: foro
-INSERT INTO foro (foro_id, titulo, descripcion, creador_id, cafe_id, fecha_creacion) VALUES
-  (1, 'Debate sobre "1984"',           'Análisis en profundidad de los temas de la novela de Orwell.',       1, NULL, '2026-08-27T22:20:19.605Z'),
-  (2, 'Recomendaciones de fantasía',   'Comparte tus libros de fantasía favoritos.',                        2, NULL, '2026-08-27T22:20:19.605Z'),
-  (3, 'Conversación previa al café',   'Hilo del encuentro sobre Fahrenheit 451.',                         1, 1,    '2026-08-27T22:20:19.605Z');
+INSERT INTO foro (foro_id, titulo, descripcion, creador_id, cafe_id, episodio_id, es_apl, fecha_creacion) VALUES
+  (1, 'Debate sobre "1984"',           'Análisis en profundidad de los temas de la novela de Orwell.',       1, NULL, NULL,   false, '2026-08-27T22:20:19.605Z'),
+  (2, 'Recomendaciones de fantasía',   'Comparte tus libros de fantasía favoritos.',                        2, NULL, NULL,   false, '2026-08-27T22:20:19.605Z'),
+  (3, 'Conversación previa al café',   'Hilo del encuentro sobre Fahrenheit 451.',                         1, 1,    NULL,   false, '2026-08-27T22:20:19.605Z'),
+  (4, 'Debate en el aula: Fahrenheit 451', 'Foro de apoyo para el eje de la unidad de lectura.',                 5, NULL, 1,      true,  '2026-08-27T22:20:19.605Z');
 
 -- Tabla: comentario_foro
 INSERT INTO comentario_foro (comentario_id, foro_id, usuario_id, contenido, fecha) VALUES
@@ -134,3 +141,40 @@ INSERT INTO exportacion (exportacion_id, fecha_exportacion, usuario_admin_id, ca
   (1, '2026-08-27T22:20:19.605Z', 3, 150, 'CSV',  'completado'),
   (2, '2026-08-27T22:20:19.605Z', 3, 220, 'XML',  'completado'),
   (3, '2026-08-27T22:20:19.605Z', 5, 0,   'JSON', 'error');
+
+-- Tabla: meta_lectura
+INSERT INTO meta_lectura (meta_id, usuario_id, periodo_nombre, cantidad_libros, fecha_inicio, fecha_fin, fecha_creacion) VALUES
+  (1, 2, '1º Cuatrimestre 2026', 4, '2026-08-01', '2026-11-30', '2026-08-27T22:20:19.605Z'),
+  (2, 2, 'Meta Anual 2026',       12, '2026-01-01', '2026-12-31', '2026-08-27T22:20:19.605Z'),
+  (3, 4, '1º Cuatrimestre 2026', 3, '2026-08-01', '2026-11-30', '2026-08-27T22:20:19.605Z');
+
+-- Tabla: actividad_feed
+INSERT INTO actividad_feed (actividad_id, usuario_id, tipo, titulo, descripcion, entidad_id, fecha) VALUES
+  (1, 1, 'NUEVO_LIBRO',    'Nuevo libro en el catálogo',                  'Se agregó "Fahrenheit 451" de Ray Bradbury.',            5, '2026-08-27T22:20:19.605Z'),
+  (2, 1, 'RADIO_EPISODIO', 'Nuevo episodio de Radio Sábato',              'Radio Sábato ep. 12 — La lectura en voz alta.',          1, '2026-08-27T22:20:19.605Z'),
+  (3, 5, 'FORO_APL',       'Nuevo foro de actividad',                    'Debate en el aula: Fahrenheit 451',                      4, '2026-08-27T22:20:19.605Z'),
+  (4, 2, 'NUEVA_OPINION',  'Nueva opinión sobre un libro',                'Juan Pérez opina sobre "1984".',                          3, '2026-08-27T22:20:19.605Z'),
+  (5, 3, 'AVISO',          'Cierre de inscripciones',                      'Este fin de semana no hay actividades en la biblioteca.',  NULL, '2026-08-27T22:20:19.605Z');
+
+-- -------------------------------------------------------------
+-- El seed inserta los IDs a mano, así que las secuencias quedan
+-- atrás y el próximo INSERT automático choca con un duplicado.
+-- Las dejamos arriba del último ID usado en cada tabla.
+-- -------------------------------------------------------------
+DO $$
+DECLARE
+  col RECORD;
+BEGIN
+  FOR col IN
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND column_default LIKE 'nextval%'
+      AND table_name <> '_prisma_migrations'
+  LOOP
+    EXECUTE format(
+      'SELECT setval(pg_get_serial_sequence(%L, %L), GREATEST(COALESCE((SELECT MAX(%I) FROM %I), 1), 1))',
+      col.table_name, col.column_name, col.column_name, col.table_name
+    );
+  END LOOP;
+END $$;
