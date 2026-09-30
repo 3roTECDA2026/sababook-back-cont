@@ -26,6 +26,9 @@ yarn-error.log*
 .agents/
 .claude/
 
+# Instrucciones locales de agentes (no subir)
+AGENTS.md
+
 # Locks de herramientas locales
 skills-lock.json
 
