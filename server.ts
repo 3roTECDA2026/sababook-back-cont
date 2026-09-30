@@ -12,13 +12,13 @@ import feedRoutes from './src/routes/feed.routes'; // <-- AGREGADO
 import forumRoutes from './src/routes/forum.routes';
 import listRoutes from './src/routes/list.routes';
 import medalRoutes from './src/routes/medal.routes';
+import metaLecturaRoutes from './src/routes/metaLectura.routes';
 import readingListRoutes from './src/routes/readingList.routes';
 import reviewRoutes from './src/routes/review.routes';
 import userRoutes from './src/routes/user.routes';
 import radioRoutes from './src/routes/radio.routes';
 
 import { testConnection } from './src/db/connect/db';
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -45,10 +45,12 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/books', bookRoutes);
 app.use('/api/v1/comments', commentRoutes);
 app.use('/api/v1/favorites', favoriteRoutes);
+app.use('/api/v1/medal', medalRoutes);
+app.use('/api/v1/metas-lectura', metaLecturaRoutes);
 app.use('/api/v1/feed', feedRoutes); // <-- AGREGADO
 app.use('/api/v1/forums', forumRoutes);
 app.use('/api/v1/lists', listRoutes);
-app.use('/api/v1/medals', medalRoutes);
+// app.use('/api/v1/medals', medalRoutes);
 app.use('/api/v1/reading-lists', readingListRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/users', userRoutes);
