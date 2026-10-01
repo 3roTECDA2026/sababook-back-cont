@@ -1,32 +1,35 @@
-# 🛡️ Guía de Seguridad y Diagnóstico Backend (sababook-back-cont)
+# 🛡️ Guía de Aprendizaje: Arquitectura e Implementación de Seguridad Backend
 
-Este documento describe el análisis de seguridad realizado sobre el repositorio backend de **Sababook** (`sababook-back-cont`), detallando su arquitectura de autenticación con **JWT**, el control de acceso por **roles** y la política de mantenimiento de dependencias.
-
----
-
-## 1. 📌 Postura de Seguridad y Diagnóstico de Arquitectura
-
-A diferencia de otros prototipos, **`sababook-back-cont`** cuenta con un esquema funcional de autenticación mediante tokens JWT y control de acceso basado en roles (RBAC).
-
-*   **Estado de Autenticación:** 
-    *   La emisión de tokens se realiza en el endpoint `POST /api/v1/auth/login` ([src/controllers/auth.controller.ts](file:///home/jmro/Documents/Institute_Projects_2026/repos/sababook-back-cont/src/controllers/auth.controller.ts#L8-L40)). 
-    *   Los tokens expirados o firmados con una clave distinta son rechazados en el middleware `verifyToken` ([src/middleware/auth.middleware.ts](file:///home/jmro/Documents/Institute_Projects_2026/repos/sababook-back-cont/src/middleware/auth.middleware.ts#L18-L36)).
-*   **Control de Acceso por Roles (RBAC):**
-    *   Implementado mediante el middleware `requireRole(roleId)` ([src/middleware/auth.middleware.ts](file:///home/jmro/Documents/Institute_Projects_2026/repos/sababook-back-cont/src/middleware/auth.middleware.ts#L43-L50)).
-    *   Se utiliza para proteger rutas administrativas y de configuración sensible (como el guardado de la API Key de moderación Gemini en `/api/v1/moderacion/config`).
-*   **Hash de Contraseñas:** Las credenciales se almacenan cifradas con `bcrypt` (10 salt rounds).
+Bienvenido a la guía de seguridad de **`sababook-back-cont`**. El objetivo de este documento es explicar de forma clara los conceptos fundamentales de seguridad aplicados en este servidor.
 
 ---
 
-## 2. 🔑 Implementación de JWT (JSON Web Token)
+## 📚 1. ¿Por qué usamos JWT y no Sesiones en Servidor?
 
-### ¿Por qué JWT y no sesiones tradicionales (Cookies)?
-1. **Stateless (Sin estado en servidor):** El token incluye la identidad del usuario (`usuario_id`, `rol_id`) en su payload firmado, evitando consultas a la base de datos para verificar la sesión en cada request.
-2. **Compatibilidad con Frontend Desacoplado:** Permite al cliente React (Vite) enviar el token en el header HTTP estándar `Authorization: Bearer <token>` sin depender de cookies de terceros o restricciones de dominio cross-origin (CORS).
+Cuando un usuario inicia sesión en una aplicación web, el servidor necesita recordar quién es en las siguientes peticiones. Existen dos enfoques principales:
 
-### Flujo de Verificación
+### A. Sesiones Tradicionales (Stateful / Cookies)
+- **Cómo funciona:** El servidor genera un ID de sesión ramdom y lo guarda en su memoria o en una base de datos. Al navegador le envía una Cookie con ese ID.
+- **Limitación:** Si escalás el servidor a 3 instancias distintas, necesitás sincronizar esa memoria entre los 3 servidores (usando algo como Redis) o el usuario perderá la sesión si la siguiente petición cae en otro servidor.
+
+### B. Tokens Firmados JWT (Stateless / Bearer Token) — *Nuestro Enfoque*
+- **Cómo funciona:** El servidor valida el usuario y genera un string encriptado con una firma matemática (JWT) que contiene los datos del usuario (`usuario_id`, `rol_id`). Se lo envía al cliente y el cliente lo guarda.
+- **Ventaja:** En cada petición, el cliente envía el token en la cabecera `Authorization: Bearer <token>`. Cualquier servidor puede verificar la firma usando una clave secreta (`JWT_SECRET`) sin consultar la base de datos ni guardar estado.
+
+---
+
+## 🏛️ 2. Arquitectura de Control de Acceso (RBAC)
+
+Para evitar que cualquier usuario autenticado ejecute acciones administrativas, el servidor utiliza **Control de Acceso Basado en Roles (RBAC)** mediante dos middlewares en Express:
+
+```text
+[Cliente HTTP] ──(Request con Bearer Token)──> [verifyToken] ──> [requireRole(1)] ──> [Controlador Admin]
+```
+
+### 1️⃣ Verificación de Firma (`verifyToken`)
+Comprueba que el token sea auténtico, no haya expirado y extrae los datos del usuario:
 ```typescript
-// Extraído de src/middleware/auth.middleware.ts
+// src/middleware/auth.middleware.ts
 export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -45,19 +48,40 @@ export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction)
 };
 ```
 
+### 2️⃣ Autorización por Rol (`requireRole`)
+Verifica si el rol extraído en `verifyToken` coincide con el rol necesario para ejecutar la ruta:
+```typescript
+export const requireRole = (requiredRole: number) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (Number(req.userRole) !== requiredRole) {
+      return res.status(403).json({ error: 'Acceso denegado. Permisos insuficientes.' });
+    }
+    next();
+  };
+};
+```
+
 ---
 
-## 3. 🛡️ Implicaciones para el Desarrollo
+## 🛠️ 3. Aplicación Práctica en Endpoints
 
-*   **Variables de Entorno Mandatorias:** Se debe definir la variable `JWT_SECRET` en el archivo `.env`. Jamás usar el valor por defecto en entornos de producción.
-*   **Encadenamiento de Middlewares:** Todas las rutas protegidas deben invocar primero a `verifyToken` y, si requieren restricción de permisos, a `requireRole(ID)`:
-    ```typescript
-    router.post('/moderacion/config', verifyToken, requireRole(1), moderationController.saveConfig);
-    ```
+Para proteger un endpoint sensible (por ejemplo, guardar la API Key de Moderación Gemini), encadenamos ambos middlewares en la definición de la ruta:
+
+```typescript
+import { Router } from 'express';
+import { verifyToken, requireRole } from '@/middleware/auth.middleware';
+import moderationController from '@/controllers/moderation.controller';
+
+const router = Router();
+
+// Endpoint que requiere token válido Y rol de Administrador (ID 1)
+router.post('/moderacion/config', verifyToken, requireRole(1), moderationController.saveConfig);
+```
 
 ---
 
-## 4. 📦 Política de Mantenimiento de Dependencias
+## 🧠 4. Lecciones para Nuevos Desarrolladores
 
-*   **Auditoría periódica:** Ejecutar `npm audit` ante cualquier actualización de paquetes.
-*   **Instalación reproducible:** Utilizar `npm ci` en entornos de integración y despliegue para garantizar las versiones exactas registradas en `package-lock.json`.
+1. **Nunca guardar contraseñas en texto plano:** Siempre usar `bcrypt` con Salt.
+2. **El Payload del JWT NO es secreto:** Cualquiera puede decodificarlo en Base64. Nunca guardes tarjetas de crédito o contraseñas dentro del JWT; solo guarda identificadores (`usuario_id`, `rol_id`).
+3. **Firmas y `JWT_SECRET`:** La seguridad de todo el sistema depende de la clave `JWT_SECRET` almacenada en el `.env`. Si alguien la descubre, puede falsificar tokens de administrador.
