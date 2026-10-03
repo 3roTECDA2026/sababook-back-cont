@@ -6,12 +6,14 @@ import {
   obtenerEpisodioPorId,
   eliminarEpisodio,
   sincronizarProgramas,
+  obtenerProgramaActual,
 } from '../controllers/radio.controller';
 import { verifyToken, requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// Consulta pública de episodios
+// Consulta pública de programa actual y episodios
+router.get('/actual', obtenerProgramaActual);
 router.get('/', obtenerTodosEpisodios);
 
 // Sincronización accesible a cualquier usuario autenticado
