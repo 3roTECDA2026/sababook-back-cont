@@ -155,6 +155,7 @@ CREATE TABLE exportacion (
 CREATE TABLE favorito (
     usuario_id INTEGER NOT NULL,
     libro_id INTEGER NOT NULL,
+    estado_lectura VARCHAR(20) NOT NULL DEFAULT 'general',
 
     -- Define las claves foráneas (Foreign Keys)
     CONSTRAINT fk_usuario
