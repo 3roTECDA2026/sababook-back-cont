@@ -2,19 +2,22 @@ import 'dotenv/config'; // <-- Mantiene la carga del .env
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 
-// Como server.ts está en la raíz, volvemos a apuntar a ./src/...
-import foroRoutes from './src/routes/foro.routes.js';
-import comentarioRoutes from './src/routes/comentario.routes.js';
 import userRoutes from './src/routes/user.routes.js';
 import { testConnection } from './src/db/connect/db.js';
-import listaRoutes from './src/routes/lista.routes.js';
-import listaLecturaRoutes from './src/routes/listaLectura.routes.js';
 import authRoutes from './src/routes/auth.routes.js';
 import bookRoutes from './src/routes/book.routes.js';
-import opinionRoutes from './src/routes/opinion.routes.js';
 import favoriteRoutes from './src/routes/favorite.routes.js';
 import medalRoutes from './src/routes/medal.routes.js';
-import metaLecturaRoutes from './src/routes/metaLectura.routes';
+import metaLecturaRoutes from './src/routes/metaLectura.routes.js';
+import feedRoutes from './src/routes/feed.routes.js';
+import forumRoutes from './src/routes/forum.routes.js';
+import listRoutes from './src/routes/list.routes.js';
+import readingListRoutes from './src/routes/readingList.routes.js';
+import reviewRoutes from './src/routes/review.routes.js';
+import radioRoutes from './src/routes/radio.routes.js';
+import commentRoutes from './src/routes/comment.routes.js';
+import moderationRoutes from './src/modules/moderation/routes/moderation.routes.js';
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -23,8 +26,14 @@ app.use(
   cors({
     origin: [
       'http://localhost:3000',
+      'http://localhost:3001',
       'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
       'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
       'https://statuesque-truffle-a9d0a3.netlify.app',
       'https://sababook-back.onrender.com',
     ],
@@ -51,6 +60,7 @@ app.use('/api/v1/reading-lists', readingListRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/radio', radioRoutes);
+app.use('/api/v1/moderation', moderationRoutes);
 
 // -------------------------------------------------------------
 // ALIAS DE COMPATIBILIDAD CON EL FRONTEND LEGACY
@@ -66,6 +76,7 @@ app.use('/api/v1/opiniones', reviewRoutes);      // Alias español para opinione
 app.use('/api/v1/comentarios', commentRoutes);  // Alias español para comentarios
 app.use('/api/v1/lista-lectura', readingListRoutes); // Alias español para lista de lectura
 app.use('/api/v1/radio-sabato', radioRoutes);  // Alias en español para la radio
+app.use('/api/v1/moderacion', moderationRoutes); // Alias en español para moderación
 
 app.get('/', (req: Request, res: Response) => {
   res.status(200).send('Hello World!\n');
