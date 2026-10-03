@@ -95,13 +95,15 @@ model libro {
   lista_libro           lista_libro[]
   opinion               opinion[]
   recurso_educativo     recurso_educativo[]
+  foro                  foro[]
 }
 
 model favorito {
-  usuario_id Int
-  libro_id   Int
-  libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
-  usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
+  usuario_id     Int
+  libro_id       Int
+  estado_lectura String  @default("general") @db.VarChar(20)
+  libro          libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
+  usuario        usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
   @@id([usuario_id, libro_id])
 }
@@ -187,14 +189,17 @@ model foro {
   descripcion     String?
   creador_id      Int?
   episodio_id     Int?              // Vinculación opcional con Radio Sábato
+  libro_id        Int?              // Vinculación opcional con Libro
   es_apl          Boolean           @default(false)
   fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
   
   comentario_foro comentario_foro[]
   usuario         usuario?          @relation(fields: [creador_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
   radio_episodio  radio_episodio?   @relation(fields: [episodio_id], references: [episodio_id], onDelete: SetNull)
+  libro           libro?            @relation(fields: [libro_id], references: [libro_id], onDelete: SetNull)
 
   @@index([episodio_id])
+  @@index([libro_id])
 }
 
 model comentario_foro {

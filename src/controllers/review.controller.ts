@@ -37,16 +37,19 @@ class ReviewController {
 
   async createOpinion(req: Request, res: Response) {
     try {
-      const { usuario_id, libro_id, calificacion, comentario } = req.body;
+      const usuario_id = req.body.usuario_id || req.body.userId;
+      const libro_id = req.body.libro_id || req.body.bookId;
+      const calificacion = req.body.calificacion ?? req.body.rating;
+      const comentario = req.body.comentario || req.body.comment;
 
-      if (!usuario_id || !libro_id || !calificacion || !comentario) {
+      if (!usuario_id || !libro_id || calificacion === undefined || !comentario) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
       const newOpinion = await reviewService.createOpinion({
-        usuario_id,
-        libro_id,
-        calificacion,
+        usuario_id: parseInt(String(usuario_id)),
+        libro_id: parseInt(String(libro_id)),
+        calificacion: parseInt(String(calificacion)),
         comentario,
       });
 

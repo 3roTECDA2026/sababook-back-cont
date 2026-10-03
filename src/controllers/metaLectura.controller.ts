@@ -12,10 +12,13 @@ interface AuthenticatedRequest extends Request {
 class MetaLecturaController {
   async crear(req: AuthenticatedRequest, res: Response) {
     try {
-      const usuarioId = req.user?.usuario_id || req.body.usuario_id;
-      const { periodo_nombre, cantidad_libros, fecha_inicio, fecha_fin } = req.body;
+      const usuarioId = req.user?.usuario_id || req.body.usuario_id || req.body.userId;
+      const periodo_nombre = req.body.periodo_nombre || req.body.periodName;
+      const cantidad_libros = req.body.cantidad_libros ?? req.body.targetBooks;
+      const fecha_inicio = req.body.fecha_inicio || req.body.startDate;
+      const fecha_fin = req.body.fecha_fin || req.body.endDate;
 
-      if (!usuarioId || !periodo_nombre || !cantidad_libros || !fecha_inicio || !fecha_fin) {
+      if (!usuarioId || !periodo_nombre || cantidad_libros === undefined || !fecha_inicio || !fecha_fin) {
         return res.status(400).json({ mensaje: 'Faltan campos obligatorios para crear la meta' });
       }
 
