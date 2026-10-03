@@ -51,7 +51,6 @@ CREATE TABLE "libro" (
     "nivel_educativo" VARCHAR(50),
     "calificacion_promedio" DOUBLE PRECISION,
     "activo" BOOLEAN NOT NULL DEFAULT true,
-    
 
     CONSTRAINT "libro_pkey" PRIMARY KEY ("libro_id")
 );

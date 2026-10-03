@@ -1,6 +1,9 @@
 # Ignorar dependencias
 node_modules/
 
+# Ignorar archivos de build / compilación
+dist/
+
 # Ignorar archivos de entorno
 .env
 
@@ -15,3 +18,5 @@ yarn-error.log*
 
 # Ignorar lock si no querés subirlo
 package-lock.json
+
+
