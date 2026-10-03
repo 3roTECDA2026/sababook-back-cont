@@ -52,6 +52,7 @@ app.use('/api/v1/comments', commentRoutes);
 app.use('/api/v1/favorites', favoriteRoutes);
 app.use('/api/v1/medal', medalRoutes);
 app.use('/api/v1/metas-lectura', metaLecturaRoutes);
+app.use('/api/v1/reading-goals', metaLecturaRoutes);
 app.use('/api/v1/feed', feedRoutes); // <-- AGREGADO
 app.use('/api/v1/forums', forumRoutes);
 app.use('/api/v1/lists', listRoutes);
