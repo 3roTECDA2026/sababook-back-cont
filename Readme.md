@@ -35,50 +35,45 @@ cd sababook-back
 npm install
 ### 4. Configurar Variables de Entorno
 
-Crea un archivo `.env` en la raíz. Para trabajar **sin tocar la base real**, usá la configuración local:
+Crea un archivo `.env` en la raíz (puedes copiar la plantilla desde `.env.example`):
+
+```bash
+cp .env.example .env
+```
+
+Configura tu string de conexión de **Supabase (PostgreSQL)** en la variable `DATABASE_URL`:
 
 ```env
 # Configuración de la API
 PORT=3001
 JWT_SECRET="una_clave_secreta_fuerte_aqui"
 
-# Base local en Docker (contenedor sababook-postgres)
-DATABASE_URL="postgresql://postgres:postgres@localhost:5433/sababook"
-
-# Opcional: Clave inicial para crear el primer usuario Admin
-ADMIN_INITIAL_KEY="ADMIN1234"
+# Conexión a Supabase (PostgreSQL)
+DATABASE_URL="postgresql://postgres:[TU_CONTRASEÑA]@db.[TU_PROYECTO_REF].supabase.co:5432/postgres"
 ```
 
-Para volver a la base real, reemplazá el `DATABASE_URL` por el de Supabase (usá el Pooler IPv4 para evitar problemas de conexión):
+> **Nota para Supabase Connection Pooling (IPv4 / PGBouncer):**  
+> Si usás el pooler de Supabase en puerto 6543, recordá incluir `?pgbouncer=true` al final del `DATABASE_URL`.
 
-```env
-DATABASE_URL="postgresql://postgres.[TU_PROYECTO_REF]:[TU_CONTRASEÑA]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-```
+### 5. Sincronizar el Esquema de Prisma con Supabase
 
-### 5. Levantar la Base de Datos Local
-
-La base local es un PostgreSQL 15 en Docker, con volumen persistente `sababook_pgdata`. Los datos quedan en tu máquina: **no se sube nada a Supabase**.
+Para aplicar el esquema de la base de datos en Supabase y generar el cliente de Prisma:
 
 ```bash
-npm run db:up      # levanta el contenedor (o lo crea si no existe)
-npm run db:reset   # crea el esquema con prisma db push + carga los datos de prueba
+# Aplica las tablas y modelos definidos en prisma/schema.prisma a Supabase
+npm run db:push
+
+# Genera el cliente de Prisma
+npm run db:generate
 ```
 
-Otros comandos útiles:
+Comandos útiles de Prisma:
 
 | Comando | Qué hace |
 | :--- | :--- |
-| `npm run db:up` | Levanta el contenedor en `localhost:5433` |
-| `npm run db:down` | Lo detiene (los datos se conservan) |
-| `npm run db:logs` | Muestra los logs del contenedor |
-| `npm run db:shell` | Abre `psql` contra la base local |
-| `npm run db:push` | Sincroniza el esquema de `prisma/schema.prisma` |
-| `npm run db:seed` | Recarga los datos de `prisma/seed.sql` |
-| `npm run db:reset` | `db:push` + `db:seed` (deja todo listo de cero) |
-
-> El puerto **5433** se usa porque el 5432 ya está ocupado por otro proyecto local. Si lo liberás, cambiá el puerto en el `docker run` del script `db:up` y en el `DATABASE_URL`.
-
-Los datos de prueba están en `prisma/seed.sql` (tomados de `dump.sql` y completados con las tablas que faltaban). **Todas las contraseñas son `123456`**: `ana.garcia@email.com` (docente), `juan.perez@email.com` (alumno), `laura.martinez@email.com` (administradora).
+| `npm run db:push` | Sincroniza el esquema de `prisma/schema.prisma` directamente en Supabase |
+| `npm run db:generate` | Regenera `@prisma/client` |
+| `npm run db:studio` | Abre la interfaz gráfica de Prisma Studio para explorar y editar los datos |
 
 ### 6. Iniciar el Servidor
 
@@ -86,13 +81,6 @@ Los datos de prueba están en `prisma/seed.sql` (tomados de `dump.sql` y complet
 npm run dev
 ```
 
-El servidor estará disponible en `http://localhost:3001` (3000 lo ocupa `edu-track-back`).
+El servidor estará disponible en `http://localhost:3001`.
 
-### 7. Exportar la base real
-
-Para bajar un backup de Supabase a `dump.sql`:
-
-```bash
-pg_dump "<DATABASE_URL_REMOTA>" > dump.sql
-```
 
