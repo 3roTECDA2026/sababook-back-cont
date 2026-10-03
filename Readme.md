@@ -34,25 +34,53 @@ cd sababook-back
 
 npm install
 ### 4. Configurar Variables de Entorno
-Crea un archivo .env en la raíz con la siguiente información:
-Fragmento de código
+
+Crea un archivo `.env` en la raíz (puedes copiar la plantilla desde `.env.example`):
+
+```bash
+cp .env.example .env
+```
+
+Configura tu string de conexión de **Supabase (PostgreSQL)** en la variable `DATABASE_URL`:
+
+```env
 # Configuración de la API
-PORT=3000
+PORT=3001
 JWT_SECRET="una_clave_secreta_fuerte_aqui"
 
-# Conexión a Supabase/PostgreSQL
-SUPABASE_URL="https://supabase.com/docs/reference/cli/introduction"
-SUPABASE_KEY="[Clave de servicio (service_role) de Supabase]"
+# Conexión a Supabase (PostgreSQL)
+DATABASE_URL="postgresql://postgres:[TU_CONTRASEÑA]@db.[TU_PROYECTO_REF].supabase.co:5432/postgres"
+```
 
-# Opcional: Clave inicial para crear el primer usuario Admin
-ADMIN_INITIAL_KEY="ADMIN1234"
+> **Nota para Supabase Connection Pooling (IPv4 / PGBouncer):**  
+> Si usás el pooler de Supabase en puerto 6543, recordá incluir `?pgbouncer=true` al final del `DATABASE_URL`.
 
-### 5. Iniciar el Servidor
+### 5. Sincronizar el Esquema de Prisma con Supabase
 
+Para aplicar el esquema de la base de datos en Supabase y generar el cliente de Prisma:
 
+```bash
+# Aplica las tablas y modelos definidos en prisma/schema.prisma a Supabase
+npm run db:push
+
+# Genera el cliente de Prisma
+npm run db:generate
+```
+
+Comandos útiles de Prisma:
+
+| Comando | Qué hace |
+| :--- | :--- |
+| `npm run db:push` | Sincroniza el esquema de `prisma/schema.prisma` directamente en Supabase |
+| `npm run db:generate` | Regenera `@prisma/client` |
+| `npm run db:studio` | Abre la interfaz gráfica de Prisma Studio para explorar y editar los datos |
+
+### 6. Iniciar el Servidor
+
+```bash
 npm run dev
+```
 
-El servidor estará disponible en http://localhost:3000.
-
+El servidor estará disponible en `http://localhost:3001`.
 
 

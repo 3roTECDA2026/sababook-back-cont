@@ -8,6 +8,10 @@
     "build": "tsup server.ts --format esm --clean",
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
+    "typecheck": "tsc --noEmit",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate",
     "postinstall": "prisma generate"
   },
   "keywords": [],
