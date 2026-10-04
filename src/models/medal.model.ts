@@ -44,16 +44,6 @@ class MedalModel {
 
   async asignarMedallaSiNoTiene(usuario_id: number, medalla_id: number): Promise<void> {
     try {
-      // Verificar si la medalla existe en la base de datos
-      const medallaExiste = await prisma.medalla.findUnique({
-        where: { medalla_id },
-      });
-
-      if (!medallaExiste) {
-        console.warn(`⚠️ La medalla_id ${medalla_id} no existe en la base de datos.`);
-        return;
-      }
-
       // Verifica si el usuario ya tiene la medalla
       const yaTiene = await prisma.usuario_medalla.findUnique({
         where: {
