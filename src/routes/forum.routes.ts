@@ -14,14 +14,14 @@ import { moderateContent } from '../modules/moderation/middleware/moderate-conte
 const router = Router();
 
 // Foros
-router.post('/', moderateContent(['titulo', 'descripcion'], 'foro'), crearForo);
+router.post('/', moderateContent(['titulo', 'title', 'descripcion', 'description'], 'foro'), crearForo);
 router.get('/', obtenerForos);
 router.get('/:id', obtenerForo);
-router.put('/:id', moderateContent(['titulo', 'descripcion'], 'foro'), actualizarForo);
+router.put('/:id', moderateContent(['titulo', 'title', 'descripcion', 'description'], 'foro'), actualizarForo);
 router.delete('/:id', eliminarForo);
 
 // Comentarios
 router.get('/:id/comentarios', obtenerForoConComentarios);
-router.post('/:id/comentarios', moderateContent(['contenido'], 'comentario_foro'), crearComentario);
+router.post('/:id/comentarios', moderateContent(['contenido', 'content'], 'comentario_foro'), crearComentario);
 
 export default router;
