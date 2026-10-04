@@ -8,6 +8,7 @@
     "build": "tsup server.ts --format esm --clean",
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
+    "test": "tsx --test test/*.test.ts",
     "postinstall": "prisma generate"
   },
   "keywords": [],
