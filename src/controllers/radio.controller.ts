@@ -17,7 +17,13 @@ export const obtenerTodosEpisodios = async (req: Request, res: Response) => {
 export const obtenerEpisodioPorId = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const episodio = await radioModel.obtenerEpisodioPorIdDB(Number(id));
+    const episodioId = Number(id);
+
+    if (isNaN(episodioId)) {
+      return res.status(400).json({ mensaje: 'ID de episodio inválido' });
+    }
+
+    const episodio = await radioModel.obtenerEpisodioPorIdDB(episodioId);
 
     if (!episodio) {
       return res.status(404).json({ mensaje: 'Episodio no encontrado' });
