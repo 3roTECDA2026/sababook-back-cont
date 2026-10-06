@@ -1,5 +1,6 @@
 // src/models/foro.model.ts
-import { db } from '../db/connect/db.js';
+import { prisma } from '../db/connect/db';
+import { TipoActividad } from '@prisma/client';
 
 interface Foro {
   foro_id: number;
@@ -11,6 +12,8 @@ interface Foro {
 
 interface ForoConCreador extends Foro {
   creador_nombre: string | null;
+  es_apl?: boolean;
+  episodio_id?: number | null;
 }
 
 interface ForoDetalle {
@@ -20,6 +23,8 @@ interface ForoDetalle {
   fecha_creacion: Date;
   creador_nombre: string | null;
   creador_avatar: string | null;
+  es_apl?: boolean;
+  episodio_id?: number | null;
 }
 
 interface ComentarioForo {
@@ -34,102 +39,181 @@ interface ForoConComentarios extends ForoDetalle {
   comentarios: ComentarioForo[];
 }
 
-// Crear un foro
+// Crear un foro (con soporte para APL, Radio Sábato y registro en actividad_feed)
 export const crearForoDB = async (
   titulo: string,
-  descripcion: string,
-  creador_id: number
+  descripcion?: string,
+  creador_id?: number,
+  esApl: boolean = false,
+  episodioId?: number
 ): Promise<{ foro_id: number }> => {
-  const result = await db.one<{ foro_id: number }>(
-    `INSERT INTO foro (titulo, descripcion, creador_id)
-     VALUES ($1, $2, $3)
-     RETURNING foro_id`,
-    [titulo, descripcion, creador_id]
-  );
+  const result = await prisma.foro.create({
+    data: {
+      titulo,
+      descripcion: descripcion ?? '',
+      creador_id: creador_id ? Number(creador_id) : 0,
+      es_apl: esApl,
+      episodio_id: episodioId ? Number(episodioId) : null,
+    },
+    select: {
+      foro_id: true,
+    },
+  });
+
+  // Registrar en la tabla actividad_feed [REQ-05]
+  try {
+    await prisma.actividad_feed.create({
+      data: {
+        usuario_id: creador_id ? Number(creador_id) : null,
+        tipo: esApl ? TipoActividad.FORO_APL : TipoActividad.AVISO,
+        titulo: `${esApl ? 'Nuevo debate APL' : 'Nuevo foro'}: ${titulo}`,
+        descripcion,
+        entidad_id: result.foro_id,
+      },
+    });
+  } catch (error) {
+    console.error('⚠️ No se pudo registrar la actividad en el feed:', error);
+  }
+
   return result;
 };
 
 // Obtener todos los foros
 export const obtenerTodosForosDB = async (): Promise<ForoConCreador[]> => {
-  return db.any<ForoConCreador>(`
-     SELECT 
-  f.foro_id,
-  f.titulo,
-  f.descripcion,
-  f.creador_id,
-  f.fecha_creacion,
-  u.nombre AS "creador_nombre"
-FROM foro f
-LEFT JOIN usuario u ON f.creador_id = u.usuario_id
-ORDER BY f.fecha_creacion DESC
-  `);
+  const foros = await prisma.foro.findMany({
+    include: {
+      usuario: {
+        select: {
+          nombre: true,
+        },
+      },
+    },
+    orderBy: {
+      fecha_creacion: 'desc',
+    },
+  });
+
+  return foros.map((f) => ({
+    foro_id: f.foro_id,
+    titulo: f.titulo,
+    descripcion: f.descripcion ?? '',
+    creador_id: f.creador_id,
+    fecha_creacion: f.fecha_creacion ?? new Date(),
+    creador_nombre: f.usuario?.nombre ?? null,
+    es_apl: f.es_apl ?? false,
+    episodio_id: f.episodio_id,
+  }));
 };
 
 // Obtener un foro por ID
 export const obtenerForoPorIdDB = async (foro_id: number): Promise<ForoConCreador | null> => {
-  const result = await db.oneOrNone<ForoConCreador>(`
-    SELECT
-      f.*,
-      u.nombre AS "creador_nombre"
-    FROM foro f
-    LEFT JOIN usuario u ON f.creador_id = u.usuario_id
-    WHERE f.foro_id = $1
-  `, [foro_id]);
+  const f = await prisma.foro.findUnique({
+    where: { foro_id },
+    include: {
+      usuario: {
+        select: {
+          nombre: true,
+        },
+      },
+    },
+  });
 
-  return result;
+  if (!f) return null;
+
+  return {
+    foro_id: f.foro_id,
+    titulo: f.titulo,
+    descripcion: f.descripcion ?? '',
+    creador_id: f.creador_id,
+    fecha_creacion: f.fecha_creacion ?? new Date(),
+    creador_nombre: f.usuario?.nombre ?? null,
+    es_apl: f.es_apl ?? false,
+    episodio_id: f.episodio_id,
+  };
 };
 
 // Actualizar un foro
 export const actualizarForoDB = async (
   foro_id: number,
-  titulo: string,
-  descripcion: string
+  titulo?: string,
+  descripcion?: string
 ): Promise<{ foro_id: number }> => {
-  const result = await db.one<{ foro_id: number }>(
-    `
-    UPDATE foro
-    SET titulo = $1, descripcion = $2
-    WHERE foro_id = $3
-    RETURNING foro_id
-    `,
-    [titulo, descripcion, foro_id]
-  );
+  const result = await prisma.foro.update({
+    where: { foro_id },
+    data: {
+      ...(titulo !== undefined && { titulo }),
+      ...(descripcion !== undefined && { descripcion }),
+    },
+    select: {
+      foro_id: true,
+    },
+  });
   return result;
 };
 
 // Eliminar un foro
 export const eliminarForoDB = async (foro_id: number): Promise<{ foro_id: number } | null> => {
-  const result = await db.oneOrNone<{ foro_id: number }>(
-    `DELETE FROM foro WHERE foro_id = $1 RETURNING foro_id`,
-    [foro_id]
-  );
-  return result;
+  try {
+    const result = await prisma.foro.delete({
+      where: { foro_id },
+      select: {
+        foro_id: true,
+      },
+    });
+    return result;
+  } catch (error) {
+    return null;
+  }
 };
 
 // Obtener foro con comentarios y datos de usuario
 export const obtenerForoConComentariosDB = async (
   foro_id: number
 ): Promise<ForoConComentarios | null> => {
-  const foro = await db.oneOrNone<ForoDetalle>(
-    `SELECT f.foro_id, f.titulo, f.descripcion, f.fecha_creacion, 
-            u.nombre AS "creador_nombre", u.avatar_url AS creador_avatar
-     FROM foro f
-     LEFT JOIN usuario u ON f.creador_id = u.usuario_id
-     WHERE f.foro_id = $1`,
-    [foro_id]
-  );
+  const foro = await prisma.foro.findUnique({
+    where: { foro_id },
+    include: {
+      usuario: {
+        select: {
+          nombre: true,
+          avatar_url: true,
+        },
+      },
+      comentario_foro: {
+        include: {
+          usuario: {
+            select: {
+              nombre: true,
+              avatar_url: true,
+            },
+          },
+        },
+        orderBy: {
+          fecha: 'asc',
+        },
+      },
+    },
+  });
 
   if (!foro) return null;
 
-  const comentarios = await db.any<ComentarioForo>(
-    `SELECT c.comentario_id, c.contenido, c.fecha, 
-            u.nombre AS usuario_nombre, u.avatar_url AS usuario_avatar
-     FROM comentario_foro c
-     JOIN usuario u ON c.usuario_id = u.usuario_id
-     WHERE c.foro_id = $1
-     ORDER BY c.fecha ASC`,
-    [foro_id]
-  );
+  const comentariosFormatted: ComentarioForo[] = foro.comentario_foro.map((c) => ({
+    comentario_id: c.comentario_id,
+    contenido: c.contenido,
+    fecha: c.fecha ?? new Date(),
+    usuario_nombre: c.usuario?.nombre ?? '',
+    usuario_avatar: c.usuario?.avatar_url ?? null,
+  }));
 
-  return { ...foro, comentarios };
+  return {
+    foro_id: foro.foro_id,
+    titulo: foro.titulo,
+    descripcion: foro.descripcion ?? '',
+    fecha_creacion: foro.fecha_creacion ?? new Date(),
+    creador_nombre: foro.usuario?.nombre ?? null,
+    creador_avatar: foro.usuario?.avatar_url ?? null,
+    es_apl: foro.es_apl ?? false,
+    episodio_id: foro.episodio_id,
+    comentarios: comentariosFormatted,
+  };
 };

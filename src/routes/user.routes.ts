@@ -1,7 +1,7 @@
 // src/routes/user.routes.ts
 import { Router } from 'express';
-import UserController from '../controllers/user.controller.js';
-import { requireRole, verifyToken } from '../middleware/auth.middleware.js';
+import UserController from '../controllers/user.controller';
+import { requireRole, verifyToken } from '../middleware/auth.middleware';
 
 const router = Router();
 const roldAdmin = 3;
