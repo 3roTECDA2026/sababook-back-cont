@@ -6,7 +6,7 @@ interface Foro {
   foro_id: number;
   titulo: string;
   descripcion: string;
-  creador_id: number;
+  creador_id: number | null;
   fecha_creacion: Date;
 }
 

@@ -52,6 +52,7 @@ app.use('/api/v1/comments', commentRoutes);
 app.use('/api/v1/favorites', favoriteRoutes);
 app.use('/api/v1/medal', medalRoutes);
 app.use('/api/v1/metas-lectura', metaLecturaRoutes);
+app.use('/api/v1/reading-goals', metaLecturaRoutes);
 app.use('/api/v1/feed', feedRoutes); // <-- AGREGADO
 app.use('/api/v1/forums', forumRoutes);
 app.use('/api/v1/lists', listRoutes);
@@ -76,6 +77,8 @@ app.use('/api/v1/opiniones', reviewRoutes);      // Alias español para opinione
 app.use('/api/v1/comentarios', commentRoutes);  // Alias español para comentarios
 app.use('/api/v1/lista-lectura', readingListRoutes); // Alias español para lista de lectura
 app.use('/api/v1/radio-sabato', radioRoutes);  // Alias en español para la radio
+app.use('/api/v1/foro', forumRoutes);            // Alias singular para foros
+app.use('/api/v1/foros', forumRoutes);           // Alias español para foros
 app.use('/api/v1/moderacion', moderationRoutes); // Alias en español para moderación
 
 app.get('/', (req: Request, res: Response) => {

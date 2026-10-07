@@ -13,9 +13,12 @@ class MetaLecturaController {
   async crear(req: AuthenticatedRequest, res: Response) {
     try {
       const usuarioId = req.user?.usuario_id || req.body.usuario_id;
-      const { periodo_nombre, cantidad_libros, fecha_inicio, fecha_fin } = req.body;
+      const periodo_nombre = req.body.periodo_nombre;
+      const cantidad_libros = req.body.cantidad_libros;
+      const fecha_inicio = req.body.fecha_inicio;
+      const fecha_fin = req.body.fecha_fin;
 
-      if (!usuarioId || !periodo_nombre || !cantidad_libros || !fecha_inicio || !fecha_fin) {
+      if (!usuarioId || !periodo_nombre || cantidad_libros === undefined || !fecha_inicio || !fecha_fin) {
         return res.status(400).json({ mensaje: 'Faltan campos obligatorios para crear la meta' });
       }
 

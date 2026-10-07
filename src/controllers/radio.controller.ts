@@ -2,6 +2,25 @@ import { Request, Response } from 'express';
 import { sincronizarRadioSabato } from '../services/radioScraper.service.js';
 import * as radioModel from '../models/radio.model.js';
 
+export const obtenerProgramaActual = async (req: Request, res: Response) => {
+  try {
+    const episodios = await radioModel.obtenerTodosEpisodiosDB();
+    const ultimo = episodios.length > 0 ? episodios[0] : null;
+    return res.status(200).json({
+      programa: ultimo?.programa || 'Radio Sábato',
+      locutor: ultimo?.titulo || 'Transmisión General',
+      enVivo: false,
+    });
+  } catch (error) {
+    console.error('Error al obtener programa actual:', error);
+    return res.status(200).json({
+      programa: 'Radio Sábato',
+      locutor: 'Transmisión General',
+      enVivo: false,
+    });
+  }
+};
+
 // 1. Obtener todos los episodios
 export const obtenerTodosEpisodios = async (req: Request, res: Response) => {
   try {

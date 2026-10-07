@@ -4,7 +4,7 @@ export class GeminiModeratorProvider implements ModeratorProvider {
   constructor(private readonly apiKey: string) {}
 
   async moderate(text: string, contextDescription?: string): Promise<ModerationResult> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`;
     const contextInfo = contextDescription
       ? `Contexto del espacio y conversación previa:\n${contextDescription}\n\n`
       : '';

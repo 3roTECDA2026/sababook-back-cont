@@ -30,8 +30,9 @@ export const obtenerForos = async (req: Request, res: Response) => {
     const foros = await forumService.obtenerTodosForos();
     res.json(foros);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('❌ Error al obtener foros:', error);
-    res.status(500).json({ mensaje: 'Error al obtener los foros' });
+    res.status(500).json({ mensaje: 'Error al obtener los foros', detalle: message });
   }
 };
 
@@ -39,6 +40,9 @@ export const obtenerForos = async (req: Request, res: Response) => {
 export const obtenerForo = async (req: Request, res: Response) => {
   try {
     const foro_id = parseInt(String(req.params.id), 10);
+    if (isNaN(foro_id)) {
+      return res.status(400).json({ mensaje: 'ID de foro inválido' });
+    }
     const foro = await forumService.obtenerForoPorId(foro_id);
 
     if (!foro) {
@@ -60,6 +64,9 @@ export const obtenerForo = async (req: Request, res: Response) => {
 export const actualizarForo = async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ mensaje: 'ID de foro inválido' });
+    }
     const { titulo, descripcion } = req.body;
     const foroActualizado = await forumService.actualizarForo(id, titulo, descripcion);
 
@@ -67,8 +74,9 @@ export const actualizarForo = async (req: Request, res: Response) => {
 
     res.json({ mensaje: 'Foro actualizado correctamente' });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('❌ Error al actualizar foro:', error);
-    res.status(500).json({ mensaje: 'Error al actualizar el foro' });
+    res.status(500).json({ mensaje: 'Error al actualizar el foro', detalle: message });
   }
 };
 
@@ -76,14 +84,18 @@ export const actualizarForo = async (req: Request, res: Response) => {
 export const eliminarForo = async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ mensaje: 'ID de foro inválido' });
+    }
     const foroEliminado = await forumService.eliminarForo(id);
 
     if (!foroEliminado) return res.status(404).json({ mensaje: 'Foro no encontrado' });
 
     res.json({ mensaje: 'Foro eliminado correctamente' });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('❌ Error al eliminar foro:', error);
-    res.status(500).json({ mensaje: 'Error al eliminar el foro' });
+    res.status(500).json({ mensaje: 'Error al eliminar el foro', detalle: message });
   }
 };
 
@@ -91,13 +103,17 @@ export const eliminarForo = async (req: Request, res: Response) => {
 export const obtenerForoConComentarios = async (req: Request, res: Response) => {
   try {
     const foro_id = parseInt(String(req.params.id), 10);
+    if (isNaN(foro_id)) {
+      return res.status(400).json({ mensaje: 'ID de foro inválido' });
+    }
     const foroConComentarios = await forumService.obtenerForoConComentarios(foro_id);
 
     if (!foroConComentarios) return res.status(404).json({ mensaje: 'Foro no encontrado' });
 
     res.json(foroConComentarios);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('❌ Error al obtener foro con comentarios:', error);
-    res.status(500).json({ mensaje: 'Error al obtener foro con comentarios' });
+    res.status(500).json({ mensaje: 'Error al obtener foro con comentarios', detalle: message });
   }
 };
