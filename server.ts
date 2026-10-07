@@ -13,6 +13,7 @@ import forumRoutes from './src/routes/forum.routes';
 import listRoutes from './src/routes/list.routes';
 import medalRoutes from './src/routes/medal.routes';
 import metaLecturaRoutes from './src/routes/metaLectura.routes';
+import moderationRoutes from './src/modules/moderation/routes/moderation.routes';
 import readingListRoutes from './src/routes/readingList.routes';
 import reviewRoutes from './src/routes/review.routes';
 import userRoutes from './src/routes/user.routes';
@@ -27,8 +28,14 @@ app.use(
   cors({
     origin: [
       'http://localhost:3000',
+      'http://localhost:3001',
       'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
       'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
       'https://statuesque-truffle-a9d0a3.netlify.app',
       'https://sababook-back.onrender.com',
     ],
@@ -56,6 +63,7 @@ app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/radio', radioRoutes);
 app.use('/api/v1/cafes', cafeRoutes);
+app.use('/api/v1/moderation', moderationRoutes);
 
 // -------------------------------------------------------------
 // ALIAS DE COMPATIBILIDAD CON EL FRONTEND LEGACY
@@ -72,6 +80,7 @@ app.use('/api/v1/comentarios', commentRoutes);  // Alias español para comentari
 app.use('/api/v1/lista-lectura', readingListRoutes); // Alias español para lista de lectura
 app.use('/api/v1/radio-sabato', radioRoutes);  // Alias en español para la radio
 app.use('/api/v1/cafe', cafeRoutes);  // Alias singular en español para los cafés
+app.use('/api/v1/moderacion', moderationRoutes); // Alias en español para moderación
 
 app.get('/', (req: Request, res: Response) => {
   res.status(200).send('Hello World!\n');

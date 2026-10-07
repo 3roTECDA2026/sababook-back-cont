@@ -2,7 +2,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { favoriteService } from '../services/favorite.service';
-import { ReadingStatus } from '../models/favorite.model';
+import { favoriteModel, ReadingStatus } from '../models/favorite.model';
 
 const READING_STATUSES: ReadingStatus[] = ['general', 'quiero-leer', 'leyendo', 'leido'];
 
