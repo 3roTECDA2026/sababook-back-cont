@@ -16,6 +16,8 @@ export interface TriviaQuestion {
   question: string;
   deadline: string | null;
   evaluationId?: number | null;
+  cursoId?: number | null;
+  docenteId?: number | null;
   options?: string[];
   correctAnswer?: number;
   pairs?: TriviaPar[];
@@ -26,6 +28,7 @@ export interface TriviaQuestion {
 export interface CreateTriviaData {
   bookId: number;
   evaluationId?: number | null;
+  cursoId?: number | null;
   mode: TriviaModo;
   format: TriviaFormato;
   question?: string;
@@ -40,6 +43,8 @@ export interface CreateTriviaData {
 export interface Evaluacion {
   evaluationId: number;
   bookId: number;
+  cursoId?: number | null;
+  docenteId?: number | null;
   deadline: string | null;
   createdAt: string;
   questionCount: number;
@@ -124,6 +129,8 @@ class TriviaModel {
       question: row.formato === 'completar' ? '' : row.consigna,
       deadline: toISODate(row.fecha_limite),
       evaluationId: row.evaluacion_id,
+      cursoId: row.curso_id,
+      docenteId: row.docente_id,
     };
 
     if (row.formato === 'multiple' || row.formato === 'truefalse') {
@@ -166,13 +173,15 @@ class TriviaModel {
     }
   }
 
-  async create(data: CreateTriviaData): Promise<TriviaQuestion> {
-    const { bookId, evaluationId, mode, format, question, deadline, options, correctAnswer, pairs, text, answers } = data;
+  async create(data: CreateTriviaData, docenteId: number): Promise<TriviaQuestion> {
+    const { bookId, evaluationId, cursoId, mode, format, question, deadline, options, correctAnswer, pairs, text, answers } = data;
     const prompt = format === 'completar' ? (text ?? '') : (question ?? '');
 
     const createData: any = {
       libro_id: bookId,
       evaluacion_id: evaluationId || null,
+      curso_id: cursoId || null,
+      docente_id: docenteId,
       modo: mode,
       formato: format,
       consigna: prompt,
@@ -241,6 +250,103 @@ class TriviaModel {
     }
   }
 
+  async getById(questionId: number): Promise<TriviaQuestion | null> {
+    try {
+      const row = await prisma.trivia_pregunta.findUnique({
+        where: { pregunta_id: questionId },
+        include: {
+          opciones: { orderBy: { opcion_id: 'asc' } },
+          pares: { orderBy: { orden: 'asc' } },
+          respuestas: { orderBy: { orden: 'asc' } },
+        },
+      });
+
+      if (!row) return null;
+
+      return this.mapToQuestion(
+        row as Exclude<TriviaRow, null> & { opciones: any[]; pares: any[]; respuestas: any[] },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.getById:', message);
+      throw new Error('Failed to retrieve trivia question.');
+    }
+  }
+
+  async getByCourse(cursoId: number): Promise<TriviaQuestion[]> {
+    try {
+      const rows = await prisma.trivia_pregunta.findMany({
+        where: { curso_id: cursoId },
+        include: {
+          opciones: { orderBy: { opcion_id: 'asc' } },
+          pares: { orderBy: { orden: 'asc' } },
+          respuestas: { orderBy: { orden: 'asc' } },
+        },
+        orderBy: { pregunta_id: 'desc' },
+      });
+
+      return rows.map((row) =>
+        this.mapToQuestion(row as Exclude<TriviaRow, null> & { opciones: any[]; pares: any[]; respuestas: any[] }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.getByCourse:', message);
+      throw new Error('Failed to retrieve course trivia questions.');
+    }
+  }
+
+  async getEvaluationsByCourse(cursoId: number): Promise<Evaluacion[]> {
+    try {
+      const rows = await prisma.trivia_evaluacion.findMany({
+        where: { curso_id: cursoId },
+        include: {
+          _count: { select: { trivia_pregunta: true } },
+        },
+        orderBy: { fecha_creacion: 'desc' },
+      });
+
+      return rows.map((row) => ({
+        evaluationId: row.evaluacion_id,
+        bookId: row.libro_id,
+        cursoId: row.curso_id,
+        docenteId: row.docente_id,
+        deadline: toISODate(row.fecha_limite),
+        createdAt: row.fecha_creacion.toISOString(),
+        questionCount: row._count.trivia_pregunta,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.getEvaluationsByCourse:', message);
+      throw new Error('Failed to retrieve course evaluations.');
+    }
+  }
+
+  async isDocenteDeCurso(userId: number, cursoId: number): Promise<boolean> {
+    try {
+      const row = await prisma.curso_docente.findUnique({
+        where: { curso_id_usuario_id: { curso_id: cursoId, usuario_id: userId } },
+      });
+      return !!row;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.isDocenteDeCurso:', message);
+      throw error;
+    }
+  }
+
+  async isInscripto(cursoId: number, userId: number): Promise<boolean> {
+    try {
+      const row = await prisma.inscripcion.findFirst({
+        where: { curso_id: cursoId, usuario_id: userId },
+      });
+      return !!row;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.isInscripto:', message);
+      throw error;
+    }
+  }
+
   async getEvaluationsByBook(bookId: number): Promise<Evaluacion[]> {
     try {
       const rows = await prisma.trivia_evaluacion.findMany({
@@ -265,11 +371,18 @@ class TriviaModel {
     }
   }
 
-  async createEvaluation(bookId: number, deadline?: string | null): Promise<Evaluacion> {
+  async createEvaluation(
+    bookId: number,
+    deadline?: string | null,
+    cursoId?: number | null,
+    docenteId?: number,
+  ): Promise<Evaluacion> {
     try {
       const created = await prisma.trivia_evaluacion.create({
         data: {
           libro_id: bookId,
+          curso_id: cursoId || null,
+          docente_id: docenteId ?? null,
           fecha_limite: deadline ? new Date(`${deadline}T00:00:00Z`) : null,
         },
         include: {
@@ -280,6 +393,8 @@ class TriviaModel {
       return {
         evaluationId: created.evaluacion_id,
         bookId: created.libro_id,
+        cursoId: created.curso_id,
+        docenteId: created.docente_id,
         deadline: toISODate(created.fecha_limite),
         createdAt: created.fecha_creacion.toISOString(),
         questionCount: created._count.trivia_pregunta,
