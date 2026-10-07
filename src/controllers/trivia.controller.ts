@@ -20,11 +20,12 @@ class TriviaController {
     }
   }
 
-  async create(req: Request, res: Response) {
+  async create(req: AuthRequest, res: Response) {
     try {
       const {
         bookId,
         evaluationId,
+        cursoId,
         mode,
         format,
         question,
@@ -69,9 +70,29 @@ class TriviaController {
         }
       }
 
+      const numericCursoId = cursoId != null ? parseInt(String(cursoId), 10) : null;
+      if (numericCursoId !== null && isNaN(numericCursoId)) {
+        return res.status(400).json({ error: 'cursoId must be a valid number' });
+      }
+
+      const isAdmin = Number(req.userRole) === 3;
+      if (!isAdmin) {
+        if (!req.userId) {
+          return res.status(401).json({ error: 'Authentication required' });
+        }
+        if (!numericCursoId) {
+          return res.status(400).json({ error: 'cursoId is required to assign the question to a course' });
+        }
+        const esDocente = await triviaModel.isDocenteDeCurso(req.userId, numericCursoId);
+        if (!esDocente) {
+          return res.status(403).json({ error: 'Solo un docente del curso puede crear preguntas asignadas a él.' });
+        }
+      }
+
       const data: CreateTriviaData = {
         bookId,
         evaluationId,
+        cursoId: numericCursoId,
         mode,
         format,
         question,
@@ -83,7 +104,7 @@ class TriviaController {
         answers: answers || [],
       };
 
-      const newQuestion = await triviaModel.create(data);
+      const newQuestion = await triviaModel.create(data, req.userId as number);
       return res.status(201).json(newQuestion);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -92,11 +113,30 @@ class TriviaController {
     }
   }
 
-  async delete(req: Request, res: Response) {
+  async delete(req: AuthRequest, res: Response) {
     try {
       const questionId = parseInt(String(req.params.questionId), 10);
       if (isNaN(questionId)) {
         return res.status(400).json({ error: 'Invalid question ID' });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const question = await triviaModel.getById(questionId);
+      if (!question) {
+        return res.status(404).json({ error: `Trivia question ${questionId} not found.` });
+      }
+
+      const isAdmin = Number(req.userRole) === 3;
+      const isOwner = question.docenteId === req.userId;
+      const esDocente =
+        question.cursoId != null ? await triviaModel.isDocenteDeCurso(req.userId, question.cursoId) : false;
+
+      if (!isAdmin && !isOwner && !esDocente) {
+        return res.status(403).json({
+          error: 'No puedes eliminar esta pregunta: solo el docente que la creó o el docente del curso.',
+        });
       }
 
       await triviaModel.delete(questionId);
@@ -107,6 +147,64 @@ class TriviaController {
       }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error deleting trivia question:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getByCourse(req: AuthRequest, res: Response) {
+    try {
+      const cursoId = parseInt(String(req.params.cursoId), 10);
+      if (isNaN(cursoId)) {
+        return res.status(400).json({ error: 'Invalid course ID' });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const isAdmin = Number(req.userRole) === 3;
+      const esDocente = await triviaModel.isDocenteDeCurso(req.userId, cursoId);
+      const esAlumno = await triviaModel.isInscripto(cursoId, req.userId);
+
+      if (!isAdmin && !esDocente && !esAlumno) {
+        return res.status(403).json({
+          error: 'Solo docentes del curso o alumnos inscriptos pueden ver las preguntas del curso.',
+        });
+      }
+
+      const questions = await triviaModel.getByCourse(cursoId);
+      return res.status(200).json(questions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error getting trivia by course:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  async getEvaluationsByCourse(req: AuthRequest, res: Response) {
+    try {
+      const cursoId = parseInt(String(req.params.cursoId), 10);
+      if (isNaN(cursoId)) {
+        return res.status(400).json({ error: 'Invalid course ID' });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const isAdmin = Number(req.userRole) === 3;
+      const esDocente = await triviaModel.isDocenteDeCurso(req.userId, cursoId);
+      const esAlumno = await triviaModel.isInscripto(cursoId, req.userId);
+
+      if (!isAdmin && !esDocente && !esAlumno) {
+        return res.status(403).json({
+          error: 'Solo docentes del curso o alumnos inscriptos pueden ver las evaluaciones del curso.',
+        });
+      }
+
+      const evaluations = await triviaModel.getEvaluationsByCourse(cursoId);
+      return res.status(200).json(evaluations);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error getting evaluations by course:', message);
       return res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -127,15 +225,34 @@ class TriviaController {
     }
   }
 
-  async createEvaluation(req: Request, res: Response) {
+  async createEvaluation(req: AuthRequest, res: Response) {
     try {
-      const { bookId, deadline } = req.body;
+      const { bookId, deadline, cursoId } = req.body;
 
       if (!bookId) {
         return res.status(400).json({ error: 'Missing required field: bookId' });
       }
 
-      const newEvaluation = await triviaModel.createEvaluation(bookId, deadline);
+      const numericCursoId = cursoId != null ? parseInt(String(cursoId), 10) : null;
+      if (numericCursoId !== null && isNaN(numericCursoId)) {
+        return res.status(400).json({ error: 'cursoId must be a valid number' });
+      }
+
+      const isAdmin = Number(req.userRole) === 3;
+      if (!isAdmin) {
+        if (!req.userId) {
+          return res.status(401).json({ error: 'Authentication required' });
+        }
+        if (!numericCursoId) {
+          return res.status(400).json({ error: 'cursoId is required to assign the evaluation to a course' });
+        }
+        const esDocente = await triviaModel.isDocenteDeCurso(req.userId, numericCursoId);
+        if (!esDocente) {
+          return res.status(403).json({ error: 'Solo un docente del curso puede crear evaluaciones asignadas a él.' });
+        }
+      }
+
+      const newEvaluation = await triviaModel.createEvaluation(bookId, deadline, numericCursoId, req.userId as number);
       return res.status(201).json(newEvaluation);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -54,6 +54,8 @@ model usuario {
   incidencia_moderacion incidencia_moderacion[]
   curso_docente         curso_docente[]
   inscripcion           inscripcion[]
+  trivia_pregunta_docente  trivia_pregunta[]       @relation("trivia_pregunta_docente")
+  trivia_evaluacion_docente trivia_evaluacion[]   @relation("trivia_evaluacion_docente")
 
   @@index([rol_id])
 }
@@ -274,6 +276,8 @@ model trivia_pregunta {
   pregunta_id    Int                @id @default(autoincrement())
   libro_id       Int
   evaluacion_id  Int?
+  curso_id       Int?
+  docente_id     Int?
   modo           String             @default("trivia") @db.VarChar(20)
   formato        String             @default("multiple") @db.VarChar(20)
   consigna       String             @db.Text
@@ -281,6 +285,8 @@ model trivia_pregunta {
   fecha_creacion DateTime           @default(now()) @db.Timestamptz(6)
   libro          libro              @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
   evaluacion     trivia_evaluacion? @relation(fields: [evaluacion_id], references: [evaluacion_id], onDelete: Cascade, onUpdate: NoAction)
+  curso          curso?             @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  docente        usuario?           @relation("trivia_pregunta_docente", fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
   opciones       trivia_opcion[]
   pares          trivia_par[]
   respuestas     trivia_respuesta[]
@@ -288,19 +294,27 @@ model trivia_pregunta {
   @@index([libro_id])
   @@index([modo])
   @@index([evaluacion_id])
+  @@index([curso_id])
+  @@index([docente_id])
 }
 
 model trivia_evaluacion {
   evaluacion_id  Int               @id @default(autoincrement())
   libro_id       Int
+  curso_id       Int?
+  docente_id     Int?
   fecha_limite   DateTime?         @db.Date
   descripcion    String?           @db.Text
   fecha_creacion DateTime          @default(now()) @db.Timestamptz(6)
   libro          libro             @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+  curso          curso?            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  docente        usuario?          @relation("trivia_evaluacion_docente", fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
   trivia_pregunta  trivia_pregunta[]
   triviaAttempt    triviaAttempt[]
 
   @@index([libro_id])
+  @@index([curso_id])
+  @@index([docente_id])
 }
 
 model triviaAttempt {
@@ -410,6 +424,8 @@ model curso {
   curso_docente curso_docente[]
   curso_libro   curso_libro[]
   inscripcion   inscripcion[]
+  trivia_pregunta   trivia_pregunta[]
+  trivia_evaluacion trivia_evaluacion[]
 
   @@unique([anio, division, anio_lectivo])
   @@index([materia_id])
