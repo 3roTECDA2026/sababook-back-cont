@@ -1,4 +1,4 @@
--- Seed para la base LOCAL de desarrollo (contenedor sababook-postgres).
+-- Seed para la base de datos de desarrollo.
 -- El esquema lo crea `prisma db push`; este archivo solo carga datos.
 -- Datos tomados de dump.sql, corregidos y completados con lo que faltaba.
 -- Todas las contraseñas son "123456".
