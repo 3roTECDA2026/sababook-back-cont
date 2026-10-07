@@ -60,8 +60,8 @@ const esBloqueRepetido = (texto: string): boolean => {
   return false;
 };
 
-/** Racha del mismo carácter: "siiii", "holaaa", "!!!!". */
-const tieneRacha = (texto: string): boolean => /(.)\1{2,}/.test(texto);
+/** Racha de la misma letra: "siiii", "holaaa". Coincide con el servicio (solo letras). */
+const tieneRacha = (texto: string): boolean => /([a-záéíóúüñ])\1{2,}/.test(texto);
 
 /** Solo dígitos: "123", "4564132451". */
 const esSoloNumeros = (texto: string): boolean => /^\d+$/.test(texto.trim());
@@ -79,7 +79,7 @@ const analizar = (comentario: string): { confianza: Confianza; motivos: string[]
   if (texto.length < 5) motivos.push(MOTIVOS_MINIMOS[0]);
   else if (texto.length < 10) motivos.push(MOTIVOS_MINIMOS[1]);
 
-const teclado = esAtaqueTeclado(texto);
+  const teclado = esAtaqueTeclado(texto);
   const repetido = esCaracterRepetido(texto);
   const bloque = esBloqueRepetido(texto);
   const racha = tieneRacha(texto);

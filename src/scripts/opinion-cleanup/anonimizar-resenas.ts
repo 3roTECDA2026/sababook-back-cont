@@ -101,8 +101,10 @@ const main = async () => {
     console.log('Las calificaciones y los usuarios se conservaron.');
   }
 
+  const librosAfectados = [...new Set(opinions.map((o) => o.libro_id))].sort((a, b) => a - b);
   console.log(
-    '\nRecordatorio: /bookdetails/9 se cachea en el navegador. Recargar con Ctrl+Shift+R para verificar.\n',
+    `\nRecordatorio: las páginas /bookdetails/<id> (libros afectados: ${librosAfectados.join(', ')}) ` +
+      'se cachean en el navegador. Recargar con Ctrl+Shift+R para verificar.\n',
   );
 
   await prisma.$disconnect();

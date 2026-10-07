@@ -30,7 +30,8 @@ const esAtaqueTeclado = (texto: string): boolean => {
 const esRepetitivo = (texto: string): boolean => {
   const limpio = texto.toLowerCase().replace(/\s/g, '');
   if (limpio.length < 4) return false;
-  if (/(\w)\1{2,}/.test(limpio)) return true;
+  // Solo letras: los dígitos ("1000") no cuentan para la racha.
+  if (/([a-záéíóúüñ])\1{2,}/.test(limpio)) return true;
   if (new Set(limpio).size <= 2) return true;
   for (let largo = 1; largo <= 3; largo++) {
     if (limpio.length % largo !== 0) continue;
