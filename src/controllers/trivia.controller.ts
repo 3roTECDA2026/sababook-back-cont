@@ -76,12 +76,9 @@ class TriviaController {
       }
 
       const isAdmin = Number(req.userRole) === 3;
-      if (!isAdmin) {
+      if (!isAdmin && numericCursoId !== null) {
         if (!req.userId) {
           return res.status(401).json({ error: 'Authentication required' });
-        }
-        if (!numericCursoId) {
-          return res.status(400).json({ error: 'cursoId is required to assign the question to a course' });
         }
         const esDocente = await triviaModel.isDocenteDeCurso(req.userId, numericCursoId);
         if (!esDocente) {
@@ -242,12 +239,9 @@ class TriviaController {
       }
 
       const isAdmin = Number(req.userRole) === 3;
-      if (!isAdmin) {
+      if (!isAdmin && numericCursoId !== null) {
         if (!req.userId) {
           return res.status(401).json({ error: 'Authentication required' });
-        }
-        if (!numericCursoId) {
-          return res.status(400).json({ error: 'cursoId is required to assign the evaluation to a course' });
         }
         const esDocente = await triviaModel.isDocenteDeCurso(req.userId, numericCursoId);
         if (!esDocente) {
