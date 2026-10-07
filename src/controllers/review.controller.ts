@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { reviewService } from '../services/review.service';
+import { validarComentarioOpinion } from '../services/opinion-content.service';
 
 class ReviewController {
   async getAllOpinions(req: Request, res: Response) {
@@ -43,6 +44,11 @@ class ReviewController {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
+      const validacion = validarComentarioOpinion(comentario);
+      if (!validacion.valido) {
+        return res.status(400).json({ error: validacion.error });
+      }
+
       const newOpinion = await reviewService.createOpinion({
         usuario_id,
         libro_id,
@@ -76,6 +82,13 @@ class ReviewController {
 
       if (userRole !== 3 && userId !== existingOpinion.usuario_id) {
         return res.status(403).json({ error: 'Not authorized to modify this opinion' });
+      }
+
+      if (req.body.comentario !== undefined) {
+        const validacion = validarComentarioOpinion(req.body.comentario);
+        if (!validacion.valido) {
+          return res.status(400).json({ error: validacion.error });
+        }
       }
 
       const updatedFields = req.body;
