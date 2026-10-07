@@ -1,6 +1,6 @@
-// src/services/review.service.ts
 import { opinionModel } from '../models/opinion.model';
 import { medalService } from './medal.service';
+import { prisma } from '../db/connect/db';
 import leoProfanity from 'leo-profanity';
 
 // Cargar diccionarios de moderación
@@ -36,6 +36,35 @@ class ReviewService {
 
   async createOpinion(data: CreateOpinionDTO) {
     const comentarioLimpio = this.limpiarComentario(data.comentario);
+
+    // Anti-duplicados e idempotencia: si el usuario ya envió la misma reseña recientemente (< 60 segundos), devolver la existente
+    const duplicadoReciente = await prisma.opinion.findFirst({
+      where: {
+        usuario_id: data.usuario_id,
+        libro_id: data.libro_id,
+      },
+      orderBy: { fecha: 'desc' },
+      include: {
+        usuario: { select: { nombre: true } },
+      },
+    });
+
+    if (duplicadoReciente) {
+      const ahora = Date.now();
+      const fechaCreacion = new Date(duplicadoReciente.fecha ?? 0).getTime();
+      const sesentaSegundos = 60 * 1000;
+      if (ahora - fechaCreacion < sesentaSegundos && duplicadoReciente.comentario === comentarioLimpio) {
+        return {
+          opinion_id: duplicadoReciente.opinion_id,
+          usuario_id: duplicadoReciente.usuario_id,
+          usuario_nombre: duplicadoReciente.usuario?.nombre ?? '',
+          libro_id: duplicadoReciente.libro_id,
+          calificacion: duplicadoReciente.calificacion,
+          comentario: duplicadoReciente.comentario ?? '',
+          fecha: duplicadoReciente.fecha ?? new Date(),
+        };
+      }
+    }
 
     const newOpinion = await opinionModel.createOpinion({
       ...data,
