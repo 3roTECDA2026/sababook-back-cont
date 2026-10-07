@@ -9,18 +9,19 @@ import {
   obtenerForoConComentarios,
 } from '../controllers/forum.controller';
 import { crearComentario } from '../controllers/comment.controller';
+import { moderateContent } from '../modules/moderation/middleware/moderate-content';
 
 const router = Router();
 
 // Foros
-router.post('/', crearForo);
+router.post('/', moderateContent(['titulo', 'descripcion'], 'foro'), crearForo);
 router.get('/', obtenerForos);
 router.get('/:id', obtenerForo);
-router.put('/:id', actualizarForo);
+router.put('/:id', moderateContent(['titulo', 'descripcion'], 'foro'), actualizarForo);
 router.delete('/:id', eliminarForo);
 
 // Comentarios
 router.get('/:id/comentarios', obtenerForoConComentarios);
-router.post('/:id/comentarios', crearComentario); // <-- esta línea es la que faltaba
+router.post('/:id/comentarios', moderateContent(['contenido'], 'comentario_foro'), crearComentario);
 
 export default router;

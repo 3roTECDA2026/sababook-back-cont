@@ -3,6 +3,8 @@ node_modules/
 
 # Ignorar archivos de entorno
 .env
+.env.*
+!.env.example
 
 # Ignorar archivos del sistema
 .DS_Store
@@ -12,6 +14,10 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Archivos locales del editor
+.vscode/
+.idea/
 
 # Ignorar lock si no querés subirlo
 package-lock.json
