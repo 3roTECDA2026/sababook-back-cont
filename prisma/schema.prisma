@@ -30,27 +30,29 @@ model rol {
 }
 
 model usuario {
-  usuario_id           Int                    @id @default(autoincrement())
-  nombre               String                 @db.VarChar(100)
-  email                String                 @unique @db.VarChar(255)
-  contrasena           String
-  rol_id               Int?
-  fecha_registro       DateTime               @default(now()) @db.Timestamptz(6)
-  perfil_completo      Boolean                @default(false)
-  avatar_url           String?
-  nivel_educativo      String?                @db.VarChar(50)
-  comentario_foro      comentario_foro[]
-  exportacion          exportacion[]
-  favorito             favorito[]
-  foro                 foro[]
-  lista_lectura        lista_lectura[]
-  opinion              opinion[]
-  rol                  rol?                   @relation(fields: [rol_id], references: [rol_id], onDelete: NoAction, onUpdate: NoAction)
-  usuario_club_lectura usuario_club_lectura[]
-  usuario_medalla      usuario_medalla[]
-  meta_lectura         meta_lectura[]
-  actividad_feed       actividad_feed[]
+  usuario_id            Int                     @id @default(autoincrement())
+  nombre                String                  @db.VarChar(100)
+  email                 String                  @unique @db.VarChar(255)
+  contrasena            String
+  rol_id                Int?
+  fecha_registro        DateTime                @default(now()) @db.Timestamptz(6)
+  perfil_completo       Boolean                 @default(false)
+  avatar_url            String?
+  nivel_educativo       String?                 @db.VarChar(50)
+  comentario_foro       comentario_foro[]
+  exportacion           exportacion[]
+  favorito              favorito[]
+  foro                  foro[]
+  lista_lectura         lista_lectura[]
+  opinion               opinion[]
+  rol                   rol?                    @relation(fields: [rol_id], references: [rol_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario_club_lectura  usuario_club_lectura[]
+  usuario_medalla       usuario_medalla[]
+  meta_lectura          meta_lectura[]
+  actividad_feed        actividad_feed[]
   incidencia_moderacion incidencia_moderacion[]
+  curso_docente         curso_docente[]
+  inscripcion           inscripcion[]
 
   @@index([rol_id])
 }
@@ -65,10 +67,10 @@ model actividad_feed {
   tipo         TipoActividad
   titulo       String        @db.VarChar(255)
   descripcion  String?       @db.Text
-  entidad_id   Int?          // ID referencial opcional (libro_id, foro_id, episodio_id)
+  entidad_id   Int? // ID referencial opcional (libro_id, foro_id, episodio_id)
   fecha        DateTime      @default(now()) @db.Timestamptz(6)
 
-  usuario      usuario?      @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull)
+  usuario usuario? @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull)
 
   @@index([fecha(sort: Desc)])
 }
@@ -78,23 +80,24 @@ model actividad_feed {
 // ------------------------------------------------------
 
 model libro {
-  libro_id              Int                 @id @default(autoincrement())
-  titulo                String              @db.VarChar(255)
-  autor                 String              @db.VarChar(255)
-  genero                String?             @db.VarChar(100)
+  libro_id              Int     @id @default(autoincrement())
+  titulo                String  @db.VarChar(255)
+  autor                 String  @db.VarChar(255)
+  genero                String? @db.VarChar(100)
   descripcion           String?
   portada_url           String?
-  nivel_educativo       String?             @db.VarChar(50)
+  nivel_educativo       String? @db.VarChar(50)
   calificacion_promedio Float?
-  activo                Boolean             @default(true)
-  pagina_actual         Int?                @default(0)
-  paginas_totales       Int?                @default(100)
+  activo                Boolean @default(true)
+  pagina_actual         Int?    @default(0)
+  paginas_totales       Int?    @default(100)
 
   //Relaciones
-  favorito              favorito[]
-  lista_libro           lista_libro[]
-  opinion               opinion[]
-  recurso_educativo     recurso_educativo[]
+  favorito          favorito[]
+  lista_libro       lista_libro[]
+  opinion           opinion[]
+  recurso_educativo recurso_educativo[]
+  curso_libro       curso_libro[]
 }
 
 model favorito {
@@ -177,19 +180,19 @@ model radio_episodio {
   audio_url     String    @db.Text
   programa      String?   @db.VarChar(100)
   fecha_emision DateTime? @default(now()) @db.Timestamptz(6)
-  
-  foro          foro[]
+
+  foro foro[]
 }
 
 model foro {
-  foro_id         Int               @id @default(autoincrement())
-  titulo          String            @db.VarChar(255)
-  descripcion     String?
-  creador_id      Int?
-  episodio_id     Int?              // Vinculación opcional con Radio Sábato
-  es_apl          Boolean           @default(false)
-  fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
-  
+  foro_id        Int       @id @default(autoincrement())
+  titulo         String    @db.VarChar(255)
+  descripcion    String?
+  creador_id     Int?
+  episodio_id    Int? // Vinculación opcional con Radio Sábato
+  es_apl         Boolean   @default(false)
+  fecha_creacion DateTime? @default(now()) @db.Timestamptz(6)
+
   comentario_foro comentario_foro[]
   usuario         usuario?          @relation(fields: [creador_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
   radio_episodio  radio_episodio?   @relation(fields: [episodio_id], references: [episodio_id], onDelete: SetNull)
@@ -300,4 +303,64 @@ model incidencia_moderacion {
 
   @@index([usuario_id])
   @@index([fecha])
+}
+
+// ------------------------------------------------------
+// SAB 031 CURSOS, MATERIAS Y ASIGNACIONES 
+// ------------------------------------------------------
+
+model materia {
+  materia_id Int     @id @default(autoincrement())
+  nombre     String  @unique @db.VarChar(100)
+  curso      curso[]
+}
+
+model curso {
+  curso_id      Int             @id @default(autoincrement())
+  anio          Int
+  division      String          @db.VarChar(5)
+  anio_lectivo  Int
+  materia_id    Int
+  materia       materia         @relation(fields: [materia_id], references: [materia_id], onDelete: NoAction, onUpdate: NoAction)
+  curso_docente curso_docente[]
+  curso_libro   curso_libro[]
+  inscripcion   inscripcion[]
+
+  @@unique([anio, division, anio_lectivo])
+  @@index([materia_id])
+}
+
+model curso_docente {
+  curso_id   Int
+  usuario_id Int
+  curso      curso   @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([curso_id, usuario_id])
+  @@index([usuario_id])
+}
+
+model curso_libro {
+  curso_id Int
+  libro_id Int
+  puntaje  Int
+  curso    curso @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  libro    libro @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([curso_id, libro_id])
+  @@index([libro_id])
+}
+
+model inscripcion {
+  inscripcion_id    Int      @id @default(autoincrement())
+  usuario_id        Int
+  curso_id          Int
+  anio_lectivo      Int
+  fecha_inscripcion DateTime @default(now()) @db.Timestamptz(6)
+  usuario           usuario  @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+  curso             curso    @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([usuario_id, anio_lectivo])
+  @@index([curso_id])
+  @@index([usuario_id])
 }
