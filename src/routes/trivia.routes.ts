@@ -1,7 +1,7 @@
 // src/routes/trivia.routes.ts
 import { Router } from 'express';
 import TriviaController from '../controllers/trivia.controller';
-import { verifyToken } from '../middleware/auth.middleware';
+import { verifyToken, optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -10,8 +10,8 @@ router.get('/evaluacion/curso/:cursoId', verifyToken, TriviaController.getEvalua
 router.post('/evaluacion', verifyToken, TriviaController.createEvaluation);
 router.get('/evaluacion/:evaluationId', TriviaController.getEvaluationById);
 
-router.get('/jugar/libro/:bookId', TriviaController.getTriviaForPlay);
-router.get('/jugar/evaluacion/:evaluationId', TriviaController.getEvaluationForPlay);
+router.get('/jugar/libro/:bookId', optionalAuth, TriviaController.getTriviaForPlay);
+router.get('/jugar/evaluacion/:evaluationId', optionalAuth, TriviaController.getEvaluationForPlay);
 router.post('/jugar/check', verifyToken, TriviaController.checkAnswers);
 router.get('/jugar/evaluacion/:evaluationId/status', verifyToken, TriviaController.getAttemptStatus);
 

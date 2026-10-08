@@ -347,10 +347,42 @@ class TriviaModel {
     }
   }
 
-  async getEvaluationsByBook(bookId: number): Promise<Evaluacion[]> {
+  async getStudentCourseIds(userId: number): Promise<number[]> {
     try {
+      const rows = await prisma.inscripcion.findMany({
+        where: { usuario_id: userId },
+        select: { curso_id: true },
+      });
+      return rows.map((row) => row.curso_id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.getStudentCourseIds:', message);
+      throw error;
+    }
+  }
+
+  async getEvaluationCourse(evaluationId: number): Promise<number | null | undefined> {
+    try {
+      const row = await prisma.trivia_evaluacion.findUnique({
+        where: { evaluacion_id: evaluationId },
+        select: { curso_id: true },
+      });
+      return row ? row.curso_id : undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.getEvaluationCourse:', message);
+      throw error;
+    }
+  }
+
+  async getEvaluationsByBook(bookId: number, courseIds?: number[]): Promise<Evaluacion[]> {
+    try {
+      const where: any = { libro_id: bookId };
+      if (courseIds) {
+        where.OR = [{ curso_id: { in: courseIds } }, { curso_id: null }];
+      }
       const rows = await prisma.trivia_evaluacion.findMany({
-        where: { libro_id: bookId },
+        where,
         include: {
           _count: { select: { trivia_pregunta: true } },
         },
@@ -477,10 +509,14 @@ class TriviaModel {
     return playQuestion;
   }
 
-  async getTriviaForPlay(bookId: number): Promise<PlayQuestion[]> {
+  async getTriviaForPlay(bookId: number, courseIds?: number[]): Promise<PlayQuestion[]> {
     try {
+      const where: any = { libro_id: bookId, modo: 'trivia' };
+      if (courseIds) {
+        where.OR = [{ curso_id: { in: courseIds } }, { curso_id: null }];
+      }
       const rows = await prisma.trivia_pregunta.findMany({
-        where: { libro_id: bookId, modo: 'trivia' },
+        where,
         include: {
           opciones: { orderBy: { opcion_id: 'asc' } },
           pares: { orderBy: { orden: 'asc' } },
