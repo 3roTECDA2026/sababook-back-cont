@@ -1,9 +1,6 @@
 # Ignorar dependencias
 node_modules/
 
-# Ignorar archivos de build / compilación
-dist/
-
 # Ignorar archivos de entorno
 .env
 .env.*
@@ -28,6 +25,9 @@ yarn-error.log*
 
 # Instrucciones locales de agentes (no subir)
 AGENTS.md
+
+# Ignorar build
+dist/
 
 # Locks de herramientas locales
 skills-lock.json

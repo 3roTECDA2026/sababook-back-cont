@@ -36,6 +36,26 @@ export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction)
   }
 };
 
+export const optionalAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as TokenPayload;
+
+    req.userId = decoded.usuario_id ?? decoded.id;
+    req.userRole = decoded.rol_id ?? 1;
+  } catch {
+    req.userId = undefined;
+    req.userRole = undefined;
+  }
+
+  next();
+};
+
 /**
  * Middleware de Autorización: Verifica si el usuario autenticado tiene el rol requerido.
  * Se usa después de verifyToken.

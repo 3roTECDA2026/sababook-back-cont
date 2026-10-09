@@ -16,6 +16,7 @@ import metaLecturaRoutes from './src/routes/metaLectura.routes';
 import moderationRoutes from './src/modules/moderation/routes/moderation.routes';
 import readingListRoutes from './src/routes/readingList.routes';
 import reviewRoutes from './src/routes/review.routes';
+import triviaRoutes from './src/routes/trivia.routes';
 import userRoutes from './src/routes/user.routes';
 import radioRoutes from './src/routes/radio.routes';
 
@@ -63,6 +64,7 @@ app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/radio', radioRoutes);
 app.use('/api/v1/cafes', cafeRoutes);
+app.use('/api/v1/trivia', triviaRoutes);
 app.use('/api/v1/moderation', moderationRoutes);
 
 // -------------------------------------------------------------

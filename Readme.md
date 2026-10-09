@@ -17,22 +17,28 @@ Este repositorio contiene el servicio de **API RESTful** para la Biblioteca E. C
 | Componente | Tecnología | Propósito |
 | :--- | :--- | :--- |
 | **Framework** | **Express.js** (Node.js) | Creación rápida de la API REST. |
-| **Base de Datos**| **Supabase (PostgreSQL)** | Persistencia de datos, alta confiabilidad (RNF7). |
+| **Base de Datos**| **PostgreSQL** | Persistencia de datos, alta confiabilidad (RNF7). |
+| **ORM** | **Prisma** | Modelado del esquema y versionado con Prisma Migrate. |
 | **Seguridad** | **JWT** | Mecanismo para la autenticación y control de sesión. |
 
 ##  Instalación y Ejecución Local
 
 ### 1. Prerrequisitos
 * [Node.js](https://nodejs.org/)
-* Una cuenta y proyecto activo en [Supabase](https://supabase.com/).
+* Una instancia de PostgreSQL 14 o superior accessible (local o remota).
 
 ### 2. Clonar el repositorio
 ```bash
-git clone [https://github.com/TurcoDev/sababook-back.git]
-cd sababook-back
+git clone https://github.com/3roTECDA2026/sababook-back-cont.git
+cd sababook-back-cont
+```
+
 ### 3. Instalar Dependencias
 
+```bash
 npm install
+```
+
 ### 4. Configurar Variables de Entorno
 
 Crea un archivo `.env` en la raíz (puedes copiar la plantilla desde `.env.example`):
@@ -55,25 +61,37 @@ DATABASE_URL="postgresql://postgres:[TU_CONTRASEÑA]@db.[TU_PROYECTO_REF].supaba
 > **Nota para Supabase Connection Pooling (IPv4 / PGBouncer):**  
 > Si usás el pooler de Supabase en puerto 6543, recordá incluir `?pgbouncer=true` al final del `DATABASE_URL`.
 
-### 5. Sincronizar el Esquema de Prisma con Supabase
+### 5. Aplicar las migraciones de la base de datos
 
-Para aplicar el esquema de la base de datos en Supabase y generar el cliente de Prisma:
+El esquema de Prisma (`prisma/schema.prisma`) se versiona con **Prisma Migrate**. Las
+migraciones viven en `prisma/migrations/`, por lo que el esquema queda auditado en el
+repositorio y cualquier equipo puede replicar la base desde cero.
 
 ```bash
-# Aplica las tablas y modelos definidos en prisma/schema.prisma a Supabase
-npm run db:push
+# Instala dependencias (postinstall ya corre prisma generate)
+npm install
 
-# Genera el cliente de Prisma
-npm run db:generate
+# Crea/aplica las migraciones en desarrollo y genera el cliente
+npm run prisma:migrate
+
+# Aplica las migraciones ya existentes sin prompts (CI / producción)
+npm run prisma:migrate:deploy
+
+# Verifica el estado de la base frente a las migraciones
+npm run prisma:migrate:status
+
+# Explorador visual de datos
+npm run prisma:studio
 ```
 
-Comandos útiles de Prisma:
+> **Importante:** ya no se debe usar `prisma db push` para reflejar cambios en el
+> repositorio, porque no genera archivos de migración. El flujo correcto es
+> `npm run prisma:migrate` (que crea la carpeta en `prisma/migrations/` y hay que
+> commitearla).
 
-| Comando | Qué hace |
-| :--- | :--- |
-| `npm run db:push` | Sincroniza el esquema de `prisma/schema.prisma` directamente en Supabase |
-| `npm run db:generate` | Regenera `@prisma/client` |
-| `npm run db:studio` | Abre la interfaz gráfica de Prisma Studio para explorar y editar los datos |
+La base ya incluye una migración inicial (`0_init`) con el esquema previo. Las
+migraciones nuevas son incrementales y solo agregan sus propias tablas: este
+módulo de trivia entra con `20260928000000_add_trivia`.
 
 ### 6. Iniciar el Servidor
 
@@ -82,5 +100,4 @@ npm run dev
 ```
 
 El servidor estará disponible en `http://localhost:3001`.
-
 
