@@ -2,23 +2,25 @@ import 'dotenv/config'; // <-- Mantiene la carga del .env
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 
-import userRoutes from './src/routes/user.routes';
-import { testConnection } from './src/db/connect/db';
+// Importación de rutas sin extensión .js
 import authRoutes from './src/routes/auth.routes';
 import bookRoutes from './src/routes/book.routes';
+import cafeRoutes from './src/routes/cafe.routes';
+import commentRoutes from './src/routes/comment.routes';
 import favoriteRoutes from './src/routes/favorite.routes';
-import medalRoutes from './src/routes/medal.routes';
-import metaLecturaRoutes from './src/routes/metaLectura.routes';
-import feedRoutes from './src/routes/feed.routes';
+import feedRoutes from './src/routes/feed.routes'; // <-- AGREGADO
 import forumRoutes from './src/routes/forum.routes';
 import listRoutes from './src/routes/list.routes';
+import medalRoutes from './src/routes/medal.routes';
+import metaLecturaRoutes from './src/routes/metaLectura.routes';
+import moderationRoutes from './src/modules/moderation/routes/moderation.routes';
 import readingListRoutes from './src/routes/readingList.routes';
 import reviewRoutes from './src/routes/review.routes';
-import radioRoutes from './src/routes/radio.routes';
 import triviaRoutes from './src/routes/trivia.routes';
-import commentRoutes from './src/routes/comment.routes';
-import moderationRoutes from './src/modules/moderation/routes/moderation.routes';
+import userRoutes from './src/routes/user.routes';
+import radioRoutes from './src/routes/radio.routes';
 
+import { testConnection } from './src/db/connect/db';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -61,6 +63,7 @@ app.use('/api/v1/reading-lists', readingListRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/radio', radioRoutes);
+app.use('/api/v1/cafes', cafeRoutes);
 app.use('/api/v1/trivia', triviaRoutes);
 app.use('/api/v1/moderation', moderationRoutes);
 
@@ -78,6 +81,7 @@ app.use('/api/v1/opiniones', reviewRoutes);      // Alias español para opinione
 app.use('/api/v1/comentarios', commentRoutes);  // Alias español para comentarios
 app.use('/api/v1/lista-lectura', readingListRoutes); // Alias español para lista de lectura
 app.use('/api/v1/radio-sabato', radioRoutes);  // Alias en español para la radio
+app.use('/api/v1/cafe', cafeRoutes);  // Alias singular en español para los cafés
 app.use('/api/v1/moderacion', moderationRoutes); // Alias en español para moderación
 
 app.get('/', (req: Request, res: Response) => {

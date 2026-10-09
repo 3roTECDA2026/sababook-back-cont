@@ -40,16 +40,26 @@ npm install
 ```
 
 ### 4. Configurar Variables de Entorno
-Crea un archivo .env en la raíz con la siguiente información:
+
+Crea un archivo `.env` en la raíz (puedes copiar la plantilla desde `.env.example`):
 
 ```bash
+cp .env.example .env
+```
+
+Configura tu string de conexión de **Supabase (PostgreSQL)** en la variable `DATABASE_URL`:
+
+```env
 # Configuración de la API
-PORT=3000
+PORT=3001
 JWT_SECRET="una_clave_secreta_fuerte_aqui"
 
-# Conexión a PostgreSQL (usada por Prisma)
-DATABASE_URL="postgresql://usuario:password@localhost:5432/sababook"
+# Conexión a Supabase (PostgreSQL)
+DATABASE_URL="postgresql://postgres:[TU_CONTRASEÑA]@db.[TU_PROYECTO_REF].supabase.co:5432/postgres"
 ```
+
+> **Nota para Supabase Connection Pooling (IPv4 / PGBouncer):**  
+> Si usás el pooler de Supabase en puerto 6543, recordá incluir `?pgbouncer=true` al final del `DATABASE_URL`.
 
 ### 5. Aplicar las migraciones de la base de datos
 
@@ -89,7 +99,5 @@ módulo de trivia entra con `20260928000000_add_trivia`.
 npm run dev
 ```
 
-El servidor estará disponible en http://localhost:3000.
-
-
+El servidor estará disponible en `http://localhost:3001`.
 
