@@ -1,6 +1,7 @@
 // src/models/user.model.ts
 import { prisma } from '../db/connect/db';
 import bcrypt from 'bcrypt';
+import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
 
 export interface User {
   usuario_id: number;
@@ -213,6 +214,36 @@ class UserModel {
       throw new Error('Failed to delete user from the database.');
     }
   }
+
+  async getUsersPaginated(pagination: PaginationParams): Promise<Paginated<UserConRol>> {
+  try {
+    const [users, total] = await prisma.$transaction([
+      prisma.usuario.findMany({
+        include: { rol: { select: { nombre_rol: true } } },
+        orderBy: { usuario_id: 'asc' },
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+      prisma.usuario.count(),
+    ]);
+
+    const data = users.map((u) => ({
+      usuario_id: u.usuario_id,
+      nombre: u.nombre,
+      email: u.email,
+      rol: u.rol?.nombre_rol ?? '',
+      fecha_registro: u.fecha_registro ?? new Date(),
+      perfil_completo: u.perfil_completo ?? false,
+      avatar_url: u.avatar_url,
+      nivel_educativo: u.nivel_educativo,
+    }));
+
+    return buildPaginated(data, total, pagination);
+  } catch (error) {
+    console.error('Error UserModel.getUsersPaginated:', error);
+    throw new Error('Failed to retrieve users.');
+  }
+}
 }
 
 export const userModel = new UserModel();
