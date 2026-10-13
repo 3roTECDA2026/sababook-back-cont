@@ -18,6 +18,7 @@ import radioRoutes from './src/routes/radio.routes';
 import triviaRoutes from './src/routes/trivia.routes';
 import commentRoutes from './src/routes/comment.routes';
 import subjectRoutes from './src/routes/subject.routes';
+import courseRoutes from './src/routes/course.routes';
 import moderationRoutes from './src/modules/moderation/routes/moderation.routes';
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/radio', radioRoutes);
 app.use('/api/v1/trivia', triviaRoutes);
 app.use('/api/v1/subjects', subjectRoutes);
+app.use('/api/v1/courses', courseRoutes);
 app.use('/api/v1/moderation', moderationRoutes);
 
 // -------------------------------------------------------------
