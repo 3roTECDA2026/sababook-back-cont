@@ -72,7 +72,7 @@ class FavoriteController {
         return res.status(400).json({ error: 'User ID missing in token' });
       }
 
-      const statuses = await favoriteModel.getReadingStatusesByUser(usuario_id);
+      const statuses = await favoriteService.getReadingStatusesByUser(usuario_id);
       return res.status(200).json(statuses);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -91,7 +91,7 @@ class FavoriteController {
         return res.status(400).json({ error: 'Invalid book ID or reading status' });
       }
 
-      const updated = await favoriteModel.updateReadingStatus(usuario_id, libro_id, estado_lectura);
+      const updated = await favoriteService.updateReadingStatus(usuario_id, libro_id, estado_lectura);
 
       if (!updated) {
         return res.status(404).json({ error: 'Favorite not found' });
