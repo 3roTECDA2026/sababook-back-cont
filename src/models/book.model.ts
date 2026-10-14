@@ -77,33 +77,9 @@ export const obtenerPorId = async (id: number): Promise<Libro | null> => {
 };
 
 // Buscar libros con filtros
-export const buscarLibros = async ({
-  query,
-  genero,
-  nivel_educativo,
-}: BuscarLibrosFiltros): Promise<Libro[]> => {
+export const buscarLibros = async (filtros: BuscarLibrosFiltros): Promise<Libro[]> => {
   try {
-    const whereClause: Prisma.libroWhereInput = {};
-
-    if (query && query.trim() !== '') {
-      const cleanQuery = query.trim();
-      whereClause.OR = [
-        { titulo: { contains: cleanQuery, mode: 'insensitive' } },
-        { autor: { contains: cleanQuery, mode: 'insensitive' } },
-      ];
-    }
-
-    if (genero) {
-      whereClause.genero = genero;
-    }
-
-    if (nivel_educativo) {
-      whereClause.nivel_educativo = nivel_educativo;
-    }
-
-    return await prisma.libro.findMany({
-      where: whereClause,
-    });
+    return await prisma.libro.findMany({ where: construirWhere(filtros) });
   } catch (error) {
     console.error('Error al buscar libros:', error);
     throw error;

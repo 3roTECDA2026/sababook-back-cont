@@ -21,12 +21,14 @@ const toInt = (v: unknown): number | undefined => {
 /**
  * Devuelve null si el cliente no pidió paginación (modo legacy).
  */
+const isEmpty = (v: unknown) => v === undefined || v === null || v === '';
+
 export function parsePagination(
   query: { page?: unknown; limit?: unknown },
   defaultLimit = 10,
   maxLimit = 50
 ): PaginationParams | null {
-  if (query.page === undefined && query.limit === undefined) return null;
+  if (isEmpty(query.page) && isEmpty(query.limit)) return null;
 
   const page = Math.max(toInt(query.page) ?? 1, 1);
   const limit = Math.min(Math.max(toInt(query.limit) ?? defaultLimit, 1), maxLimit);
