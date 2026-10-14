@@ -1,6 +1,7 @@
 // src/controllers/book.controller.ts
 import { Request, Response } from 'express';
 import { bookService } from '../services/book.service';
+import { parsePagination } from '../utils/pagination';
 
 class BookController {
   async crear(req: Request, res: Response) {
@@ -41,16 +42,28 @@ class BookController {
   }
 
   async buscar(req: Request, res: Response) {
-    try {
-      const libros = await bookService.buscarLibros(
-        req.query as { query?: string; genero?: string; nivel_educativo?: string }
-      );
-      res.json(libros);
-    } catch (error) {
-      console.error('Error al buscar libros:', error);
-      res.status(500).json({ mensaje: 'Error al buscar libros' });
+  try {
+    const { query, genero, nivel_educativo } = req.query as {
+      query?: string;
+      genero?: string;
+      nivel_educativo?: string;
+    };
+    const filtros = { query, genero, nivel_educativo };
+
+    const pagination = parsePagination(req.query);
+    if (pagination) {
+      const resultado = await bookService.buscarLibrosPaginado(filtros, pagination);
+      return res.json(resultado);
     }
+
+    // Modo legacy: sin page/limit devuelve el array completo
+    const libros = await bookService.buscarLibros(filtros);
+    res.json(libros);
+  } catch (error) {
+    console.error('Error al buscar libros:', error);
+    res.status(500).json({ mensaje: 'Error al buscar libros' });
   }
+}
 
   async actualizar(req: Request, res: Response) {
     const id = parseInt(String(req.params.id), 10);
