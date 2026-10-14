@@ -1,5 +1,5 @@
 // src/services/favorite.service.ts
-import { favoriteModel } from '../models/favorite.model';
+import { favoriteModel, ReadingStatus } from '../models/favorite.model';
 
 class FavoriteService {
   async getAllFavorites() {
@@ -12,6 +12,18 @@ class FavoriteService {
 
   async getFavoritesByUser(usuarioId: number) {
     return await favoriteModel.getFavoritesByUser(usuarioId);
+  }
+
+  async getReadingStatusesByUser(usuarioId: number) {
+    return await favoriteModel.getReadingStatusesByUser(usuarioId);
+  }
+
+  async updateReadingStatus(
+    usuarioId: number,
+    libroId: number,
+    estadoLectura: ReadingStatus
+  ) {
+    return await favoriteModel.updateReadingStatus(usuarioId, libroId, estadoLectura);
   }
 
   async deleteFavorite(usuarioId: number, libroId: number) {
