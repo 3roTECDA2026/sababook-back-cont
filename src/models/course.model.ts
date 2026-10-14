@@ -12,8 +12,8 @@ export interface DatosCurso {
 export interface FiltrosCursos {
   anio_lectivo?: number;
   materia_id?: number;
+  docente_id?: number;
 }
-
 export interface MateriaCurso {
   materia_id: number;
   nombre: string;
@@ -60,6 +60,9 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
     where: {
       anio_lectivo: filtros.anio_lectivo,
       materia_id: filtros.materia_id,
+      curso_docente: filtros.docente_id
+        ? { some: { usuario_id: filtros.docente_id } }
+        : undefined,
     },
     include: {
       materia: { select: { materia_id: true, nombre: true } },
@@ -78,6 +81,7 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
     cantidad_libros: c._count.curso_libro,
   }));
 };
+
 
 export const obtenerCursoPorIdDB = async (curso_id: number): Promise<CursoDetalle | null> => {
   const c = await prisma.curso.findUnique({

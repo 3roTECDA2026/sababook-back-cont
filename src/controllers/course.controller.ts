@@ -122,6 +122,11 @@ export const obtenerCursos = async (req: AuthRequest, res: Response): Promise<vo
     }
     filtros.materia_id = materiaId;
   }
+  
+  // ?mine=true devuelve solo los cursos donde el usuario logueado es docente
+  if (req.query.mine === 'true') {
+    filtros.docente_id = req.userId;
+  }
 
   try {
     const cursos = await courseService.obtenerTodos(filtros);
