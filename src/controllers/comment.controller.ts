@@ -1,13 +1,27 @@
 // src/controllers/comment.controller.ts
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { AuthRequest } from '../middleware/auth.middleware';
 import { commentService } from '../services/comment.service';
+import { TipoRol } from '@prisma/client';
 
-export const crearComentario = async (req: Request, res: Response) => {
+export const crearComentario = async (req: AuthRequest, res: Response) => {
   try {
-    const foro_id = parseInt(String(req.params.id), 10);
-    const { usuario_id, contenido } = req.body;
+    const usuario_id = req.userId;
+    if (!usuario_id) {
+      return res.status(401).json({ mensaje: 'Usuario no autenticado' });
+    }
 
-    const comentarioCompleto = await commentService.crearComentario(foro_id, usuario_id, contenido);
+    const foro_id = parseInt(String(req.params.id || req.body.foro_id), 10);
+    if (!foro_id || isNaN(foro_id)) {
+      return res.status(400).json({ mensaje: 'ID de foro inválido o faltante' });
+    }
+
+    const { contenido } = req.body;
+    if (!contenido || typeof contenido !== 'string' || !contenido.trim()) {
+      return res.status(400).json({ mensaje: 'El contenido del comentario es obligatorio' });
+    }
+
+    const comentarioCompleto = await commentService.crearComentario(foro_id, usuario_id, contenido.trim());
 
     res.status(201).json(comentarioCompleto);
   } catch (error) {
@@ -20,7 +34,7 @@ export const crearComentario = async (req: Request, res: Response) => {
   }
 };
 
-export const obtenerComentarios = async (req: Request, res: Response) => {
+export const obtenerComentarios = async (req: AuthRequest, res: Response) => {
   try {
     const foroId = req.params.foro_id ? parseInt(String(req.params.foro_id), 10) : undefined;
     const comentarios = await commentService.obtenerComentarios(foroId);
@@ -31,7 +45,7 @@ export const obtenerComentarios = async (req: Request, res: Response) => {
   }
 };
 
-export const obtenerComentario = async (req: Request, res: Response) => {
+export const obtenerComentario = async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(String(req.params.id), 10);
     const comentario = await commentService.obtenerComentarioPorId(id);
@@ -43,10 +57,28 @@ export const obtenerComentario = async (req: Request, res: Response) => {
   }
 };
 
-export const actualizarComentario = async (req: Request, res: Response) => {
+export const actualizarComentario = async (req: AuthRequest, res: Response) => {
   try {
+    const usuario_id = req.userId;
+    if (!usuario_id) {
+      return res.status(401).json({ mensaje: 'Usuario no autenticado' });
+    }
+
     const id = parseInt(String(req.params.id), 10);
-    const comentarioActualizado = await commentService.actualizarComentario(id, req.body.contenido);
+    const comentario = await commentService.obtenerComentarioPorId(id);
+    if (!comentario) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
+
+    // Solo el autor o un administrador pueden editarlo
+    if (comentario.usuario_id !== usuario_id && req.userRole !== TipoRol.ADMINISTRADOR) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para modificar este comentario' });
+    }
+
+    const { contenido } = req.body;
+    if (!contenido || typeof contenido !== 'string' || !contenido.trim()) {
+      return res.status(400).json({ mensaje: 'El contenido del comentario es obligatorio' });
+    }
+
+    const comentarioActualizado = await commentService.actualizarComentario(id, contenido.trim());
     if (!comentarioActualizado) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
     res.json({ mensaje: 'Comentario actualizado correctamente' });
   } catch (error) {
@@ -55,9 +87,22 @@ export const actualizarComentario = async (req: Request, res: Response) => {
   }
 };
 
-export const eliminarComentario = async (req: Request, res: Response) => {
+export const eliminarComentario = async (req: AuthRequest, res: Response) => {
   try {
+    const usuario_id = req.userId;
+    if (!usuario_id) {
+      return res.status(401).json({ mensaje: 'Usuario no autenticado' });
+    }
+
     const id = parseInt(String(req.params.id), 10);
+    const comentario = await commentService.obtenerComentarioPorId(id);
+    if (!comentario) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
+
+    // Solo el autor o un administrador pueden eliminarlo
+    if (comentario.usuario_id !== usuario_id && req.userRole !== TipoRol.ADMINISTRADOR) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para eliminar este comentario' });
+    }
+
     const comentarioEliminado = await commentService.eliminarComentario(id);
     if (!comentarioEliminado) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
     res.json({ mensaje: 'Comentario eliminado correctamente' });
