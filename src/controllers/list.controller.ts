@@ -15,7 +15,7 @@ class ListaController {
   // CREAR LISTA O RECOMENDACIÓN
   // =====================================================
 
-  async crear(req: Request, res: Response) {
+  async crear(req: AuthRequest, res: Response) {
     try {
       const {
         nombre,
@@ -28,7 +28,10 @@ class ListaController {
         libros,
       } = req.body;
 
-      const usuarioId = (req as AuthRequest).userId ?? req.body.usuarioId;
+      const usuarioId = req.userId;
+      if (!usuarioId) {
+        return res.status(401).json({ error: 'Usuario no autenticado.' });
+      }
 
       // 1. Validar campos obligatorios
       if (
