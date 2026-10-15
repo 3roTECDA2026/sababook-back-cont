@@ -9,6 +9,10 @@ interface UserAuth {
   email: string;
   contrasena: string;
   rol: TipoRol;
+  avatar_url: string | null;
+  nivel_educativo: string | null;
+  perfil_completo: boolean;
+  fecha_registro: Date;
 }
 
 class AuthModel {
@@ -22,6 +26,10 @@ class AuthModel {
           email: true,
           contrasena: true,
           rol: true,
+          avatar_url: true,
+          nivel_educativo: true,
+          perfil_completo: true,
+          fecha_registro: true,
         },
       });
 

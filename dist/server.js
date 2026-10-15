@@ -37,7 +37,11 @@ var AuthModel = class {
           nombre: true,
           email: true,
           contrasena: true,
-          rol: true
+          rol: true,
+          avatar_url: true,
+          nivel_educativo: true,
+          perfil_completo: true,
+          fecha_registro: true
         }
       });
       if (!user) {
@@ -269,7 +273,17 @@ var AuthService = class {
       message: "Inicio de sesi\xF3n exitoso.",
       token,
       userId: user.usuario_id,
-      rol: user.rol
+      rol: user.rol,
+      user: {
+        usuario_id: user.usuario_id,
+        nombre: user.nombre,
+        email: user.email,
+        rol: user.rol,
+        avatar_url: user.avatar_url,
+        nivel_educativo: user.nivel_educativo,
+        perfil_completo: user.perfil_completo,
+        fecha_registro: user.fecha_registro
+      }
     };
   }
   async register(userData) {

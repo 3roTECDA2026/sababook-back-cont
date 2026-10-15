@@ -34,6 +34,16 @@ class AuthService {
       token: token,
       userId: user.usuario_id,
       rol: user.rol,
+      user: {
+        usuario_id: user.usuario_id,
+        nombre: user.nombre,
+        email: user.email,
+        rol: user.rol,
+        avatar_url: user.avatar_url,
+        nivel_educativo: user.nivel_educativo,
+        perfil_completo: user.perfil_completo,
+        fecha_registro: user.fecha_registro,
+      },
     };
   }
 
