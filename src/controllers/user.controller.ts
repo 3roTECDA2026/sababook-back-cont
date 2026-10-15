@@ -1,18 +1,25 @@
 // src/controllers/user.controller.ts
 import { Request, Response } from 'express';
 import { userService } from '../services/user.service';
+import { parsePagination } from '../utils/pagination';
 
 class UserController {
   async getAllUsers(req: Request, res: Response) {
-    try {
-      const users = await userService.getAllUsers();
-      res.status(200).json(users);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('Error getting users:', message);
-      res.status(500).json({ error: 'Database connection not established' });
+  try {
+    const pagination = parsePagination(req.query, 5);
+    if (pagination) {
+      const result = await userService.getUsersPaginated(pagination);
+      return res.status(200).json(result);
     }
+
+    const users = await userService.getAllUsers();
+    res.status(200).json(users);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Error getting users:', message);
+    res.status(500).json({ error: 'Database connection not established' });
   }
+}
 
   async createUser(req: Request, res: Response) {
     try {

@@ -1,5 +1,6 @@
 // src/services/user.service.ts
 import { userModel } from '../models/user.model';
+import { PaginationParams } from '../utils/pagination';
 
 export interface CreateUserDTO {
   nombre: string;
@@ -33,6 +34,10 @@ class UserService {
   async deleteUser(id: number) {
     return await userModel.deleteUser(id);
   }
+
+  async getUsersPaginated(pagination: PaginationParams) {
+  return await userModel.getUsersPaginated(pagination);
+}
 }
 
 export const userService = new UserService();

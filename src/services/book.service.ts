@@ -7,8 +7,9 @@ import {
   eliminarLibro,
   crearLibro,
   eliminacionLogica as eliminacionLogicaModel,
+  buscarLibrosPaginado,
 } from '../models/book.model';
-
+import { PaginationParams } from '../utils/pagination';
 class BookService {
   async crearLibro(bookData: any) {
     return await crearLibro(bookData);
@@ -37,6 +38,13 @@ class BookService {
   async eliminacionLogica(id: number) {
     return await eliminacionLogicaModel(id);
   }
+
+  async buscarLibrosPaginado(
+  filters: { query?: string; genero?: string; nivel_educativo?: string },
+  pagination: PaginationParams
+) {
+  return await buscarLibrosPaginado(filters, pagination);
+}
 }
 
 export const bookService = new BookService();

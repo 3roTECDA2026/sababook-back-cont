@@ -110,11 +110,11 @@ activo                Boolean @default(true)
 }
 
 model favorito {
-  usuario_id    Int
-  libro_id      Int
-  estado_lectura String  @default("general") @db.VarChar(20)
-  libro         libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
-  usuario       usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
+  usuario_id Int
+  libro_id   Int
+  estado_lectura String @default("general") @db.VarChar(20)
+  libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
+  usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
   @@id([usuario_id, libro_id])
 }
@@ -171,10 +171,12 @@ model lista_lectura {
 }
 
 model lista_libro {
-  lista_id Int
-  libro_id Int
-  libro    libro @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
-  lista    lista @relation(fields: [lista_id], references: [lista_id], onDelete: Cascade, onUpdate: NoAction)
+  lista_id    Int
+  libro_id    Int
+  explicacion String? @db.Text
+
+  libro libro @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+  lista lista @relation(fields: [lista_id], references: [lista_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([lista_id, libro_id])
 }

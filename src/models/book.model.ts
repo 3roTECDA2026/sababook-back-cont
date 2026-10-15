@@ -1,6 +1,7 @@
 // src/models/book.model.ts
 import { Prisma, libro as Libro } from '@prisma/client';
 import { prisma } from '../db/connect/db';
+import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
 
 export interface CrearLibroData {
   titulo: string;
@@ -76,33 +77,9 @@ export const obtenerPorId = async (id: number): Promise<Libro | null> => {
 };
 
 // Buscar libros con filtros
-export const buscarLibros = async ({
-  query,
-  genero,
-  nivel_educativo,
-}: BuscarLibrosFiltros): Promise<Libro[]> => {
+export const buscarLibros = async (filtros: BuscarLibrosFiltros): Promise<Libro[]> => {
   try {
-    const whereClause: Prisma.libroWhereInput = {};
-
-    if (query && query.trim() !== '') {
-      const cleanQuery = query.trim();
-      whereClause.OR = [
-        { titulo: { contains: cleanQuery, mode: 'insensitive' } },
-        { autor: { contains: cleanQuery, mode: 'insensitive' } },
-      ];
-    }
-
-    if (genero) {
-      whereClause.genero = genero;
-    }
-
-    if (nivel_educativo) {
-      whereClause.nivel_educativo = nivel_educativo;
-    }
-
-    return await prisma.libro.findMany({
-      where: whereClause,
-    });
+    return await prisma.libro.findMany({ where: construirWhere(filtros) });
   } catch (error) {
     console.error('Error al buscar libros:', error);
     throw error;
@@ -163,6 +140,46 @@ export const eliminacionLogica = async (id: number): Promise<Libro> => {
     });
   } catch (error) {
     console.error(`Error en eliminación lógica del libro ${id}:`, error);
+    throw error;
+  }
+};
+
+const construirWhere = ({ query, genero, nivel_educativo }: BuscarLibrosFiltros) => {
+  const where: Prisma.libroWhereInput = {};
+
+  if (query && query.trim() !== '') {
+    const cleanQuery = query.trim();
+    where.OR = [
+      { titulo: { contains: cleanQuery, mode: 'insensitive' } },
+      { autor: { contains: cleanQuery, mode: 'insensitive' } },
+    ];
+  }
+  if (genero) where.genero = genero;
+  if (nivel_educativo) where.nivel_educativo = nivel_educativo;
+
+  return where;
+};
+
+export const buscarLibrosPaginado = async (
+  filtros: BuscarLibrosFiltros,
+  pagination: PaginationParams
+): Promise<Paginated<Libro>> => {
+  try {
+    const where = construirWhere(filtros);
+
+    const [data, total] = await prisma.$transaction([
+      prisma.libro.findMany({
+        where,
+        orderBy: { libro_id: 'asc' }, // orden estable: evita repetidos/saltos
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+      prisma.libro.count({ where }),
+    ]);
+
+    return buildPaginated(data, total, pagination);
+  } catch (error) {
+    console.error('Error al buscar libros paginados:', error);
     throw error;
   }
 };
