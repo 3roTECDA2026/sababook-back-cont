@@ -1,18 +1,25 @@
 // src/controllers/user.controller.ts
 import { Request, Response } from 'express';
-import { userModel } from '../models/user.model';
+import { userService } from '../services/user.service';
+import { parsePagination } from '../utils/pagination';
 
 class UserController {
   async getAllUsers(req: Request, res: Response) {
-    try {
-      const users = await userModel.getAllUsers();
-      res.status(200).json(users);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('Error getting users:', message);
-      res.status(500).json({ error: 'Database connection not established' });
+  try {
+    const pagination = parsePagination(req.query, 5);
+    if (pagination) {
+      const result = await userService.getUsersPaginated(pagination);
+      return res.status(200).json(result);
     }
+
+    const users = await userService.getAllUsers();
+    res.status(200).json(users);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Error getting users:', message);
+    res.status(500).json({ error: 'Database connection not established' });
   }
+}
 
   async createUser(req: Request, res: Response) {
     try {
@@ -20,7 +27,7 @@ class UserController {
       if (!newUser.nombre || !newUser.email || !newUser.contrasena || !newUser.rol_id) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
-      const result = await userModel.createUser(newUser);
+      const result = await userService.createUser(newUser);
       res.status(201).json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -36,7 +43,7 @@ class UserController {
       if (isNaN(userId)) {
         return res.status(400).json({ error: 'Invalid ID format' });
       }
-      const result = await userModel.updateUser(userId, updatedUser);
+      const result = await userService.updateUser(userId, updatedUser);
       return res.status(200).json(result);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -58,7 +65,7 @@ class UserController {
       if (!userId) {
         return res.status(400).json({ error: 'Invalid user ID' });
       }
-      await userModel.deleteUser(userId);
+      await userService.deleteUser(userId);
       return res.status(204).end();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -73,7 +80,7 @@ class UserController {
       if (!userId) {
         return res.status(400).json({ error: 'Invalid user ID' });
       }
-      const user = await userModel.getUserById(userId);
+      const user = await userService.getUserById(userId);
       if (user) {
         return res.status(200).json(user);
       } else {
