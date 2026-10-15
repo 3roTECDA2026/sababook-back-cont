@@ -2940,7 +2940,7 @@ var ListaController = class {
         bookIds,
         libros
       } = req.body;
-      const usuarioId = req.user?.id ?? req.usuarioId;
+      const usuarioId = req.userId ?? req.body.usuarioId;
       if (typeof nombre !== "string" || !nombre.trim() || typeof tipo !== "string" || !tipo.trim()) {
         return res.status(400).json({
           error: "Faltan campos obligatorios (nombre, tipo)."
@@ -5127,13 +5127,13 @@ var UserController = class {
   async createUser(req, res) {
     try {
       const newUser = req.body;
-      const rolRaw = newUser.rol || (newUser.rol_id === 3 ? "ADMINISTRADOR" : newUser.rol_id === 2 ? "DOCENTE" : "ALUMNO");
+      const rolRaw = newUser.rol ? String(newUser.rol).toUpperCase() : "ALUMNO";
       if (!newUser.nombre || !newUser.email || !newUser.contrasena) {
         return res.status(400).json({ error: "Missing required fields" });
       }
       const result = await userService.createUser({
         ...newUser,
-        rol: String(rolRaw).toUpperCase()
+        rol: rolRaw
       });
       res.status(201).json(result);
     } catch (error) {

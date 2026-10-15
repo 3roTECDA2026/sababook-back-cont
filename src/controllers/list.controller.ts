@@ -1,5 +1,6 @@
 
 import { Request, Response } from 'express';
+import { AuthRequest } from '../middleware/auth.middleware';
 import { listService } from '../services/list.service';
 import { prisma } from '../db/connect/db';
 
@@ -27,9 +28,7 @@ class ListaController {
         libros,
       } = req.body;
 
-      const usuarioId =
-        (req as any).user?.id ??
-        (req as any).usuarioId;
+      const usuarioId = (req as AuthRequest).userId ?? req.body.usuarioId;
 
       // 1. Validar campos obligatorios
       if (
