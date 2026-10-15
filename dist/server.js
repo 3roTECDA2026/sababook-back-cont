@@ -3499,17 +3499,12 @@ var updateIncidentState = async (incidenciaId, decision, revisorId) => {
 
 // src/modules/moderation/routes/moderation.routes.ts
 var router12 = Router12();
-var requireAdmin2 = (req, res, next) => {
-  const role = Number(req.userRole);
-  if (role === 1 || role === 3) return next();
-  return res.status(403).json({ error: "Acceso denegado. Permisos insuficientes." });
-};
-router12.get("/config", verifyToken, requireAdmin2, async (_req, res) => {
+router12.get("/config", verifyToken, requireAdmin, async (_req, res) => {
   const key = await getGeminiKey();
   const masked = key ? `${key.slice(0, 6)}...${key.slice(-4)}` : null;
   res.json({ configured: Boolean(key), maskedKey: masked });
 });
-router12.post("/config", verifyToken, requireAdmin2, async (req, res) => {
+router12.post("/config", verifyToken, requireAdmin, async (req, res) => {
   const { apiKey } = req.body;
   if (!apiKey || typeof apiKey !== "string") {
     return res.status(400).json({ error: "La API key de Gemini es requerida" });
@@ -3517,11 +3512,11 @@ router12.post("/config", verifyToken, requireAdmin2, async (req, res) => {
   await saveGeminiKey(apiKey);
   res.json({ ok: true, mensaje: "API key de Gemini configurada exitosamente" });
 });
-router12.get("/incidencias", verifyToken, requireAdmin2, async (_req, res) => {
+router12.get("/incidencias", verifyToken, requireAdmin, async (_req, res) => {
   const incidencias = await getIncidents(50);
   res.json(incidencias);
 });
-router12.patch("/incidencias/:id", verifyToken, requireAdmin2, async (req, res) => {
+router12.patch("/incidencias/:id", verifyToken, requireAdmin, async (req, res) => {
   const incidenciaId = Number(req.params.id);
   const { decision } = req.body;
   if (!Number.isInteger(incidenciaId)) {

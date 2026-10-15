@@ -1,17 +1,11 @@
 import { Router, Response } from 'express';
-import { verifyToken, requireRole, AuthRequest } from '../../../middleware/auth.middleware';
+import { verifyToken, requireAdmin, AuthRequest } from '../../../middleware/auth.middleware';
 import { getGeminiKey } from '../config/get-gemini-key';
 import { saveGeminiKey } from '../config/save-gemini-key';
 import { getIncidents } from '../repositories/get-incidents.repository';
 import { updateIncidentState } from '../repositories/update-incident-state.repository';
 
 const router = Router();
-
-const requireAdmin = (req: AuthRequest, res: Response, next: () => void) => {
-  const role = Number(req.userRole);
-  if (role === 1 || role === 3) return next();
-  return res.status(403).json({ error: 'Acceso denegado. Permisos insuficientes.' });
-};
 
 router.get('/config', verifyToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
   const key = await getGeminiKey();
