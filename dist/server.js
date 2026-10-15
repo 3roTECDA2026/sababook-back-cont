@@ -37,10 +37,10 @@ var AuthModel = class {
           nombre: true,
           email: true,
           contrasena: true,
-          rol_id: true
+          rol: true
         }
       });
-      if (!user || user.rol_id === null) {
+      if (!user) {
         return null;
       }
       return user;
@@ -55,17 +55,30 @@ var auth_model_default = new AuthModel();
 
 // src/models/user.model.ts
 import bcrypt from "bcrypt";
+
+// src/utils/pagination.ts
+var toInt = (v) => {
+  const n = parseInt(String(v), 10);
+  return Number.isFinite(n) ? n : void 0;
+};
+var isEmpty = (v) => v === void 0 || v === null || v === "";
+function parsePagination(query, defaultLimit = 10, maxLimit = 50) {
+  if (isEmpty(query.page) && isEmpty(query.limit)) return null;
+  const page = Math.max(toInt(query.page) ?? 1, 1);
+  const limit = Math.min(Math.max(toInt(query.limit) ?? defaultLimit, 1), maxLimit);
+  return { page, limit, skip: (page - 1) * limit };
+}
+function buildPaginated(data, total, { page, limit }) {
+  const totalPages = Math.max(Math.ceil(total / limit), 1);
+  return { data, total, page, limit, totalPages, hasMore: page < totalPages };
+}
+
+// src/models/user.model.ts
+import { TipoRol } from "@prisma/client";
 var UserModel = class {
   async getAllUsers() {
     try {
       const users = await prisma.usuario.findMany({
-        include: {
-          rol: {
-            select: {
-              nombre_rol: true
-            }
-          }
-        },
         orderBy: {
           usuario_id: "asc"
         }
@@ -74,7 +87,7 @@ var UserModel = class {
         usuario_id: u.usuario_id,
         nombre: u.nombre,
         email: u.email,
-        rol: u.rol?.nombre_rol ?? "",
+        rol: u.rol,
         fecha_registro: u.fecha_registro ?? /* @__PURE__ */ new Date(),
         perfil_completo: u.perfil_completo ?? false,
         avatar_url: u.avatar_url,
@@ -91,7 +104,7 @@ var UserModel = class {
       nombre,
       email,
       contrasena,
-      rol_id,
+      rol = TipoRol.ALUMNO,
       perfil_completo = false,
       avatar_url = null,
       nivel_educativo = null
@@ -104,7 +117,7 @@ var UserModel = class {
           nombre,
           email,
           contrasena: hashedPassword,
-          rol_id,
+          rol,
           fecha_registro,
           perfil_completo,
           avatar_url,
@@ -115,7 +128,7 @@ var UserModel = class {
           nombre: true,
           email: true,
           fecha_registro: true,
-          rol_id: true
+          rol: true
         }
       });
       return {
@@ -148,7 +161,7 @@ var UserModel = class {
         nombre: updatedUser.nombre,
         email: updatedUser.email,
         contrasena: updatedUser.contrasena,
-        rol_id: updatedUser.rol_id,
+        rol: updatedUser.rol,
         fecha_registro: updatedUser.fecha_registro ?? /* @__PURE__ */ new Date(),
         perfil_completo: updatedUser.perfil_completo ?? false,
         avatar_url: updatedUser.avatar_url,
@@ -166,21 +179,14 @@ var UserModel = class {
   async getUserById(userId) {
     try {
       const user = await prisma.usuario.findUnique({
-        where: { usuario_id: userId },
-        include: {
-          rol: {
-            select: {
-              nombre_rol: true
-            }
-          }
-        }
+        where: { usuario_id: userId }
       });
       if (!user) return null;
       return {
         usuario_id: user.usuario_id,
         nombre: user.nombre,
         email: user.email,
-        rol: user.rol?.nombre_rol ?? "",
+        rol: user.rol,
         fecha_registro: user.fecha_registro ?? /* @__PURE__ */ new Date(),
         perfil_completo: user.perfil_completo ?? false,
         avatar_url: user.avatar_url,
@@ -207,6 +213,32 @@ var UserModel = class {
       throw new Error("Failed to delete user from the database.");
     }
   }
+  async getUsersPaginated(pagination) {
+    try {
+      const [users, total] = await prisma.$transaction([
+        prisma.usuario.findMany({
+          orderBy: { usuario_id: "asc" },
+          skip: pagination.skip,
+          take: pagination.limit
+        }),
+        prisma.usuario.count()
+      ]);
+      const data = users.map((u) => ({
+        usuario_id: u.usuario_id,
+        nombre: u.nombre,
+        email: u.email,
+        rol: u.rol,
+        fecha_registro: u.fecha_registro ?? /* @__PURE__ */ new Date(),
+        perfil_completo: u.perfil_completo ?? false,
+        avatar_url: u.avatar_url,
+        nivel_educativo: u.nivel_educativo
+      }));
+      return buildPaginated(data, total, pagination);
+    } catch (error) {
+      console.error("Error UserModel.getUsersPaginated:", error);
+      throw new Error("Failed to retrieve users.");
+    }
+  }
 };
 var userModel = new UserModel();
 
@@ -223,17 +255,21 @@ var AuthService = class {
     if (!passwordMatch) {
       throw new Error("INVALID_CREDENTIALS");
     }
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error("JWT_SECRET_NOT_CONFIGURED");
+    }
     const payload = {
       usuario_id: user.usuario_id,
       nombre: user.nombre,
-      rol_id: user.rol_id
+      rol: user.rol
     };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const token = jwt.sign(payload, secret, { expiresIn: "1h", algorithm: "HS256" });
     return {
       message: "Inicio de sesi\xF3n exitoso.",
       token,
       userId: user.usuario_id,
-      rol: user.rol_id
+      rol: user.rol
     };
   }
   async register(userData) {
@@ -335,29 +371,9 @@ var obtenerPorId = async (id) => {
     throw error;
   }
 };
-var buscarLibros = async ({
-  query,
-  genero,
-  nivel_educativo
-}) => {
+var buscarLibros = async (filtros) => {
   try {
-    const whereClause = {};
-    if (query && query.trim() !== "") {
-      const cleanQuery = query.trim();
-      whereClause.OR = [
-        { titulo: { contains: cleanQuery, mode: "insensitive" } },
-        { autor: { contains: cleanQuery, mode: "insensitive" } }
-      ];
-    }
-    if (genero) {
-      whereClause.genero = genero;
-    }
-    if (nivel_educativo) {
-      whereClause.nivel_educativo = nivel_educativo;
-    }
-    return await prisma.libro.findMany({
-      where: whereClause
-    });
+    return await prisma.libro.findMany({ where: construirWhere(filtros) });
   } catch (error) {
     console.error("Error al buscar libros:", error);
     throw error;
@@ -412,6 +428,38 @@ var eliminacionLogica = async (id) => {
     throw error;
   }
 };
+var construirWhere = ({ query, genero, nivel_educativo }) => {
+  const where = {};
+  if (query && query.trim() !== "") {
+    const cleanQuery = query.trim();
+    where.OR = [
+      { titulo: { contains: cleanQuery, mode: "insensitive" } },
+      { autor: { contains: cleanQuery, mode: "insensitive" } }
+    ];
+  }
+  if (genero) where.genero = genero;
+  if (nivel_educativo) where.nivel_educativo = nivel_educativo;
+  return where;
+};
+var buscarLibrosPaginado = async (filtros, pagination) => {
+  try {
+    const where = construirWhere(filtros);
+    const [data, total] = await prisma.$transaction([
+      prisma.libro.findMany({
+        where,
+        orderBy: { libro_id: "asc" },
+        // orden estable: evita repetidos/saltos
+        skip: pagination.skip,
+        take: pagination.limit
+      }),
+      prisma.libro.count({ where })
+    ]);
+    return buildPaginated(data, total, pagination);
+  } catch (error) {
+    console.error("Error al buscar libros paginados:", error);
+    throw error;
+  }
+};
 
 // src/services/book.service.ts
 var BookService = class {
@@ -435,6 +483,9 @@ var BookService = class {
   }
   async eliminacionLogica(id) {
     return await eliminacionLogica(id);
+  }
+  async buscarLibrosPaginado(filters, pagination) {
+    return await buscarLibrosPaginado(filters, pagination);
   }
 };
 var bookService = new BookService();
@@ -477,9 +528,14 @@ var BookController = class {
   }
   async buscar(req, res) {
     try {
-      const libros = await bookService.buscarLibros(
-        req.query
-      );
+      const { query, genero, nivel_educativo } = req.query;
+      const filtros = { query, genero, nivel_educativo };
+      const pagination = parsePagination(req.query);
+      if (pagination) {
+        const resultado = await bookService.buscarLibrosPaginado(filtros, pagination);
+        return res.json(resultado);
+      }
+      const libros = await bookService.buscarLibros(filtros);
       res.json(libros);
     } catch (error) {
       console.error("Error al buscar libros:", error);
@@ -522,15 +578,84 @@ var BookController = class {
 };
 var book_controller_default = new BookController();
 
+// src/middleware/auth.middleware.ts
+import jwt2 from "jsonwebtoken";
+import { TipoRol as TipoRol2 } from "@prisma/client";
+var verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+  const token = authHeader.split(" ")[1];
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    return res.status(500).json({ message: "Server configuration error: JWT_SECRET not configured" });
+  }
+  try {
+    const decoded = jwt2.verify(token, secret, { algorithms: ["HS256"] });
+    req.userId = decoded.usuario_id ?? decoded.id;
+    req.userRole = decoded.rol ?? TipoRol2.ALUMNO;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
+var optionalAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next();
+  }
+  const token = authHeader.split(" ")[1];
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    return next();
+  }
+  try {
+    const decoded = jwt2.verify(token, secret, { algorithms: ["HS256"] });
+    req.userId = decoded.usuario_id ?? decoded.id;
+    req.userRole = decoded.rol ?? TipoRol2.ALUMNO;
+  } catch {
+    req.userId = void 0;
+    req.userRole = void 0;
+  }
+  next();
+};
+var requireRole = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.userRole || !allowedRoles.includes(req.userRole)) {
+      return res.status(403).json({ error: "Acceso denegado. Permisos insuficientes." });
+    }
+    next();
+  };
+};
+var requireAdmin = async (req, res, next) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: "Autenticaci\xF3n requerida." });
+  }
+  try {
+    const user = await prisma.usuario.findUnique({
+      where: { usuario_id: req.userId },
+      select: { rol: true }
+    });
+    if (user?.rol !== TipoRol2.ADMINISTRADOR) {
+      return res.status(403).json({ error: "Acceso denegado. Se requiere rol administrador." });
+    }
+    return next();
+  } catch (error) {
+    console.error("Error al verificar permisos de administrador:", error);
+    return res.status(500).json({ error: "No se pudieron verificar los permisos." });
+  }
+};
+
 // src/routes/book.routes.ts
 var router2 = Router2();
-router2.post("/", book_controller_default.crear);
 router2.get("/", book_controller_default.obtenerCatalogo);
 router2.get("/buscar", book_controller_default.buscar);
 router2.get("/:id", book_controller_default.verDetalle);
-router2.put("/:id", book_controller_default.actualizar);
-router2.delete("/:id", book_controller_default.eliminar);
-router2.patch("/inactivar/:id", book_controller_default.eliminacionLogica);
+router2.post("/", verifyToken, requireAdmin, book_controller_default.crear);
+router2.put("/:id", verifyToken, requireAdmin, book_controller_default.actualizar);
+router2.delete("/:id", verifyToken, requireAdmin, book_controller_default.eliminar);
+router2.patch("/inactivar/:id", verifyToken, requireAdmin, book_controller_default.eliminacionLogica);
 var book_routes_default = router2;
 
 // src/routes/cafe.routes.ts
@@ -1113,6 +1238,31 @@ var MedalModel = class {
       throw error;
     }
   }
+  // Obtener el catálogo completo de insignias, marcando cuáles tiene el usuario
+  async obtenerCatalogoConEstado(usuario_id) {
+    try {
+      const medallas = await prisma.medalla.findMany({
+        orderBy: { medalla_id: "asc" },
+        include: {
+          usuario_medalla: {
+            where: { usuario_id }
+          }
+        }
+      });
+      return medallas.map((m) => ({
+        medalla_id: m.medalla_id,
+        nombre: m.nombre,
+        descripcion: m.descripcion ?? "",
+        tipo_accion: m.tipo_accion ?? "",
+        obtenida: m.usuario_medalla.length > 0,
+        fecha_obtenida: m.usuario_medalla[0]?.fecha_obtenida ?? null
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error al obtener el cat\xE1logo de insignias:", message);
+      throw error;
+    }
+  }
 };
 var medalModel = new MedalModel();
 
@@ -1364,8 +1514,527 @@ router4.delete("/:id", eliminarComentario);
 router4.post("/:id/comentarios", crearComentario);
 var comment_routes_default = router4;
 
-// src/routes/favorite.routes.ts
+// src/routes/course.routes.ts
 import { Router as Router5 } from "express";
+
+// src/controllers/course.controller.ts
+import { Prisma } from "@prisma/client";
+
+// src/models/course.model.ts
+var obtenerCursosDB = async (filtros) => {
+  const cursos = await prisma.curso.findMany({
+    where: {
+      anio_lectivo: filtros.anio_lectivo,
+      materia_id: filtros.materia_id,
+      curso_docente: filtros.docente_id ? { some: { usuario_id: filtros.docente_id } } : void 0
+    },
+    include: {
+      materia: { select: { materia_id: true, nombre: true } },
+      _count: { select: { curso_docente: true, curso_libro: true } }
+    },
+    orderBy: [{ anio_lectivo: "desc" }, { anio: "asc" }, { division: "asc" }]
+  });
+  return cursos.map((c) => ({
+    curso_id: c.curso_id,
+    anio: c.anio,
+    division: c.division,
+    anio_lectivo: c.anio_lectivo,
+    materia: c.materia,
+    cantidad_docentes: c._count.curso_docente,
+    cantidad_libros: c._count.curso_libro
+  }));
+};
+var obtenerCursoPorIdDB = async (curso_id) => {
+  const c = await prisma.curso.findUnique({
+    where: { curso_id },
+    include: {
+      materia: { select: { materia_id: true, nombre: true } },
+      curso_docente: {
+        include: { usuario: { select: { usuario_id: true, nombre: true, email: true } } }
+      },
+      curso_libro: {
+        include: {
+          libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true } }
+        }
+      }
+    }
+  });
+  if (!c) return null;
+  return {
+    curso_id: c.curso_id,
+    anio: c.anio,
+    division: c.division,
+    anio_lectivo: c.anio_lectivo,
+    materia: c.materia,
+    docentes: c.curso_docente.map((cd) => cd.usuario),
+    libros: c.curso_libro.map((cl) => ({ ...cl.libro, puntaje: cl.puntaje }))
+  };
+};
+var existeCursoDB = async (curso_id) => {
+  const cantidad = await prisma.curso.count({ where: { curso_id } });
+  return cantidad > 0;
+};
+var crearCursoDB = async (datos) => {
+  return await prisma.curso.create({ data: datos });
+};
+var actualizarCursoDB = async (curso_id, datos) => {
+  return await prisma.curso.update({ where: { curso_id }, data: datos });
+};
+var eliminarCursoDB = async (curso_id) => {
+  await prisma.curso.delete({ where: { curso_id } });
+};
+var obtenerRolUsuarioDB = async (usuario_id) => {
+  return await prisma.usuario.findUnique({
+    where: { usuario_id },
+    select: { rol: true }
+  });
+};
+var asignarDocenteDB = async (curso_id, usuario_id) => {
+  return await prisma.curso_docente.create({ data: { curso_id, usuario_id } });
+};
+var quitarDocenteDB = async (curso_id, usuario_id) => {
+  await prisma.curso_docente.delete({
+    where: { curso_id_usuario_id: { curso_id, usuario_id } }
+  });
+};
+var esDocenteDelCursoDB = async (curso_id, usuario_id) => {
+  const cantidad = await prisma.curso_docente.count({ where: { curso_id, usuario_id } });
+  return cantidad > 0;
+};
+var obtenerLibrosDelCursoDB = async (curso_id) => {
+  const filas = await prisma.curso_libro.findMany({
+    where: { curso_id },
+    include: {
+      libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true } }
+    },
+    orderBy: { libro: { titulo: "asc" } }
+  });
+  return filas.map((f) => ({ ...f.libro, puntaje: f.puntaje }));
+};
+var asignarLibroDB = async (curso_id, libro_id, puntaje) => {
+  return await prisma.curso_libro.create({ data: { curso_id, libro_id, puntaje } });
+};
+var actualizarPuntajeLibroDB = async (curso_id, libro_id, puntaje) => {
+  return await prisma.curso_libro.update({
+    where: { curso_id_libro_id: { curso_id, libro_id } },
+    data: { puntaje }
+  });
+};
+var quitarLibroDB = async (curso_id, libro_id) => {
+  await prisma.curso_libro.delete({
+    where: { curso_id_libro_id: { curso_id, libro_id } }
+  });
+};
+
+// src/services/course.service.ts
+import { TipoRol as TipoRol3 } from "@prisma/client";
+var ErrorNegocio = class extends Error {
+  constructor(status, mensaje) {
+    super(mensaje);
+    this.status = status;
+  }
+};
+var CourseService = class {
+  async obtenerTodos(filtros) {
+    return await obtenerCursosDB(filtros);
+  }
+  async obtenerPorId(curso_id) {
+    return await obtenerCursoPorIdDB(curso_id);
+  }
+  async crear(datos) {
+    return await crearCursoDB(datos);
+  }
+  async actualizar(curso_id, datos) {
+    return await actualizarCursoDB(curso_id, datos);
+  }
+  async eliminar(curso_id) {
+    await eliminarCursoDB(curso_id);
+  }
+  // Solo se pueden asignar usuarios con rol docente
+  async asignarDocente(curso_id, usuario_id) {
+    const usuario = await obtenerRolUsuarioDB(usuario_id);
+    if (!usuario) {
+      throw new ErrorNegocio(404, "Usuario no encontrado.");
+    }
+    if (usuario.rol !== TipoRol3.DOCENTE) {
+      throw new ErrorNegocio(400, "El usuario indicado no tiene rol docente.");
+    }
+    return await asignarDocenteDB(curso_id, usuario_id);
+  }
+  async quitarDocente(curso_id, usuario_id) {
+    await quitarDocenteDB(curso_id, usuario_id);
+  }
+  // El administrador gestiona los libros de cualquier curso;
+  // el docente, solo los de los cursos que tiene asignados
+  async verificarPermisoLibros(curso_id, usuario_id) {
+    if (!usuario_id) {
+      throw new ErrorNegocio(401, "Autenticaci\xF3n requerida.");
+    }
+    const usuario = await obtenerRolUsuarioDB(usuario_id);
+    if (usuario?.rol === TipoRol3.ADMINISTRADOR) return;
+    if (usuario?.rol === TipoRol3.DOCENTE && await esDocenteDelCursoDB(curso_id, usuario_id)) {
+      return;
+    }
+    throw new ErrorNegocio(
+      403,
+      "Acceso denegado. Solo el administrador o un docente del curso pueden gestionar sus libros."
+    );
+  }
+  async obtenerLibros(curso_id) {
+    if (!await existeCursoDB(curso_id)) {
+      throw new ErrorNegocio(404, "Curso no encontrado.");
+    }
+    return await obtenerLibrosDelCursoDB(curso_id);
+  }
+  async asignarLibro(curso_id, libro_id, puntaje, usuario_id) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+    return await asignarLibroDB(curso_id, libro_id, puntaje);
+  }
+  async actualizarPuntajeLibro(curso_id, libro_id, puntaje, usuario_id) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+    return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje);
+  }
+  async quitarLibro(curso_id, libro_id, usuario_id) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+    await quitarLibroDB(curso_id, libro_id);
+  }
+};
+var courseService = new CourseService();
+
+// src/controllers/course.controller.ts
+var CURSO_NO_ENCONTRADO = { status: 404, mensaje: "Curso no encontrado." };
+var CURSO_DUPLICADO = {
+  status: 409,
+  mensaje: "Ya existe un curso con ese a\xF1o, divisi\xF3n y a\xF1o lectivo."
+};
+var responderError = (res, error, mapa = {}) => {
+  if (error instanceof ErrorNegocio) {
+    res.status(error.status).json({ error: error.message });
+    return true;
+  }
+  if (error instanceof Prisma.PrismaClientKnownRequestError && mapa[error.code]) {
+    const { status, mensaje } = mapa[error.code];
+    res.status(status).json({ error: mensaje });
+    return true;
+  }
+  return false;
+};
+var parsearEntero = (valor) => {
+  if (valor === void 0 || valor === null || valor === "") return null;
+  const numero = Number(valor);
+  return Number.isInteger(numero) ? numero : null;
+};
+var parsearId = (valor) => {
+  const id = parsearEntero(valor);
+  return id !== null && id > 0 ? id : null;
+};
+var validarDatosCurso = (body, parcial) => {
+  const datos = {};
+  if (body.anio !== void 0) {
+    const anio = parsearEntero(body.anio);
+    if (anio === null || anio < 1 || anio > 7) {
+      return { datos, error: "El a\xF1o debe ser un n\xFAmero entero entre 1 y 7." };
+    }
+    datos.anio = anio;
+  } else if (!parcial) {
+    return { datos, error: "El a\xF1o es obligatorio." };
+  }
+  if (body.division !== void 0) {
+    if (typeof body.division !== "string" || body.division.trim() === "" || body.division.trim().length > 5) {
+      return { datos, error: "La divisi\xF3n debe tener entre 1 y 5 caracteres." };
+    }
+    datos.division = body.division.trim().toUpperCase();
+  } else if (!parcial) {
+    return { datos, error: "La divisi\xF3n es obligatoria." };
+  }
+  if (body.anio_lectivo !== void 0) {
+    const anioLectivo = parsearEntero(body.anio_lectivo);
+    if (anioLectivo === null || anioLectivo < 2e3 || anioLectivo > 2100) {
+      return { datos, error: "El a\xF1o lectivo no es v\xE1lido." };
+    }
+    datos.anio_lectivo = anioLectivo;
+  } else if (!parcial) {
+    return { datos, error: "El a\xF1o lectivo es obligatorio." };
+  }
+  if (body.materia_id !== void 0) {
+    const materiaId = parsearId(body.materia_id);
+    if (materiaId === null) {
+      return { datos, error: "La materia indicada no es v\xE1lida." };
+    }
+    datos.materia_id = materiaId;
+  } else if (!parcial) {
+    return { datos, error: "La materia es obligatoria." };
+  }
+  if (parcial && Object.keys(datos).length === 0) {
+    return { datos, error: "Hay que enviar al menos un campo para actualizar." };
+  }
+  return { datos, error: null };
+};
+var validarPuntaje = (valor) => {
+  const puntaje = parsearEntero(valor);
+  return puntaje !== null && puntaje >= 0 ? puntaje : null;
+};
+var obtenerCursos = async (req, res) => {
+  const filtros = {};
+  if (req.query.anio_lectivo !== void 0) {
+    const anioLectivo = parsearEntero(req.query.anio_lectivo);
+    if (anioLectivo === null) {
+      res.status(400).json({ error: "El filtro anio_lectivo no es v\xE1lido." });
+      return;
+    }
+    filtros.anio_lectivo = anioLectivo;
+  }
+  if (req.query.materia_id !== void 0) {
+    const materiaId = parsearId(req.query.materia_id);
+    if (materiaId === null) {
+      res.status(400).json({ error: "El filtro materia_id no es v\xE1lido." });
+      return;
+    }
+    filtros.materia_id = materiaId;
+  }
+  if (req.query.mine === "true") {
+    filtros.docente_id = req.userId;
+  }
+  try {
+    const cursos = await courseService.obtenerTodos(filtros);
+    res.status(200).json(cursos);
+  } catch (error) {
+    console.error("Error al obtener los cursos:", error);
+    res.status(500).json({ error: "Error interno al obtener los cursos." });
+  }
+};
+var obtenerCurso = async (req, res) => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "El ID del curso no es v\xE1lido." });
+    return;
+  }
+  try {
+    const curso = await courseService.obtenerPorId(id);
+    if (!curso) {
+      res.status(404).json({ error: CURSO_NO_ENCONTRADO.mensaje });
+      return;
+    }
+    res.status(200).json(curso);
+  } catch (error) {
+    console.error("Error al obtener el curso:", error);
+    res.status(500).json({ error: "Error interno al obtener el curso." });
+  }
+};
+var crearCurso = async (req, res) => {
+  const { datos, error } = validarDatosCurso(req.body ?? {}, false);
+  if (error) {
+    res.status(400).json({ error });
+    return;
+  }
+  try {
+    const curso = await courseService.crear(datos);
+    res.status(201).json(curso);
+  } catch (err) {
+    if (responderError(res, err, {
+      P2002: CURSO_DUPLICADO,
+      P2003: { status: 400, mensaje: "La materia indicada no existe." }
+    })) {
+      return;
+    }
+    console.error("Error al crear el curso:", err);
+    res.status(500).json({ error: "Error interno al crear el curso." });
+  }
+};
+var actualizarCurso = async (req, res) => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "El ID del curso no es v\xE1lido." });
+    return;
+  }
+  const { datos, error } = validarDatosCurso(req.body ?? {}, true);
+  if (error) {
+    res.status(400).json({ error });
+    return;
+  }
+  try {
+    const curso = await courseService.actualizar(id, datos);
+    res.status(200).json(curso);
+  } catch (err) {
+    if (responderError(res, err, {
+      P2025: CURSO_NO_ENCONTRADO,
+      P2002: CURSO_DUPLICADO,
+      P2003: { status: 400, mensaje: "La materia indicada no existe." }
+    })) {
+      return;
+    }
+    console.error("Error al actualizar el curso:", err);
+    res.status(500).json({ error: "Error interno al actualizar el curso." });
+  }
+};
+var eliminarCurso = async (req, res) => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "El ID del curso no es v\xE1lido." });
+    return;
+  }
+  try {
+    await courseService.eliminar(id);
+    res.status(200).json({ message: "Curso eliminado correctamente." });
+  } catch (err) {
+    if (responderError(res, err, {
+      P2025: CURSO_NO_ENCONTRADO,
+      P2003: {
+        status: 409,
+        mensaje: "No se puede eliminar el curso porque tiene docentes, libros, alumnos o trivias asociados."
+      }
+    })) {
+      return;
+    }
+    console.error("Error al eliminar el curso:", err);
+    res.status(500).json({ error: "Error interno al eliminar el curso." });
+  }
+};
+var asignarDocente = async (req, res) => {
+  const id = parsearId(req.params.id);
+  const usuarioId = parsearId(req.body?.usuario_id);
+  if (!id || !usuarioId) {
+    res.status(400).json({ error: "El ID del curso o del docente no es v\xE1lido." });
+    return;
+  }
+  try {
+    await courseService.asignarDocente(id, usuarioId);
+    res.status(201).json({ message: "Docente asignado correctamente." });
+  } catch (err) {
+    if (responderError(res, err, {
+      P2002: { status: 409, mensaje: "El docente ya est\xE1 asignado a este curso." },
+      P2003: CURSO_NO_ENCONTRADO
+    })) {
+      return;
+    }
+    console.error("Error al asignar el docente:", err);
+    res.status(500).json({ error: "Error interno al asignar el docente." });
+  }
+};
+var quitarDocente = async (req, res) => {
+  const id = parsearId(req.params.id);
+  const usuarioId = parsearId(req.params.userId);
+  if (!id || !usuarioId) {
+    res.status(400).json({ error: "El ID del curso o del docente no es v\xE1lido." });
+    return;
+  }
+  try {
+    await courseService.quitarDocente(id, usuarioId);
+    res.status(200).json({ message: "Docente quitado del curso correctamente." });
+  } catch (err) {
+    if (responderError(res, err, {
+      P2025: { status: 404, mensaje: "El docente no est\xE1 asignado a este curso." }
+    })) {
+      return;
+    }
+    console.error("Error al quitar el docente:", err);
+    res.status(500).json({ error: "Error interno al quitar el docente." });
+  }
+};
+var obtenerLibrosDelCurso = async (req, res) => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "El ID del curso no es v\xE1lido." });
+    return;
+  }
+  try {
+    const libros = await courseService.obtenerLibros(id);
+    res.status(200).json(libros);
+  } catch (err) {
+    if (responderError(res, err)) return;
+    console.error("Error al obtener los libros del curso:", err);
+    res.status(500).json({ error: "Error interno al obtener los libros del curso." });
+  }
+};
+var asignarLibro = async (req, res) => {
+  const id = parsearId(req.params.id);
+  const libroId = parsearId(req.body?.libro_id);
+  if (!id || !libroId) {
+    res.status(400).json({ error: "El ID del curso o del libro no es v\xE1lido." });
+    return;
+  }
+  const puntaje = validarPuntaje(req.body?.puntaje);
+  if (puntaje === null) {
+    res.status(400).json({ error: "El puntaje debe ser un n\xFAmero entero mayor o igual a 0." });
+    return;
+  }
+  try {
+    const asignacion = await courseService.asignarLibro(id, libroId, puntaje, req.userId);
+    res.status(201).json(asignacion);
+  } catch (err) {
+    if (responderError(res, err, {
+      P2002: { status: 409, mensaje: "El libro ya est\xE1 asignado a este curso." },
+      P2003: { status: 404, mensaje: "El curso o el libro no existen." }
+    })) {
+      return;
+    }
+    console.error("Error al asignar el libro:", err);
+    res.status(500).json({ error: "Error interno al asignar el libro." });
+  }
+};
+var actualizarPuntajeLibro = async (req, res) => {
+  const id = parsearId(req.params.id);
+  const libroId = parsearId(req.params.bookId);
+  if (!id || !libroId) {
+    res.status(400).json({ error: "El ID del curso o del libro no es v\xE1lido." });
+    return;
+  }
+  const puntaje = validarPuntaje(req.body?.puntaje);
+  if (puntaje === null) {
+    res.status(400).json({ error: "El puntaje debe ser un n\xFAmero entero mayor o igual a 0." });
+    return;
+  }
+  try {
+    const asignacion = await courseService.actualizarPuntajeLibro(id, libroId, puntaje, req.userId);
+    res.status(200).json(asignacion);
+  } catch (err) {
+    if (responderError(res, err, {
+      P2025: { status: 404, mensaje: "El libro no est\xE1 asignado a este curso." }
+    })) {
+      return;
+    }
+    console.error("Error al actualizar el puntaje:", err);
+    res.status(500).json({ error: "Error interno al actualizar el puntaje." });
+  }
+};
+var quitarLibro = async (req, res) => {
+  const id = parsearId(req.params.id);
+  const libroId = parsearId(req.params.bookId);
+  if (!id || !libroId) {
+    res.status(400).json({ error: "El ID del curso o del libro no es v\xE1lido." });
+    return;
+  }
+  try {
+    await courseService.quitarLibro(id, libroId, req.userId);
+    res.status(200).json({ message: "Libro quitado del curso correctamente." });
+  } catch (err) {
+    if (responderError(res, err, {
+      P2025: { status: 404, mensaje: "El libro no est\xE1 asignado a este curso." }
+    })) {
+      return;
+    }
+    console.error("Error al quitar el libro:", err);
+    res.status(500).json({ error: "Error interno al quitar el libro." });
+  }
+};
+
+// src/routes/course.routes.ts
+var router5 = Router5();
+router5.get("/", verifyToken, obtenerCursos);
+router5.get("/:id", verifyToken, obtenerCurso);
+router5.post("/", verifyToken, requireAdmin, crearCurso);
+router5.put("/:id", verifyToken, requireAdmin, actualizarCurso);
+router5.delete("/:id", verifyToken, requireAdmin, eliminarCurso);
+router5.post("/:id/teachers", verifyToken, requireAdmin, asignarDocente);
+router5.delete("/:id/teachers/:userId", verifyToken, requireAdmin, quitarDocente);
+router5.get("/:id/books", verifyToken, obtenerLibrosDelCurso);
+router5.post("/:id/books", verifyToken, asignarLibro);
+router5.put("/:id/books/:bookId", verifyToken, actualizarPuntajeLibro);
+router5.delete("/:id/books/:bookId", verifyToken, quitarLibro);
+var course_routes_default = router5;
+
+// src/routes/favorite.routes.ts
+import { Router as Router6 } from "express";
 
 // src/models/favorite.model.ts
 var favoriteModel = {
@@ -1572,45 +2241,18 @@ var FavoriteController = class {
 };
 var favorite_controller_default = new FavoriteController();
 
-// src/middleware/auth.middleware.ts
-import jwt2 from "jsonwebtoken";
-var verifyToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "No token provided" });
-  }
-  const token = authHeader.split(" ")[1];
-  try {
-    const decoded = jwt2.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.usuario_id ?? decoded.id;
-    req.userRole = decoded.rol_id ?? 1;
-    next();
-  } catch (error) {
-    return res.status(401).json({ message: "Invalid token" });
-  }
-};
-var requireRole = (requiredRole) => {
-  return (req, res, next) => {
-    const userRoleNumber = Number(req.userRole);
-    if (!userRoleNumber || userRoleNumber !== requiredRole) {
-      return res.status(403).json({ error: "Acceso denegado. Permisos insuficientes." });
-    }
-    next();
-  };
-};
-
 // src/routes/favorite.routes.ts
-var router5 = Router5();
-router5.post("/", verifyToken, favorite_controller_default.create);
-router5.get("/", verifyToken, favorite_controller_default.getByUser);
-router5.get("/statuses", verifyToken, favorite_controller_default.getReadingStatuses);
-router5.patch("/status", verifyToken, favorite_controller_default.updateReadingStatus);
-router5.delete("/", verifyToken, favorite_controller_default.delete);
-router5.get("/all", verifyToken, favorite_controller_default.getAll);
-var favorite_routes_default = router5;
+var router6 = Router6();
+router6.post("/", verifyToken, favorite_controller_default.create);
+router6.get("/", verifyToken, favorite_controller_default.getByUser);
+router6.get("/statuses", verifyToken, favorite_controller_default.getReadingStatuses);
+router6.patch("/status", verifyToken, favorite_controller_default.updateReadingStatus);
+router6.delete("/", verifyToken, favorite_controller_default.delete);
+router6.get("/all", verifyToken, favorite_controller_default.getAll);
+var favorite_routes_default = router6;
 
 // src/routes/feed.routes.ts
-import { Router as Router6 } from "express";
+import { Router as Router7 } from "express";
 
 // src/models/feed.model.ts
 var obtenerActividadesFeedDB = async (page = 1, limit = 20) => {
@@ -1685,13 +2327,13 @@ var limpiarFeed = async (_req, res) => {
 };
 
 // src/routes/feed.routes.ts
-var router6 = Router6();
-router6.get("/", verifyToken, obtenerFeed);
-router6.delete("/", verifyToken, limpiarFeed);
-var feed_routes_default = router6;
+var router7 = Router7();
+router7.get("/", verifyToken, obtenerFeed);
+router7.delete("/", verifyToken, limpiarFeed);
+var feed_routes_default = router7;
 
 // src/routes/forum.routes.ts
-import { Router as Router7 } from "express";
+import { Router as Router8 } from "express";
 
 // src/services/forum.service.ts
 var ForumService = class {
@@ -1796,22 +2438,263 @@ var obtenerForoConComentarios = async (req, res) => {
   }
 };
 
+// src/modules/moderation/config/get-gemini-key.ts
+var getGeminiKey = async () => {
+  try {
+    const config = await prisma.configuracion_sistema.findUnique({
+      where: { clave: "gemini_api_key" }
+    });
+    if (config?.valor?.trim()) {
+      return config.valor.trim();
+    }
+  } catch (error) {
+  }
+  return process.env.GEMINI_API_KEY?.trim() || null;
+};
+
+// src/modules/moderation/providers/fallback.provider.ts
+var OFFENSIVE_TERMS = [
+  "pelotudo",
+  "boludo",
+  "mierda",
+  "puto",
+  "hdp",
+  "forro",
+  "concha",
+  "idiota",
+  "estupido",
+  "tarado",
+  "imbecil",
+  "puta",
+  "garca",
+  "cagon",
+  "malparido",
+  "forra",
+  "pelotuda",
+  "boluda",
+  "basura",
+  "maldito",
+  "perra",
+  "porqueria",
+  "asqueroso",
+  "inutil"
+];
+var FallbackModeratorProvider = class {
+  async moderate(text, _contextDescription) {
+    const normalized = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const found = OFFENSIVE_TERMS.find((term) => normalized.includes(term));
+    if (found) {
+      return {
+        isAppropriate: false,
+        reason: "Lenguaje inapropiado o potencialmente ofensivo detectado",
+        category: "toxicidad_local"
+      };
+    }
+    return { isAppropriate: true };
+  }
+};
+
+// src/modules/moderation/providers/gemini.provider.ts
+var GeminiModeratorProvider = class {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+  }
+  async moderate(text, contextDescription) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.apiKey}`;
+    const contextInfo = contextDescription ? `Contexto del espacio y conversaci\xF3n previa:
+${contextDescription}
+
+` : "";
+    const prompt = `Actua como moderador estricto para una plataforma escolar de lectura (alumnos de secundaria).
+${contextInfo}Analiza el "Texto a analizar" considerando el contexto anterior. Determina si es apropiado o si contiene insultos, acoso, odio, discriminacion o amenazas hacia otros participantes.
+IMPORTANTE: Eval\xFAa exclusivamente el "Texto a analizar". El contexto sirve \xFAnicamente para comprender el sentido, intencionalidad o referencias del mensaje.
+Responde UNICAMENTE en formato JSON con la siguiente estructura:
+{
+  "isAppropriate": boolean,
+  "reason": "motivo breve en espa\xF1ol si no es apropiado, o vacio si es apropiado",
+  "category": "insulto|acoso|discriminacion|odio|ninguna"
+}
+
+Texto a analizar:
+"${text}"`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
+      })
+    });
+    if (!res.ok) {
+      throw new Error(`Gemini API HTTP Error: ${res.status}`);
+    }
+    const data = await res.json();
+    const rawContent = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawContent) {
+      throw new Error("Invalid response structure from Gemini API");
+    }
+    const parsed = JSON.parse(rawContent);
+    return {
+      isAppropriate: Boolean(parsed.isAppropriate),
+      reason: parsed.reason || void 0,
+      category: parsed.category || void 0
+    };
+  }
+};
+
+// src/modules/moderation/services/moderate-text.service.ts
+var moderateText = async (text, contextDescription) => {
+  if (!text || !text.trim()) {
+    return { isAppropriate: true };
+  }
+  const fallback = new FallbackModeratorProvider();
+  const localResult = await fallback.moderate(text, contextDescription);
+  if (!localResult.isAppropriate) {
+    return localResult;
+  }
+  const apiKey = await getGeminiKey();
+  if (apiKey) {
+    try {
+      const gemini = new GeminiModeratorProvider(apiKey);
+      return await gemini.moderate(text, contextDescription);
+    } catch (error) {
+      console.warn("\u26A0\uFE0F Error en Gemini API, derivando a revisi\xF3n manual (Fail-Closed):", error);
+      throw error;
+    }
+  }
+  throw new Error("Servicio de IA de moderaci\xF3n no disponible. Contenido retenido para revisi\xF3n manual.");
+};
+
+// src/modules/moderation/repositories/save-incident.repository.ts
+var saveIncident = async (dto) => {
+  const incident = await prisma.incidencia_moderacion.create({
+    data: {
+      usuario_id: dto.usuario_id,
+      contexto: dto.contexto,
+      contenido_bloqueado: dto.contenido_bloqueado,
+      motivo: dto.motivo,
+      categoria: dto.categoria
+    },
+    select: { incidencia_id: true }
+  });
+  return incident.incidencia_id;
+};
+
+// src/modules/moderation/repositories/get-forum-context.repository.ts
+var getForumContext = async (foroId) => {
+  if (!foroId || isNaN(foroId)) return null;
+  try {
+    const foro = await prisma.foro.findUnique({
+      where: { foro_id: foroId },
+      select: {
+        titulo: true,
+        descripcion: true,
+        comentario_foro: {
+          take: 5,
+          orderBy: { fecha: "desc" },
+          select: {
+            contenido: true,
+            usuario: {
+              select: {
+                nombre: true
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!foro) return null;
+    let context = `Foro: "${foro.titulo}". Descripci\xF3n: "${foro.descripcion || "Sin descripci\xF3n"}"`;
+    if (foro.comentario_foro && foro.comentario_foro.length > 0) {
+      const recentComments = [...foro.comentario_foro].reverse();
+      const formattedComments = recentComments.map((c) => `- ${c.usuario?.nombre || "Usuario"}: "${c.contenido}"`).join("\n");
+      context += `
+\xDAltimos comentarios en el debate:
+${formattedComments}`;
+    }
+    return context;
+  } catch {
+    return null;
+  }
+};
+
+// src/modules/moderation/helpers/resolve-context.ts
+var resolveContext = async (req, context) => {
+  if (context === "comentario_foro") {
+    const rawForoId = req.params?.id || req.params?.foroId || req.body?.foro_id;
+    const foroId = Number(rawForoId);
+    if (foroId && !isNaN(foroId)) {
+      const forumContext = await getForumContext(foroId);
+      if (forumContext) return forumContext;
+    }
+  }
+  return void 0;
+};
+
+// src/modules/moderation/middleware/moderate-content.ts
+var moderateContent = (fields, context) => {
+  return async (req, res, next) => {
+    const textsToInspect = fields.map((field) => req.body?.[field]).filter((val) => typeof val === "string" && val.trim().length > 0);
+    if (textsToInspect.length === 0) {
+      return next();
+    }
+    const combinedText = textsToInspect.join("\n");
+    try {
+      const contextDescription = await resolveContext(req, context);
+      const result = await moderateText(combinedText, contextDescription);
+      if (!result.isAppropriate) {
+        await saveIncident({
+          usuario_id: req.userId,
+          contexto: context,
+          contenido_bloqueado: combinedText,
+          motivo: result.reason || "Incumplimiento de normas de convivencia escolar",
+          categoria: result.category
+        }).catch((err) => console.error("Error al registrar incidencia:", err));
+        return res.status(400).json({
+          ok: false,
+          error: "CONTENIDO_BLOQUEADO",
+          mensaje: "Tu mensaje no cumple con las pautas de convivencia escolar. Por favor, reformulalo respetuosamente.",
+          motivo: result.reason
+        });
+      }
+      return next();
+    } catch (error) {
+      console.error("Error en middleware de moderaci\xF3n:", error);
+      await saveIncident({
+        usuario_id: req.userId,
+        contexto: context,
+        contenido_bloqueado: combinedText,
+        motivo: "La revisi\xF3n autom\xE1tica no pudo completarse. Contenido retenido para revisi\xF3n manual.",
+        categoria: "revision_manual"
+      }).catch((err) => console.error("Error al registrar incidencia:", err));
+      return res.status(202).json({
+        ok: false,
+        error: "EN_REVISION",
+        mensaje: "Tu mensaje qued\xF3 en revisi\xF3n por un responsable antes de publicarse. Gracias por tu paciencia."
+      });
+    }
+  };
+};
+
 // src/routes/forum.routes.ts
-var router7 = Router7();
-router7.post("/", crearForo);
-router7.get("/", obtenerForos);
-router7.get("/:id", obtenerForo);
-router7.put("/:id", actualizarForo);
-router7.delete("/:id", eliminarForo);
-router7.get("/:id/comentarios", obtenerForoConComentarios);
-router7.post("/:id/comentarios", crearComentario);
-var forum_routes_default = router7;
+var router8 = Router8();
+router8.post("/", moderateContent(["titulo", "descripcion"], "foro"), crearForo);
+router8.get("/", obtenerForos);
+router8.get("/:id", obtenerForo);
+router8.put("/:id", moderateContent(["titulo", "descripcion"], "foro"), actualizarForo);
+router8.delete("/:id", eliminarForo);
+router8.get("/:id/comentarios", obtenerForoConComentarios);
+router8.post("/:id/comentarios", moderateContent(["contenido"], "comentario_foro"), crearComentario);
+var forum_routes_default = router8;
 
 // src/routes/list.routes.ts
-import { Router as Router8 } from "express";
+import { Router as Router9 } from "express";
 
 // src/models/lista.model.ts
 var ListaModel = class {
+  // ====================================================
+  // CREAR LISTA
+  // ====================================================
   async crearLista(nombre, descripcion, tipo) {
     try {
       const ultimaLista = await prisma.lista.findFirst({
@@ -1840,14 +2723,21 @@ var ListaModel = class {
       return {
         ...nuevaLista,
         descripcion: nuevaLista.descripcion ?? "",
-        tipo: nuevaLista.tipo ?? ""
+        tipo: nuevaLista.tipo ?? "",
+        libros: []
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("Error en ListaModel.crearLista:", message);
+      console.error(
+        "Error en ListaModel.crearLista:",
+        message
+      );
       throw new Error("No se pudo crear la lista.");
     }
   }
+  // ====================================================
+  // OBTENER TODAS LAS LISTAS
+  // ====================================================
   async obtenerTodas() {
     try {
       const listas = await prisma.lista.findMany({
@@ -1862,22 +2752,36 @@ var ListaModel = class {
           }
         }
       });
-      return listas.map((l) => ({
-        ...l,
-        descripcion: l.descripcion ?? "",
-        tipo: l.tipo ?? "",
-        libros: l.lista_libro ? l.lista_libro.map((ll) => ll.libro) : []
+      return listas.map((lista) => ({
+        lista_id: lista.lista_id,
+        nombre: lista.nombre,
+        descripcion: lista.descripcion ?? "",
+        tipo: lista.tipo ?? "",
+        // Obtener todos los libros de cada lista
+        // con su explicación independiente
+        libros: lista.lista_libro.map((relacion) => ({
+          ...relacion.libro,
+          explicacion: relacion.explicacion ?? ""
+        }))
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("Error en ListaModel.obtenerTodas:", message);
+      console.error(
+        "Error en ListaModel.obtenerTodas:",
+        message
+      );
       throw new Error("No se pudieron obtener las listas.");
     }
   }
+  // ====================================================
+  // OBTENER LISTA POR ID
+  // ====================================================
   async obtenerPorId(listaId) {
     try {
       const lista = await prisma.lista.findUnique({
-        where: { lista_id: listaId },
+        where: {
+          lista_id: listaId
+        },
         include: {
           lista_libro: {
             include: {
@@ -1886,19 +2790,31 @@ var ListaModel = class {
           }
         }
       });
-      if (!lista) return null;
+      if (!lista) {
+        return null;
+      }
       return {
-        ...lista,
+        lista_id: lista.lista_id,
+        nombre: lista.nombre,
         descripcion: lista.descripcion ?? "",
         tipo: lista.tipo ?? "",
-        libros: lista.lista_libro ? lista.lista_libro.map((ll) => ll.libro) : []
+        libros: lista.lista_libro.map((relacion) => ({
+          ...relacion.libro,
+          explicacion: relacion.explicacion ?? ""
+        }))
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Error en ListaModel.obtenerPorId (${listaId}):`, message);
+      console.error(
+        `Error en ListaModel.obtenerPorId (${listaId}):`,
+        message
+      );
       throw new Error("No se pudo obtener la lista.");
     }
   }
+  // ====================================================
+  // ACTUALIZAR LISTA
+  // ====================================================
   async actualizarLista(listaId, nombre, descripcion, tipo) {
     try {
       const camposAActualizar = {
@@ -1915,7 +2831,9 @@ var ListaModel = class {
         throw new Error("No hay campos para actualizar.");
       }
       const updated = await prisma.lista.update({
-        where: { lista_id: listaId },
+        where: {
+          lista_id: listaId
+        },
         data: camposAActualizar,
         select: {
           lista_id: true,
@@ -1931,25 +2849,40 @@ var ListaModel = class {
       };
     } catch (error) {
       if (error.code === "P2025") {
-        throw new Error(`Lista con ID ${listaId} no encontrada.`);
+        throw new Error(
+          `Lista con ID ${listaId} no encontrada.`
+        );
       }
       const message = error instanceof Error ? error.message : String(error);
-      console.error("Error en ListaModel.actualizarLista:", message);
+      console.error(
+        "Error en ListaModel.actualizarLista:",
+        message
+      );
       throw error;
     }
   }
+  // ====================================================
+  // ELIMINAR LISTA
+  // ====================================================
   async eliminarLista(listaId) {
     try {
       await prisma.lista.delete({
-        where: { lista_id: listaId }
+        where: {
+          lista_id: listaId
+        }
       });
       return true;
     } catch (error) {
       if (error.code === "P2025") {
-        throw new Error(`Lista con ID ${listaId} no encontrada.`);
+        throw new Error(
+          `Lista con ID ${listaId} no encontrada.`
+        );
       }
       const message = error instanceof Error ? error.message : String(error);
-      console.error("Error en ListaModel.eliminarLista:", message);
+      console.error(
+        "Error en ListaModel.eliminarLista:",
+        message
+      );
       throw new Error("No se pudo eliminar la lista.");
     }
   }
@@ -1978,62 +2911,174 @@ var listService = new ListService();
 
 // src/controllers/list.controller.ts
 var ListaController = class {
+  // =====================================================
+  // CREAR LISTA O RECOMENDACIÓN
+  // =====================================================
   async crear(req, res) {
     try {
-      const { nombre, descripcion, tipo, libroId, bookId, books, bookIds } = req.body;
-      const usuarioId = req.user?.id || req.usuarioId;
-      if (!nombre || !tipo) {
-        return res.status(400).json({ error: "Faltan campos obligatorios (nombre, tipo)." });
+      const {
+        nombre,
+        descripcion,
+        tipo,
+        libroId,
+        bookId,
+        books,
+        bookIds,
+        libros
+      } = req.body;
+      const usuarioId = req.user?.id ?? req.usuarioId;
+      if (typeof nombre !== "string" || !nombre.trim() || typeof tipo !== "string" || !tipo.trim()) {
+        return res.status(400).json({
+          error: "Faltan campos obligatorios (nombre, tipo)."
+        });
       }
-      const rawBookId = libroId || bookId || (Array.isArray(books) ? books[0] : null) || (Array.isArray(bookIds) ? bookIds[0] : null);
-      const targetBookId = rawBookId ? Number(rawBookId) : null;
-      const nuevaLista = await listService.crearLista(nombre, descripcion, tipo);
-      let libroAsociado = null;
-      if (targetBookId && !isNaN(targetBookId)) {
-        try {
-          const libroExistente = await prisma.libro?.findUnique({
-            where: { libro_id: targetBookId }
-          }) || await prisma.book?.findUnique({
-            where: { id: targetBookId }
+      if (descripcion !== void 0 && descripcion !== null && typeof descripcion !== "string") {
+        return res.status(400).json({
+          error: "La descripci\xF3n debe ser un texto."
+        });
+      }
+      const descripcionFinal = descripcion ?? "";
+      let librosRecibidos = [];
+      if (libros !== void 0) {
+        if (!Array.isArray(libros)) {
+          return res.status(400).json({
+            error: "El campo libros debe ser un arreglo."
           });
-          if (libroExistente) {
-            await prisma.lista_libro.create({
-              data: {
-                lista_id: nuevaLista.lista_id,
-                libro_id: targetBookId
-              }
-            });
-            libroAsociado = libroExistente;
-          } else {
-            console.warn(`[WARN] El libro con ID ${targetBookId} no existe en la base de datos.`);
-          }
-        } catch (relError) {
-          console.error("No se pudo vincular el libro a la lista:", relError);
         }
+        librosRecibidos = libros.map((item) => ({
+          libroId: Number(item?.libroId ?? item?.bookId),
+          explicacion: typeof item?.explicacion === "string" ? item.explicacion.trim() : ""
+        }));
+      } else if (Array.isArray(bookIds)) {
+        librosRecibidos = bookIds.map((id, index) => ({
+          libroId: Number(id),
+          explicacion: index === 0 ? descripcionFinal.trim() : ""
+        }));
+      } else if (Array.isArray(books)) {
+        librosRecibidos = books.map((item, index) => ({
+          libroId: Number(
+            item?.libroId ?? item?.bookId ?? item?.libro_id ?? item?.id ?? item
+          ),
+          explicacion: typeof item?.explicacion === "string" ? item.explicacion.trim() : index === 0 ? descripcionFinal.trim() : ""
+        }));
+      } else if (libroId != null || bookId != null) {
+        librosRecibidos = [{
+          libroId: Number(libroId ?? bookId),
+          explicacion: descripcionFinal.trim()
+        }];
       }
+      if (tipo === "RECOMENDACION" && (librosRecibidos.length < 1 || librosRecibidos.length > 2)) {
+        return res.status(400).json({
+          error: "Deb\xE9s recomendar uno o dos libros."
+        });
+      }
+      if (librosRecibidos.some(
+        (item) => !Number.isSafeInteger(item.libroId) || item.libroId <= 0
+      )) {
+        return res.status(400).json({
+          error: "Uno de los libros tiene un ID inv\xE1lido."
+        });
+      }
+      const ids = librosRecibidos.map(
+        (item) => item.libroId
+      );
+      if (new Set(ids).size !== ids.length) {
+        return res.status(400).json({
+          error: "No pod\xE9s recomendar el mismo libro dos veces."
+        });
+      }
+      if (tipo === "RECOMENDACION" && libros !== void 0 && librosRecibidos.some(
+        (item) => !item.explicacion
+      )) {
+        return res.status(400).json({
+          error: "Cada libro debe tener su explicaci\xF3n."
+        });
+      }
+      const usuarioIdNumerico = usuarioId == null ? null : Number(usuarioId);
+      if (usuarioIdNumerico !== null && (!Number.isSafeInteger(usuarioIdNumerico) || usuarioIdNumerico <= 0)) {
+        return res.status(400).json({
+          error: "El ID del usuario es inv\xE1lido."
+        });
+      }
+      const resultado = await prisma.$transaction(
+        async (tx) => {
+          const librosExistentes = await tx.libro.findMany({
+            where: {
+              libro_id: {
+                in: ids
+              }
+            }
+          });
+          if (librosExistentes.length !== ids.length) {
+            throw new Error("LIBROS_NO_ENCONTRADOS");
+          }
+          const nuevaLista = await tx.lista.create({
+            data: {
+              nombre: nombre.trim(),
+              descripcion: descripcionFinal,
+              tipo: tipo.trim()
+            }
+          });
+          if (librosRecibidos.length > 0) {
+            await tx.lista_libro.createMany({
+              data: librosRecibidos.map((item) => ({
+                lista_id: nuevaLista.lista_id,
+                libro_id: item.libroId,
+                explicacion: item.explicacion
+              }))
+            });
+          }
+          const librosConExplicacion = librosRecibidos.map((item) => ({
+            ...librosExistentes.find(
+              (libro) => libro.libro_id === item.libroId
+            ),
+            explicacion: item.explicacion
+          }));
+          return {
+            nuevaLista,
+            librosConExplicacion
+          };
+        }
+      );
       try {
         await prisma.actividad_feed.create({
           data: {
-            usuario_id: usuarioId ? Number(usuarioId) : null,
+            usuario_id: usuarioIdNumerico,
             tipo: "AVISO",
-            titulo: `Cre\xF3 una nueva lista: "${nombre}"`,
-            descripcion: descripcion || `Nueva lista de tipo ${tipo}`
+            titulo: tipo === "RECOMENDACION" ? "Public\xF3 una recomendaci\xF3n de libros" : `Cre\xF3 una nueva lista: "${nombre.trim()}"`,
+            descripcion: descripcionFinal || `Nueva lista de tipo ${tipo}`,
+            entidad_id: resultado.nuevaLista.lista_id
           }
         });
       } catch (feedError) {
-        console.error("No se pudo registrar la actividad en el feed:", feedError);
+        console.error(
+          "No se pudo registrar la actividad en el feed:",
+          feedError
+        );
       }
       return res.status(201).json({
         message: "Lista creada correctamente.",
-        lista: nuevaLista,
-        libro: libroAsociado
+        lista: resultado.nuevaLista,
+        // Compatibilidad con el frontend anterior
+        libro: resultado.librosConExplicacion[0] ?? null,
+        // Nuevo formato
+        libros: resultado.librosConExplicacion
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("Error creando lista:", message);
-      return res.status(500).json({ error: "Error interno al crear la lista." });
+      if (error instanceof Error && error.message === "LIBROS_NO_ENCONTRADOS") {
+        return res.status(400).json({
+          error: "Uno o m\xE1s libros no existen en el cat\xE1logo."
+        });
+      }
+      console.error("Error creando lista:", error);
+      return res.status(500).json({
+        error: "Error interno al crear la lista."
+      });
     }
   }
+  // =====================================================
+  // OBTENER TODAS LAS LISTAS
+  // =====================================================
   async obtenerTodas(req, res) {
     try {
       const listas = await listService.obtenerTodas();
@@ -2041,69 +3086,106 @@ var ListaController = class {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Error obteniendo listas:", message);
-      return res.status(500).json({ error: "Error interno al obtener listas." });
+      return res.status(500).json({
+        error: "Error interno al obtener listas."
+      });
     }
   }
+  // =====================================================
+  // OBTENER LISTA POR ID
+  // =====================================================
   async obtenerPorId(req, res) {
     try {
-      const id = parseInt(String(req.params.id), 10);
-      if (isNaN(id)) {
-        return res.status(400).json({ error: "ID inv\xE1lido." });
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        return res.status(400).json({
+          error: "ID inv\xE1lido."
+        });
       }
       const lista = await listService.obtenerPorId(id);
       if (!lista) {
-        return res.status(404).json({ error: "Lista no encontrada." });
+        return res.status(404).json({
+          error: "Lista no encontrada."
+        });
       }
       return res.status(200).json(lista);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("Error obteniendo lista por ID:", message);
-      return res.status(500).json({ error: "Error interno." });
+      console.error(
+        "Error obteniendo lista por ID:",
+        message
+      );
+      return res.status(500).json({
+        error: "Error interno."
+      });
     }
   }
+  // =====================================================
+  // ACTUALIZAR LISTA
+  // =====================================================
   async actualizar(req, res) {
     try {
-      const id = parseInt(String(req.params.id), 10);
-      const { nombre, descripcion, tipo } = req.body;
-      if (isNaN(id)) {
-        return res.status(400).json({ error: "ID inv\xE1lido." });
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        return res.status(400).json({
+          error: "ID inv\xE1lido."
+        });
       }
-      await listService.actualizarLista(id, nombre, descripcion, tipo);
-      return res.status(200).json({ message: "Lista actualizada." });
+      const { nombre, descripcion, tipo } = req.body;
+      await listService.actualizarLista(
+        id,
+        nombre,
+        descripcion,
+        tipo
+      );
+      return res.status(200).json({
+        message: "Lista actualizada."
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Error actualizando lista:", message);
-      return res.status(500).json({ error: "Error interno al actualizar." });
+      return res.status(500).json({
+        error: "Error interno al actualizar."
+      });
     }
   }
+  // =====================================================
+  // ELIMINAR LISTA
+  // =====================================================
   async eliminar(req, res) {
     try {
-      const id = parseInt(String(req.params.id), 10);
-      if (isNaN(id)) {
-        return res.status(400).json({ error: "ID inv\xE1lido." });
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        return res.status(400).json({
+          error: "ID inv\xE1lido."
+        });
       }
       await listService.eliminarLista(id);
-      return res.status(200).json({ message: "Lista eliminada." });
+      return res.status(200).json({
+        message: "Lista eliminada."
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Error eliminando lista:", message);
-      return res.status(500).json({ error: "Error interno al eliminar." });
+      return res.status(500).json({
+        error: "Error interno al eliminar."
+      });
     }
   }
 };
 var list_controller_default = new ListaController();
 
 // src/routes/list.routes.ts
-var router8 = Router8();
-router8.get("/", list_controller_default.obtenerTodas);
-router8.get("/:id", list_controller_default.obtenerPorId);
-router8.post("/", list_controller_default.crear);
-router8.put("/:id", list_controller_default.actualizar);
-router8.delete("/:id", list_controller_default.eliminar);
-var list_routes_default = router8;
+var router9 = Router9();
+router9.get("/", list_controller_default.obtenerTodas);
+router9.get("/:id", list_controller_default.obtenerPorId);
+router9.post("/", list_controller_default.crear);
+router9.put("/:id", list_controller_default.actualizar);
+router9.delete("/:id", list_controller_default.eliminar);
+var list_routes_default = router9;
 
 // src/routes/medal.routes.ts
-import { Router as Router9 } from "express";
+import { Router as Router10 } from "express";
 
 // src/services/medal.service.ts
 var MedalService = class {
@@ -2131,14 +3213,29 @@ var obtenerMedallasUsuario = async (req, res) => {
     res.status(500).json({ mensaje: "Error al obtener las medallas", detalle: message });
   }
 };
+var obtenerCatalogoInsignias = async (req, res) => {
+  try {
+    const usuario_id = parseInt(String(req.params.usuario_id));
+    if (isNaN(usuario_id)) {
+      return res.status(400).json({ mensaje: "ID de usuario inv\xE1lido" });
+    }
+    const catalogo = await medalModel.obtenerCatalogoConEstado(usuario_id);
+    res.json(catalogo);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("\u274C Error al obtener el cat\xE1logo de insignias:", error);
+    res.status(500).json({ mensaje: "Error al obtener el cat\xE1logo de insignias", detalle: message });
+  }
+};
 
 // src/routes/medal.routes.ts
-var router9 = Router9();
-router9.get("/:usuario_id", obtenerMedallasUsuario);
-var medal_routes_default = router9;
+var router10 = Router10();
+router10.get("/catalog/:usuario_id", obtenerCatalogoInsignias);
+router10.get("/:usuario_id", obtenerMedallasUsuario);
+var medal_routes_default = router10;
 
 // src/routes/metaLectura.routes.ts
-import { Router as Router10 } from "express";
+import { Router as Router11 } from "express";
 
 // src/models/metaLectura.model.ts
 var normalizarRangoFechas = (inicio, fin) => {
@@ -2329,26 +3426,117 @@ var MetaLecturaController = class {
 var metaLectura_controller_default = new MetaLecturaController();
 
 // src/routes/metaLectura.routes.ts
-var router10 = Router10();
-router10.post("/", verifyToken, metaLectura_controller_default.crear);
-router10.get("/", verifyToken, metaLectura_controller_default.obtenerTodas);
-router10.get("/usuario/:usuarioId", verifyToken, metaLectura_controller_default.obtenerMisMetas);
-router10.put("/:id", verifyToken, metaLectura_controller_default.actualizar);
-router10.delete("/:id", verifyToken, metaLectura_controller_default.eliminar);
-var metaLectura_routes_default = router10;
+var router11 = Router11();
+router11.post("/", verifyToken, metaLectura_controller_default.crear);
+router11.get("/", verifyToken, metaLectura_controller_default.obtenerTodas);
+router11.get("/usuario/:usuarioId", verifyToken, metaLectura_controller_default.obtenerMisMetas);
+router11.put("/:id", verifyToken, metaLectura_controller_default.actualizar);
+router11.delete("/:id", verifyToken, metaLectura_controller_default.eliminar);
+var metaLectura_routes_default = router11;
+
+// src/modules/moderation/routes/moderation.routes.ts
+import { Router as Router12 } from "express";
+
+// src/modules/moderation/config/save-gemini-key.ts
+var saveGeminiKey = async (apiKey) => {
+  const trimmedKey = apiKey.trim();
+  if (!trimmedKey) {
+    throw new Error("API key cannot be empty");
+  }
+  await prisma.configuracion_sistema.upsert({
+    where: { clave: "gemini_api_key" },
+    update: { valor: trimmedKey, actualizado: /* @__PURE__ */ new Date() },
+    create: {
+      clave: "gemini_api_key",
+      valor: trimmedKey,
+      descripcion: "Google Gemini API Key para moderaci\xF3n de contenido"
+    }
+  });
+};
+
+// src/modules/moderation/repositories/get-incidents.repository.ts
+var getIncidents = async (limit = 50) => {
+  return prisma.incidencia_moderacion.findMany({
+    take: limit,
+    orderBy: { fecha: "desc" },
+    include: {
+      usuario: {
+        select: {
+          usuario_id: true,
+          nombre: true,
+          email: true
+        }
+      }
+    }
+  });
+};
+
+// src/modules/moderation/repositories/update-incident-state.repository.ts
+var updateIncidentState = async (incidenciaId, decision, revisorId) => {
+  return prisma.incidencia_moderacion.update({
+    where: { incidencia_id: incidenciaId },
+    data: {
+      estado: decision,
+      revisado_por: revisorId ?? void 0,
+      fecha_revision: /* @__PURE__ */ new Date()
+    }
+  });
+};
+
+// src/modules/moderation/routes/moderation.routes.ts
+var router12 = Router12();
+var requireAdmin2 = (req, res, next) => {
+  const role = Number(req.userRole);
+  if (role === 1 || role === 3) return next();
+  return res.status(403).json({ error: "Acceso denegado. Permisos insuficientes." });
+};
+router12.get("/config", verifyToken, requireAdmin2, async (_req, res) => {
+  const key = await getGeminiKey();
+  const masked = key ? `${key.slice(0, 6)}...${key.slice(-4)}` : null;
+  res.json({ configured: Boolean(key), maskedKey: masked });
+});
+router12.post("/config", verifyToken, requireAdmin2, async (req, res) => {
+  const { apiKey } = req.body;
+  if (!apiKey || typeof apiKey !== "string") {
+    return res.status(400).json({ error: "La API key de Gemini es requerida" });
+  }
+  await saveGeminiKey(apiKey);
+  res.json({ ok: true, mensaje: "API key de Gemini configurada exitosamente" });
+});
+router12.get("/incidencias", verifyToken, requireAdmin2, async (_req, res) => {
+  const incidencias = await getIncidents(50);
+  res.json(incidencias);
+});
+router12.patch("/incidencias/:id", verifyToken, requireAdmin2, async (req, res) => {
+  const incidenciaId = Number(req.params.id);
+  const { decision } = req.body;
+  if (!Number.isInteger(incidenciaId)) {
+    return res.status(400).json({ error: "ID de incidencia inv\xE1lido" });
+  }
+  if (decision !== "aceptada" && decision !== "rechazada") {
+    return res.status(400).json({ error: "decision debe ser 'aceptada' o 'rechazada'" });
+  }
+  try {
+    const incidencia = await updateIncidentState(incidenciaId, decision, req.userId);
+    return res.json({ ok: true, incidencia });
+  } catch {
+    return res.status(404).json({ error: "Incidencia no encontrada" });
+  }
+});
+var moderation_routes_default = router12;
 
 // src/routes/readingList.routes.ts
-import { Router as Router11 } from "express";
-var router11 = Router11();
-router11.post("/", list_controller_default.crear);
-router11.get("/", list_controller_default.obtenerTodas);
-router11.get("/docente/:docente_id", list_controller_default.obtenerTodas);
-router11.put("/:lista_id/:docente_id", list_controller_default.actualizar);
-router11.delete("/:lista_id/:docente_id", list_controller_default.eliminar);
-var readingList_routes_default = router11;
+import { Router as Router13 } from "express";
+var router13 = Router13();
+router13.post("/", list_controller_default.crear);
+router13.get("/", list_controller_default.obtenerTodas);
+router13.get("/docente/:docente_id", list_controller_default.obtenerTodas);
+router13.put("/:lista_id/:docente_id", list_controller_default.actualizar);
+router13.delete("/:lista_id/:docente_id", list_controller_default.eliminar);
+var readingList_routes_default = router13;
 
 // src/routes/review.routes.ts
-import { Router as Router12 } from "express";
+import { Router as Router14 } from "express";
 
 // src/models/opinion.model.ts
 var OpinionModel = class {
@@ -2542,6 +3730,32 @@ var ReviewService = class {
   }
   async createOpinion(data) {
     const comentarioLimpio = this.limpiarComentario(data.comentario);
+    const duplicadoReciente = await prisma.opinion.findFirst({
+      where: {
+        usuario_id: data.usuario_id,
+        libro_id: data.libro_id
+      },
+      orderBy: { fecha: "desc" },
+      include: {
+        usuario: { select: { nombre: true } }
+      }
+    });
+    if (duplicadoReciente) {
+      const ahora = Date.now();
+      const fechaCreacion = new Date(duplicadoReciente.fecha ?? 0).getTime();
+      const sesentaSegundos = 60 * 1e3;
+      if (ahora - fechaCreacion < sesentaSegundos && duplicadoReciente.comentario === comentarioLimpio) {
+        return {
+          opinion_id: duplicadoReciente.opinion_id,
+          usuario_id: duplicadoReciente.usuario_id,
+          usuario_nombre: duplicadoReciente.usuario?.nombre ?? "",
+          libro_id: duplicadoReciente.libro_id,
+          calificacion: duplicadoReciente.calificacion,
+          comentario: duplicadoReciente.comentario ?? "",
+          fecha: duplicadoReciente.fecha ?? /* @__PURE__ */ new Date()
+        };
+      }
+    }
     const newOpinion = await opinionModel.createOpinion({
       ...data,
       comentario: comentarioLimpio
@@ -2564,7 +3778,62 @@ var ReviewService = class {
 };
 var reviewService = new ReviewService();
 
+// src/services/opinion-content.service.ts
+var MIN_COMENTARIO = 10;
+var MIN_LETRAS = 4;
+var CON_VOCALES = /[aeiouáéíóúüñ]/;
+var LETRAS = /[a-záéíóúüñ]/g;
+var tienePocasLetras = (texto) => (texto.toLowerCase().match(LETRAS) ?? []).length < MIN_LETRAS;
+var esAtaqueTeclado = (texto) => {
+  const limpio = texto.toLowerCase().replace(/[^a-záéíóúüñ0-9]/g, "");
+  return limpio.length >= 3 && !CON_VOCALES.test(limpio);
+};
+var esRepetitivo = (texto) => {
+  const limpio = texto.toLowerCase().replace(/\s/g, "");
+  if (limpio.length < 4) return false;
+  if (/([a-záéíóúüñ])\1{2,}/.test(limpio)) return true;
+  if (new Set(limpio).size <= 2) return true;
+  for (let largo = 1; largo <= 3; largo++) {
+    if (limpio.length % largo !== 0) continue;
+    const bloque = limpio.slice(0, largo);
+    if (limpio === bloque.repeat(limpio.length / largo)) return true;
+  }
+  return false;
+};
+var validarComentarioOpinion = (comentario) => {
+  if (typeof comentario !== "string" || comentario.trim().length === 0) {
+    return { valido: false, error: "Escrib\xED un comentario para publicar tu rese\xF1a." };
+  }
+  const texto = comentario.trim();
+  if (texto.length < MIN_COMENTARIO) {
+    return {
+      valido: false,
+      error: `Tu rese\xF1a es muy corta. Cont\xE1 un poco m\xE1s (m\xEDnimo ${MIN_COMENTARIO} caracteres).`
+    };
+  }
+  if (tienePocasLetras(texto)) {
+    return {
+      valido: false,
+      error: "Tu rese\xF1a debe tener al menos una oraci\xF3n escrita."
+    };
+  }
+  if (esAtaqueTeclado(texto)) {
+    return {
+      valido: false,
+      error: "Tu rese\xF1a no parece un texto v\xE1lido. Revisala antes de publicar."
+    };
+  }
+  if (esRepetitivo(texto)) {
+    return {
+      valido: false,
+      error: "Tu rese\xF1a repite caracteres sin sentido. Escrib\xED un comentario real."
+    };
+  }
+  return { valido: true };
+};
+
 // src/controllers/review.controller.ts
+import { TipoRol as TipoRol4 } from "@prisma/client";
 var ReviewController = class {
   async getAllOpinions(req, res) {
     try {
@@ -2599,6 +3868,10 @@ var ReviewController = class {
       if (!usuario_id || !libro_id || !calificacion || !comentario) {
         return res.status(400).json({ error: "Missing required fields" });
       }
+      const validacion = validarComentarioOpinion(comentario);
+      if (!validacion.valido) {
+        return res.status(400).json({ error: validacion.error });
+      }
       const newOpinion = await reviewService.createOpinion({
         usuario_id,
         libro_id,
@@ -2624,8 +3897,14 @@ var ReviewController = class {
       }
       const userId = req.userId;
       const userRole = req.userRole;
-      if (userRole !== 3 && userId !== existingOpinion.usuario_id) {
+      if (userRole !== TipoRol4.ADMINISTRADOR && userId !== existingOpinion.usuario_id) {
         return res.status(403).json({ error: "Not authorized to modify this opinion" });
+      }
+      if (req.body.comentario !== void 0) {
+        const validacion = validarComentarioOpinion(req.body.comentario);
+        if (!validacion.valido) {
+          return res.status(400).json({ error: validacion.error });
+        }
       }
       const updatedFields = req.body;
       const updatedOpinion = await reviewService.updateOpinion(opinionId, updatedFields);
@@ -2648,7 +3927,7 @@ var ReviewController = class {
       }
       const userId = req.userId;
       const userRole = req.userRole;
-      if (userRole !== 3 && userId !== existingOpinion.usuario_id) {
+      if (userRole !== TipoRol4.ADMINISTRADOR && userId !== existingOpinion.usuario_id) {
         return res.status(403).json({ error: "Not authorized to delete this opinion" });
       }
       await reviewService.deleteOpinion(opinionId);
@@ -2678,18 +3957,1118 @@ var ReviewController = class {
 var review_controller_default = new ReviewController();
 
 // src/routes/review.routes.ts
-var router12 = Router12();
-router12.get("/", review_controller_default.getAllOpinions.bind(review_controller_default));
-router12.get("/:id", review_controller_default.getOpinionById.bind(review_controller_default));
-router12.post("/", verifyToken, review_controller_default.createOpinion.bind(review_controller_default));
-router12.put("/:id", verifyToken, review_controller_default.updateOpinion.bind(review_controller_default));
-router12.delete("/:id", verifyToken, review_controller_default.deleteOpinion.bind(review_controller_default));
-router12.get("/book/:bookId", review_controller_default.getOpinionsByLibro.bind(review_controller_default));
-router12.get("/libro/:bookId", review_controller_default.getOpinionsByLibro.bind(review_controller_default));
-var review_routes_default = router12;
+var router14 = Router14();
+router14.get("/", review_controller_default.getAllOpinions.bind(review_controller_default));
+router14.get("/:id", review_controller_default.getOpinionById.bind(review_controller_default));
+router14.post("/", verifyToken, moderateContent(["comentario"], "opinion"), review_controller_default.createOpinion.bind(review_controller_default));
+router14.put("/:id", verifyToken, moderateContent(["comentario"], "opinion"), review_controller_default.updateOpinion.bind(review_controller_default));
+router14.delete("/:id", verifyToken, review_controller_default.deleteOpinion.bind(review_controller_default));
+router14.get("/book/:bookId", review_controller_default.getOpinionsByLibro.bind(review_controller_default));
+router14.get("/libro/:bookId", review_controller_default.getOpinionsByLibro.bind(review_controller_default));
+var review_routes_default = router14;
+
+// src/routes/subject.routes.ts
+import { Router as Router15 } from "express";
+
+// src/controllers/subject.controller.ts
+import { Prisma as Prisma2 } from "@prisma/client";
+
+// src/models/subject.model.ts
+var obtenerMateriasDB = async () => {
+  return await prisma.materia.findMany({
+    orderBy: { nombre: "asc" }
+  });
+};
+var obtenerMateriaPorIdDB = async (materia_id) => {
+  return await prisma.materia.findUnique({
+    where: { materia_id }
+  });
+};
+var crearMateriaDB = async (nombre) => {
+  return await prisma.materia.create({
+    data: { nombre }
+  });
+};
+var actualizarMateriaDB = async (materia_id, nombre) => {
+  return await prisma.materia.update({
+    where: { materia_id },
+    data: { nombre }
+  });
+};
+var eliminarMateriaDB = async (materia_id) => {
+  await prisma.materia.delete({
+    where: { materia_id }
+  });
+};
+
+// src/services/subject.service.ts
+var SubjectService = class {
+  async obtenerTodas() {
+    return await obtenerMateriasDB();
+  }
+  async obtenerPorId(materia_id) {
+    return await obtenerMateriaPorIdDB(materia_id);
+  }
+  async crear(nombre) {
+    return await crearMateriaDB(nombre.trim());
+  }
+  async actualizar(materia_id, nombre) {
+    return await actualizarMateriaDB(materia_id, nombre.trim());
+  }
+  async eliminar(materia_id) {
+    await eliminarMateriaDB(materia_id);
+  }
+};
+var subjectService = new SubjectService();
+
+// src/controllers/subject.controller.ts
+var parsearId2 = (valor) => {
+  const id = parseInt(String(valor), 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+var validarNombre = (nombre) => {
+  if (typeof nombre !== "string" || nombre.trim().length === 0) {
+    return "El nombre de la materia es obligatorio.";
+  }
+  if (nombre.trim().length > 100) {
+    return "El nombre de la materia no puede superar los 100 caracteres.";
+  }
+  return null;
+};
+var obtenerMaterias = async (_req, res) => {
+  try {
+    const materias = await subjectService.obtenerTodas();
+    res.status(200).json(materias);
+  } catch (error) {
+    console.error("Error al obtener las materias:", error);
+    res.status(500).json({ error: "Error interno al obtener las materias." });
+  }
+};
+var obtenerMateria = async (req, res) => {
+  const id = parsearId2(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "El ID de la materia no es v\xE1lido." });
+    return;
+  }
+  try {
+    const materia = await subjectService.obtenerPorId(id);
+    if (!materia) {
+      res.status(404).json({ error: "Materia no encontrada." });
+      return;
+    }
+    res.status(200).json(materia);
+  } catch (error) {
+    console.error("Error al obtener la materia:", error);
+    res.status(500).json({ error: "Error interno al obtener la materia." });
+  }
+};
+var crearMateria = async (req, res) => {
+  const errorNombre = validarNombre(req.body?.nombre);
+  if (errorNombre) {
+    res.status(400).json({ error: errorNombre });
+    return;
+  }
+  try {
+    const materia = await subjectService.crear(req.body.nombre);
+    res.status(201).json(materia);
+  } catch (error) {
+    if (error instanceof Prisma2.PrismaClientKnownRequestError && error.code === "P2002") {
+      res.status(409).json({ error: "Ya existe una materia con ese nombre." });
+      return;
+    }
+    console.error("Error al crear la materia:", error);
+    res.status(500).json({ error: "Error interno al crear la materia." });
+  }
+};
+var actualizarMateria = async (req, res) => {
+  const id = parsearId2(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "El ID de la materia no es v\xE1lido." });
+    return;
+  }
+  const errorNombre = validarNombre(req.body?.nombre);
+  if (errorNombre) {
+    res.status(400).json({ error: errorNombre });
+    return;
+  }
+  try {
+    const materia = await subjectService.actualizar(id, req.body.nombre);
+    res.status(200).json(materia);
+  } catch (error) {
+    if (error instanceof Prisma2.PrismaClientKnownRequestError) {
+      if (error.code === "P2025") {
+        res.status(404).json({ error: "Materia no encontrada." });
+        return;
+      }
+      if (error.code === "P2002") {
+        res.status(409).json({ error: "Ya existe una materia con ese nombre." });
+        return;
+      }
+    }
+    console.error("Error al actualizar la materia:", error);
+    res.status(500).json({ error: "Error interno al actualizar la materia." });
+  }
+};
+var eliminarMateria = async (req, res) => {
+  const id = parsearId2(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "El ID de la materia no es v\xE1lido." });
+    return;
+  }
+  try {
+    await subjectService.eliminar(id);
+    res.status(200).json({ message: "Materia eliminada correctamente." });
+  } catch (error) {
+    if (error instanceof Prisma2.PrismaClientKnownRequestError) {
+      if (error.code === "P2025") {
+        res.status(404).json({ error: "Materia no encontrada." });
+        return;
+      }
+      if (error.code === "P2003") {
+        res.status(409).json({ error: "No se puede eliminar: hay cursos que usan esta materia." });
+        return;
+      }
+    }
+    console.error("Error al eliminar la materia:", error);
+    res.status(500).json({ error: "Error interno al eliminar la materia." });
+  }
+};
+
+// src/routes/subject.routes.ts
+var router15 = Router15();
+router15.get("/", verifyToken, obtenerMaterias);
+router15.get("/:id", verifyToken, obtenerMateria);
+router15.post("/", verifyToken, requireAdmin, crearMateria);
+router15.put("/:id", verifyToken, requireAdmin, actualizarMateria);
+router15.delete("/:id", verifyToken, requireAdmin, eliminarMateria);
+var subject_routes_default = router15;
+
+// src/routes/trivia.routes.ts
+import { Router as Router16 } from "express";
+
+// src/models/trivia.model.ts
+var toISODate = (date) => date ? date.toISOString().slice(0, 10) : null;
+var normalize = (value) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+var shuffle = (values) => {
+  const copy = [...values];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+var TriviaModel = class {
+  mapToQuestion(row) {
+    const question = {
+      id: row.pregunta_id,
+      mode: row.modo,
+      format: row.formato,
+      question: row.formato === "completar" ? "" : row.consigna,
+      deadline: toISODate(row.fecha_limite),
+      evaluationId: row.evaluacion_id,
+      cursoId: row.curso_id,
+      docenteId: row.docente_id
+    };
+    if (row.formato === "multiple" || row.formato === "truefalse") {
+      question.options = row.opciones.map((option) => option.texto);
+      question.correctAnswer = row.opciones.findIndex((option) => option.es_correcta === true);
+    }
+    if (row.formato === "conexion") {
+      question.pairs = row.pares.map((pair) => ({
+        left: pair.izquierda,
+        right: pair.derecha
+      }));
+    }
+    if (row.formato === "completar") {
+      question.text = row.consigna;
+      question.answers = row.respuestas.map((respuesta) => respuesta.texto);
+    }
+    return question;
+  }
+  async getByBook(bookId) {
+    try {
+      const rows = await prisma.trivia_pregunta.findMany({
+        where: { libro_id: bookId },
+        include: {
+          opciones: { orderBy: { opcion_id: "asc" } },
+          pares: { orderBy: { orden: "asc" } },
+          respuestas: { orderBy: { orden: "asc" } }
+        },
+        orderBy: { pregunta_id: "desc" }
+      });
+      return rows.map(
+        (row) => this.mapToQuestion(row)
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getByBook:", message);
+      throw new Error("Failed to retrieve trivia questions.");
+    }
+  }
+  async create(data, docenteId) {
+    const { bookId, evaluationId, cursoId, mode, format, question, deadline, options, correctAnswer, pairs, text, answers } = data;
+    const prompt = format === "completar" ? text ?? "" : question ?? "";
+    const createData = {
+      libro_id: bookId,
+      evaluacion_id: evaluationId || null,
+      curso_id: cursoId || null,
+      docente_id: docenteId,
+      modo: mode,
+      formato: format,
+      consigna: prompt,
+      fecha_limite: deadline ? /* @__PURE__ */ new Date(`${deadline}T00:00:00Z`) : null
+    };
+    if (format === "multiple" || format === "truefalse") {
+      createData.opciones = {
+        create: (options ?? []).map((optionText, index) => ({
+          texto: optionText,
+          es_correcta: index === correctAnswer
+        }))
+      };
+    }
+    if (format === "conexion") {
+      createData.pares = {
+        create: (pairs ?? []).map((pair, index) => ({
+          orden: index,
+          izquierda: pair.left,
+          derecha: pair.right
+        }))
+      };
+    }
+    if (format === "completar") {
+      createData.respuestas = {
+        create: (answers ?? []).map((answerText, index) => ({
+          orden: index,
+          texto: answerText
+        }))
+      };
+    }
+    try {
+      const newQuestion = await prisma.trivia_pregunta.create({
+        data: createData,
+        include: {
+          opciones: true,
+          pares: true,
+          respuestas: true
+        }
+      });
+      return this.mapToQuestion(
+        newQuestion
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.create:", message);
+      throw error;
+    }
+  }
+  async delete(questionId) {
+    try {
+      await prisma.trivia_pregunta.delete({
+        where: { pregunta_id: questionId }
+      });
+      return true;
+    } catch (error) {
+      if (error.code === "P2025") {
+        throw new Error(`Trivia question ${questionId} not found.`);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.delete:", message);
+      throw error;
+    }
+  }
+  async getById(questionId) {
+    try {
+      const row = await prisma.trivia_pregunta.findUnique({
+        where: { pregunta_id: questionId },
+        include: {
+          opciones: { orderBy: { opcion_id: "asc" } },
+          pares: { orderBy: { orden: "asc" } },
+          respuestas: { orderBy: { orden: "asc" } }
+        }
+      });
+      if (!row) return null;
+      return this.mapToQuestion(
+        row
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getById:", message);
+      throw new Error("Failed to retrieve trivia question.");
+    }
+  }
+  async getByCourse(cursoId) {
+    try {
+      const rows = await prisma.trivia_pregunta.findMany({
+        where: { curso_id: cursoId },
+        include: {
+          opciones: { orderBy: { opcion_id: "asc" } },
+          pares: { orderBy: { orden: "asc" } },
+          respuestas: { orderBy: { orden: "asc" } }
+        },
+        orderBy: { pregunta_id: "desc" }
+      });
+      return rows.map(
+        (row) => this.mapToQuestion(row)
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getByCourse:", message);
+      throw new Error("Failed to retrieve course trivia questions.");
+    }
+  }
+  async getEvaluationsByCourse(cursoId) {
+    try {
+      const rows = await prisma.trivia_evaluacion.findMany({
+        where: { curso_id: cursoId },
+        include: {
+          _count: { select: { trivia_pregunta: true } }
+        },
+        orderBy: { fecha_creacion: "desc" }
+      });
+      return rows.map((row) => ({
+        evaluationId: row.evaluacion_id,
+        bookId: row.libro_id,
+        cursoId: row.curso_id,
+        docenteId: row.docente_id,
+        deadline: toISODate(row.fecha_limite),
+        createdAt: row.fecha_creacion.toISOString(),
+        questionCount: row._count.trivia_pregunta
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getEvaluationsByCourse:", message);
+      throw new Error("Failed to retrieve course evaluations.");
+    }
+  }
+  async isDocenteDeCurso(userId, cursoId) {
+    try {
+      const row = await prisma.curso_docente.findUnique({
+        where: { curso_id_usuario_id: { curso_id: cursoId, usuario_id: userId } }
+      });
+      return !!row;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.isDocenteDeCurso:", message);
+      throw error;
+    }
+  }
+  async isInscripto(cursoId, userId) {
+    try {
+      const row = await prisma.inscripcion.findFirst({
+        where: { curso_id: cursoId, usuario_id: userId }
+      });
+      return !!row;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.isInscripto:", message);
+      throw error;
+    }
+  }
+  async getStudentCourseIds(userId) {
+    try {
+      const rows = await prisma.inscripcion.findMany({
+        where: { usuario_id: userId },
+        select: { curso_id: true }
+      });
+      return rows.map((row) => row.curso_id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getStudentCourseIds:", message);
+      throw error;
+    }
+  }
+  async getEvaluationCourse(evaluationId) {
+    try {
+      const row = await prisma.trivia_evaluacion.findUnique({
+        where: { evaluacion_id: evaluationId },
+        select: { curso_id: true }
+      });
+      return row ? row.curso_id : void 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getEvaluationCourse:", message);
+      throw error;
+    }
+  }
+  async getEvaluationsByBook(bookId, courseIds) {
+    try {
+      const where = { libro_id: bookId };
+      if (courseIds) {
+        where.OR = [{ curso_id: { in: courseIds } }, { curso_id: null }];
+      }
+      const rows = await prisma.trivia_evaluacion.findMany({
+        where,
+        include: {
+          _count: { select: { trivia_pregunta: true } }
+        },
+        orderBy: { fecha_creacion: "desc" }
+      });
+      return rows.map((row) => ({
+        evaluationId: row.evaluacion_id,
+        bookId: row.libro_id,
+        deadline: toISODate(row.fecha_limite),
+        createdAt: row.fecha_creacion.toISOString(),
+        questionCount: row._count.trivia_pregunta
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getEvaluationsByBook:", message);
+      throw new Error("Failed to retrieve evaluations.");
+    }
+  }
+  async createEvaluation(bookId, deadline, cursoId, docenteId) {
+    try {
+      const created = await prisma.trivia_evaluacion.create({
+        data: {
+          libro_id: bookId,
+          curso_id: cursoId || null,
+          docente_id: docenteId ?? null,
+          fecha_limite: deadline ? /* @__PURE__ */ new Date(`${deadline}T00:00:00Z`) : null
+        },
+        include: {
+          _count: { select: { trivia_pregunta: true } }
+        }
+      });
+      return {
+        evaluationId: created.evaluacion_id,
+        bookId: created.libro_id,
+        cursoId: created.curso_id,
+        docenteId: created.docente_id,
+        deadline: toISODate(created.fecha_limite),
+        createdAt: created.fecha_creacion.toISOString(),
+        questionCount: created._count.trivia_pregunta
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.createEvaluation:", message);
+      throw error;
+    }
+  }
+  async getEvaluationById(evaluationId) {
+    try {
+      const row = await prisma.trivia_evaluacion.findUnique({
+        where: { evaluacion_id: evaluationId },
+        include: {
+          _count: { select: { trivia_pregunta: true } },
+          trivia_pregunta: {
+            orderBy: { pregunta_id: "asc" },
+            include: {
+              opciones: { orderBy: { opcion_id: "asc" } },
+              pares: { orderBy: { orden: "asc" } },
+              respuestas: { orderBy: { orden: "asc" } }
+            }
+          }
+        }
+      });
+      if (!row) return null;
+      return {
+        evaluation: {
+          evaluationId: row.evaluacion_id,
+          bookId: row.libro_id,
+          deadline: toISODate(row.fecha_limite),
+          createdAt: row.fecha_creacion.toISOString(),
+          questionCount: row._count.trivia_pregunta
+        },
+        questions: row.trivia_pregunta.map(
+          (question) => this.mapToQuestion(
+            question
+          )
+        )
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getEvaluationById:", message);
+      throw new Error("Failed to retrieve evaluation.");
+    }
+  }
+  toPlayQuestion(question) {
+    if (question.format === "conexion") {
+      return {
+        id: question.id,
+        mode: question.mode,
+        format: question.format,
+        question: question.question,
+        lefts: (question.pairs ?? []).map((pair) => pair.left),
+        rights: shuffle((question.pairs ?? []).map((pair) => pair.right))
+      };
+    }
+    const playQuestion = {
+      id: question.id,
+      mode: question.mode,
+      format: question.format,
+      question: question.format === "completar" ? "" : question.question
+    };
+    if (question.format === "multiple" || question.format === "truefalse") {
+      playQuestion.options = question.options ?? [];
+    }
+    if (question.format === "completar") {
+      playQuestion.text = question.text;
+      playQuestion.deadline = question.deadline;
+      playQuestion.wordBank = shuffle(question.answers ?? []);
+    }
+    return playQuestion;
+  }
+  async getTriviaForPlay(bookId, courseIds) {
+    try {
+      const where = { libro_id: bookId, modo: "trivia" };
+      if (courseIds) {
+        where.OR = [{ curso_id: { in: courseIds } }, { curso_id: null }];
+      }
+      const rows = await prisma.trivia_pregunta.findMany({
+        where,
+        include: {
+          opciones: { orderBy: { opcion_id: "asc" } },
+          pares: { orderBy: { orden: "asc" } },
+          respuestas: { orderBy: { orden: "asc" } }
+        },
+        orderBy: { pregunta_id: "asc" }
+      });
+      return rows.map(
+        (row) => this.toPlayQuestion(
+          this.mapToQuestion(row)
+        )
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getTriviaForPlay:", message);
+      throw new Error("Failed to retrieve playable trivia.");
+    }
+  }
+  async getEvaluationForPlay(evaluationId) {
+    try {
+      const rows = await prisma.trivia_pregunta.findMany({
+        where: { evaluacion_id: evaluationId },
+        include: {
+          opciones: { orderBy: { opcion_id: "asc" } },
+          pares: { orderBy: { orden: "asc" } },
+          respuestas: { orderBy: { orden: "asc" } }
+        },
+        orderBy: { pregunta_id: "asc" }
+      });
+      return rows.map(
+        (row) => this.toPlayQuestion(
+          this.mapToQuestion(row)
+        )
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error TriviaModel.getEvaluationForPlay:", message);
+      throw new Error("Failed to retrieve playable evaluation.");
+    }
+  }
+  async checkAnswers(answers) {
+    const ids = answers.map((entry) => entry.questionId);
+    const rows = await prisma.trivia_pregunta.findMany({
+      where: { pregunta_id: { in: ids } },
+      include: {
+        opciones: true,
+        pares: true,
+        respuestas: true
+      }
+    });
+    const byId = new Map(rows.map((row) => [row.pregunta_id, row]));
+    const results = answers.map(({ questionId, answer }) => {
+      const row = byId.get(questionId);
+      if (!row) {
+        return { questionId, correct: false, solution: null };
+      }
+      let correct = false;
+      let solution = null;
+      if (row.formato === "multiple" || row.formato === "truefalse") {
+        const correctIndex = row.opciones.findIndex((opcion) => opcion.es_correcta === true);
+        const submittedIndex = answer?.optionIndex;
+        if (correctIndex >= 0) {
+          solution = { optionIndex: correctIndex };
+          correct = typeof submittedIndex === "number" && submittedIndex === correctIndex;
+        }
+      } else if (row.formato === "conexion") {
+        const originalPairs = row.pares.map((par) => ({ left: par.izquierda, right: par.derecha }));
+        const submittedPairs = answer?.pairs ?? [];
+        solution = { pairs: originalPairs };
+        correct = submittedPairs.length === originalPairs.length && originalPairs.every(
+          (pair) => submittedPairs.some(
+            (submitted) => normalize(submitted.left) === normalize(pair.left) && normalize(submitted.right) === normalize(pair.right)
+          )
+        );
+      } else if (row.formato === "completar") {
+        const expected = row.respuestas.map((respuesta) => respuesta.texto);
+        const submittedTexts = answer?.texts ?? [];
+        solution = { texts: expected };
+        correct = submittedTexts.length === expected.length && expected.every((expectedText, index) => normalize(submittedTexts[index] ?? "") === normalize(expectedText));
+      }
+      return { questionId, correct, solution };
+    });
+    const total = results.length;
+    const correctCount = results.filter((result) => result.correct).length;
+    return {
+      total,
+      correctCount,
+      percentage: total > 0 ? Math.round(correctCount * 100 / total) : 0,
+      results
+    };
+  }
+  async getAttempt(evaluationId, userId) {
+    const row = await prisma.triviaAttempt.findUnique({
+      where: { evaluationUserAttempt: { evaluationId, userId } },
+      include: { user: { select: { nombre: true, email: true } } }
+    });
+    if (!row) return null;
+    return this.mapAttempt(row);
+  }
+  async saveAttempt(payload) {
+    try {
+      const created = await prisma.triviaAttempt.create({
+        data: {
+          evaluationId: payload.evaluationId,
+          userId: payload.userId,
+          correctCount: payload.result.correctCount,
+          totalQuestions: payload.result.total,
+          score: payload.result.percentage,
+          answersJson: {
+            questions: payload.questions,
+            answers: payload.answers,
+            result: payload.result
+          }
+        },
+        include: { user: { select: { nombre: true, email: true } } }
+      });
+      return this.mapAttempt(created);
+    } catch (error) {
+      if (error?.code === "P2002") {
+        throw new Error("This evaluation has already been answered by this user.");
+      }
+      console.error("Error TriviaModel.saveAttempt:", error);
+      throw error;
+    }
+  }
+  async getAttemptsByEvaluation(evaluationId) {
+    const rows = await prisma.triviaAttempt.findMany({
+      where: { evaluationId },
+      include: { user: { select: { nombre: true, email: true } } },
+      orderBy: { submittedAt: "asc" }
+    });
+    return rows.map((row) => this.mapAttempt(row));
+  }
+  mapAttempt(row) {
+    return {
+      attemptId: row.attemptId,
+      evaluationId: row.evaluationId,
+      userId: row.userId,
+      studentName: row.user.nombre,
+      correctCount: row.correctCount,
+      total: row.totalQuestions,
+      percentage: row.score,
+      submittedAt: row.submittedAt.toISOString(),
+      payload: row.answersJson
+    };
+  }
+};
+var triviaModel = new TriviaModel();
+
+// src/controllers/trivia.controller.ts
+var TriviaController = class {
+  async getByBook(req, res) {
+    try {
+      const bookId = parseInt(String(req.params.bookId), 10);
+      if (isNaN(bookId)) {
+        return res.status(400).json({ error: "Invalid book ID" });
+      }
+      const questions = await triviaModel.getByBook(bookId);
+      return res.status(200).json(questions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting trivia by book:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async create(req, res) {
+    try {
+      const {
+        bookId,
+        evaluationId,
+        cursoId,
+        mode,
+        format,
+        question,
+        deadline,
+        options,
+        correctAnswer,
+        pairs,
+        text,
+        answers
+      } = req.body;
+      if (!bookId || !mode || !format) {
+        return res.status(400).json({ error: "Missing required fields: bookId, mode, format" });
+      }
+      if (!["trivia", "evaluacion"].includes(mode)) {
+        return res.status(400).json({ error: "mode must be trivia or evaluacion" });
+      }
+      if (!["multiple", "truefalse", "conexion", "completar"].includes(format)) {
+        return res.status(400).json({ error: "format must be multiple, truefalse, conexion, or completar" });
+      }
+      if (format === "multiple" || format === "truefalse") {
+        if (!options || !Array.isArray(options) || options.length < 2) {
+          return res.status(400).json({ error: "At least 2 options are required for multiple/truefalse" });
+        }
+        if (correctAnswer === void 0 || correctAnswer < 0 || correctAnswer >= options.length) {
+          return res.status(400).json({ error: "correctAnswer must be a valid option index" });
+        }
+      }
+      if (format === "conexion") {
+        if (!pairs || !Array.isArray(pairs) || pairs.length < 2) {
+          return res.status(400).json({ error: "At least 2 pairs are required for conexion format" });
+        }
+      }
+      if (format === "completar") {
+        if (!text || !String(text).trim()) {
+          return res.status(400).json({ error: "text is required for completar format" });
+        }
+        if (!answers || !Array.isArray(answers) || answers.length === 0) {
+          return res.status(400).json({ error: "At least 1 answer is required for completar format" });
+        }
+      }
+      const numericCursoId = cursoId != null ? parseInt(String(cursoId), 10) : null;
+      if (numericCursoId !== null && isNaN(numericCursoId)) {
+        return res.status(400).json({ error: "cursoId must be a valid number" });
+      }
+      const isAdmin = Number(req.userRole) === 3;
+      if (!isAdmin && numericCursoId !== null) {
+        if (!req.userId) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+        const esDocente = await triviaModel.isDocenteDeCurso(req.userId, numericCursoId);
+        if (!esDocente) {
+          return res.status(403).json({ error: "Solo un docente del curso puede crear preguntas asignadas a \xE9l." });
+        }
+      }
+      const data = {
+        bookId,
+        evaluationId,
+        cursoId: numericCursoId,
+        mode,
+        format,
+        question,
+        deadline: deadline || null,
+        options: options || [],
+        correctAnswer: correctAnswer ?? -1,
+        pairs: pairs || [],
+        text: text || "",
+        answers: answers || []
+      };
+      const newQuestion = await triviaModel.create(data, req.userId);
+      return res.status(201).json(newQuestion);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error creating trivia question:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async delete(req, res) {
+    try {
+      const questionId = parseInt(String(req.params.questionId), 10);
+      if (isNaN(questionId)) {
+        return res.status(400).json({ error: "Invalid question ID" });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const question = await triviaModel.getById(questionId);
+      if (!question) {
+        return res.status(404).json({ error: `Trivia question ${questionId} not found.` });
+      }
+      const isAdmin = Number(req.userRole) === 3;
+      const isOwner = question.docenteId === req.userId;
+      const esDocente = question.cursoId != null ? await triviaModel.isDocenteDeCurso(req.userId, question.cursoId) : false;
+      if (!isAdmin && !isOwner && !esDocente) {
+        return res.status(403).json({
+          error: "No puedes eliminar esta pregunta: solo el docente que la cre\xF3 o el docente del curso."
+        });
+      }
+      await triviaModel.delete(questionId);
+      return res.status(204).end();
+    } catch (error) {
+      if (error.message?.includes("not found")) {
+        return res.status(404).json({ error: error.message });
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error deleting trivia question:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async getByCourse(req, res) {
+    try {
+      const cursoId = parseInt(String(req.params.cursoId), 10);
+      if (isNaN(cursoId)) {
+        return res.status(400).json({ error: "Invalid course ID" });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isAdmin = Number(req.userRole) === 3;
+      const esDocente = await triviaModel.isDocenteDeCurso(req.userId, cursoId);
+      const esAlumno = await triviaModel.isInscripto(cursoId, req.userId);
+      if (!isAdmin && !esDocente && !esAlumno) {
+        return res.status(403).json({
+          error: "Solo docentes del curso o alumnos inscriptos pueden ver las preguntas del curso."
+        });
+      }
+      const questions = await triviaModel.getByCourse(cursoId);
+      return res.status(200).json(questions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting trivia by course:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async getEvaluationsByCourse(req, res) {
+    try {
+      const cursoId = parseInt(String(req.params.cursoId), 10);
+      if (isNaN(cursoId)) {
+        return res.status(400).json({ error: "Invalid course ID" });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isAdmin = Number(req.userRole) === 3;
+      const esDocente = await triviaModel.isDocenteDeCurso(req.userId, cursoId);
+      const esAlumno = await triviaModel.isInscripto(cursoId, req.userId);
+      if (!isAdmin && !esDocente && !esAlumno) {
+        return res.status(403).json({
+          error: "Solo docentes del curso o alumnos inscriptos pueden ver las evaluaciones del curso."
+        });
+      }
+      const evaluations = await triviaModel.getEvaluationsByCourse(cursoId);
+      return res.status(200).json(evaluations);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting evaluations by course:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async getEvaluationsByBook(req, res) {
+    try {
+      const bookId = parseInt(String(req.params.bookId), 10);
+      if (isNaN(bookId)) {
+        return res.status(400).json({ error: "Invalid book ID" });
+      }
+      const isStudent = req.userId != null && Number(req.userRole) === 1;
+      const courseIds = isStudent ? await triviaModel.getStudentCourseIds(req.userId) : void 0;
+      const evaluations = await triviaModel.getEvaluationsByBook(bookId, courseIds);
+      return res.status(200).json(evaluations);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting evaluations:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async createEvaluation(req, res) {
+    try {
+      const { bookId, deadline, cursoId } = req.body;
+      if (!bookId) {
+        return res.status(400).json({ error: "Missing required field: bookId" });
+      }
+      const numericCursoId = cursoId != null ? parseInt(String(cursoId), 10) : null;
+      if (numericCursoId !== null && isNaN(numericCursoId)) {
+        return res.status(400).json({ error: "cursoId must be a valid number" });
+      }
+      const isAdmin = Number(req.userRole) === 3;
+      if (!isAdmin && numericCursoId !== null) {
+        if (!req.userId) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+        const esDocente = await triviaModel.isDocenteDeCurso(req.userId, numericCursoId);
+        if (!esDocente) {
+          return res.status(403).json({ error: "Solo un docente del curso puede crear evaluaciones asignadas a \xE9l." });
+        }
+      }
+      const newEvaluation = await triviaModel.createEvaluation(bookId, deadline, numericCursoId, req.userId);
+      return res.status(201).json(newEvaluation);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error creating evaluation:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async getEvaluationById(req, res) {
+    try {
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: "Invalid evaluation ID" });
+      }
+      const detail = await triviaModel.getEvaluationById(evaluationId);
+      if (!detail) {
+        return res.status(404).json({ error: "Evaluation not found" });
+      }
+      return res.status(200).json(detail);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting evaluation by ID:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async getTriviaForPlay(req, res) {
+    try {
+      const bookId = parseInt(String(req.params.bookId), 10);
+      if (isNaN(bookId)) {
+        return res.status(400).json({ error: "Invalid book ID" });
+      }
+      const isStudent = req.userId != null && Number(req.userRole) === 1;
+      const courseIds = isStudent ? await triviaModel.getStudentCourseIds(req.userId) : void 0;
+      const questions = await triviaModel.getTriviaForPlay(bookId, courseIds);
+      return res.status(200).json(questions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting trivia for play:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async getEvaluationForPlay(req, res) {
+    try {
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: "Invalid evaluation ID" });
+      }
+      if (req.userId != null && Number(req.userRole) === 1) {
+        const courseId = await triviaModel.getEvaluationCourse(evaluationId);
+        if (courseId === void 0) {
+          return res.status(404).json({ error: "Evaluation not found" });
+        }
+        if (courseId !== null) {
+          const studentCourses = await triviaModel.getStudentCourseIds(req.userId);
+          if (!studentCourses.includes(courseId)) {
+            return res.status(403).json({ error: "Esta evaluaci\xF3n no pertenece a tus cursos." });
+          }
+        }
+      }
+      const questions = await triviaModel.getEvaluationForPlay(evaluationId);
+      return res.status(200).json(questions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting evaluation for play:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async checkAnswers(req, res) {
+    try {
+      const { answers, evaluationId } = req.body;
+      if (!answers || !Array.isArray(answers) || answers.length === 0) {
+        return res.status(400).json({ error: "answers array is required" });
+      }
+      const result = await triviaModel.checkAnswers(answers);
+      const evaluationNumber = evaluationId ? parseInt(String(evaluationId), 10) : null;
+      if (evaluationNumber && req.userId) {
+        if (Number(req.userRole) === 1) {
+          const courseId = await triviaModel.getEvaluationCourse(evaluationNumber);
+          if (courseId === void 0) {
+            return res.status(404).json({ error: "Evaluation not found" });
+          }
+          if (courseId !== null) {
+            const studentCourses = await triviaModel.getStudentCourseIds(req.userId);
+            if (!studentCourses.includes(courseId)) {
+              return res.status(403).json({ error: "Esta evaluaci\xF3n no pertenece a tus cursos." });
+            }
+          }
+        }
+        const existing = await triviaModel.getAttempt(evaluationNumber, req.userId);
+        if (existing) {
+          return res.status(409).json({
+            error: "Esta evaluaci\xF3n ya fue respondida por este alumno.",
+            attempt: existing
+          });
+        }
+        const questions = await triviaModel.getEvaluationForPlay(evaluationNumber);
+        await triviaModel.saveAttempt({
+          evaluationId: evaluationNumber,
+          userId: req.userId,
+          questions,
+          answers,
+          result
+        });
+      }
+      return res.status(200).json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("already been answered")) {
+        return res.status(409).json({ error: "Esta evaluaci\xF3n ya fue respondida por este alumno." });
+      }
+      console.error("Error checking trivia answers:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async getAttemptStatus(req, res) {
+    try {
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: "Invalid evaluation ID" });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      if (Number(req.userRole) === 1) {
+        const courseId = await triviaModel.getEvaluationCourse(evaluationId);
+        if (courseId === void 0) {
+          return res.status(404).json({ error: "Evaluation not found" });
+        }
+        if (courseId !== null) {
+          const studentCourses = await triviaModel.getStudentCourseIds(req.userId);
+          if (!studentCourses.includes(courseId)) {
+            return res.status(403).json({ error: "Esta evaluaci\xF3n no pertenece a tus cursos." });
+          }
+        }
+      }
+      const attempt = await triviaModel.getAttempt(evaluationId, req.userId);
+      return res.status(200).json({
+        answered: !!attempt,
+        attempt: attempt ? {
+          attemptId: attempt.attemptId,
+          correctCount: attempt.correctCount,
+          total: attempt.total,
+          percentage: attempt.percentage,
+          submittedAt: attempt.submittedAt
+        } : null
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting attempted status:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+  async getAttemptsByEvaluation(req, res) {
+    try {
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: "Invalid evaluation ID" });
+      }
+      const attempts = await triviaModel.getAttemptsByEvaluation(evaluationId);
+      return res.status(200).json(attempts);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Error getting attempts by evaluation:", message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+};
+var trivia_controller_default = new TriviaController();
+
+// src/routes/trivia.routes.ts
+var router16 = Router16();
+router16.get("/evaluacion/libro/:bookId", trivia_controller_default.getEvaluationsByBook);
+router16.get("/evaluacion/curso/:cursoId", verifyToken, trivia_controller_default.getEvaluationsByCourse);
+router16.post("/evaluacion", verifyToken, trivia_controller_default.createEvaluation);
+router16.get("/evaluacion/:evaluationId", trivia_controller_default.getEvaluationById);
+router16.get("/jugar/libro/:bookId", optionalAuth, trivia_controller_default.getTriviaForPlay);
+router16.get("/jugar/evaluacion/:evaluationId", optionalAuth, trivia_controller_default.getEvaluationForPlay);
+router16.post("/jugar/check", verifyToken, trivia_controller_default.checkAnswers);
+router16.get("/jugar/evaluacion/:evaluationId/status", verifyToken, trivia_controller_default.getAttemptStatus);
+router16.get("/evaluacion/:evaluationId/attempts", verifyToken, trivia_controller_default.getAttemptsByEvaluation);
+router16.get("/libro/:bookId", trivia_controller_default.getByBook);
+router16.get("/curso/:cursoId", verifyToken, trivia_controller_default.getByCourse);
+router16.post("/", verifyToken, trivia_controller_default.create);
+router16.delete("/:questionId", verifyToken, trivia_controller_default.delete);
+var trivia_routes_default = router16;
 
 // src/routes/user.routes.ts
-import { Router as Router13 } from "express";
+import { Router as Router17 } from "express";
 
 // src/services/user.service.ts
 var UserService = class {
@@ -2708,6 +5087,9 @@ var UserService = class {
   async deleteUser(id) {
     return await userModel.deleteUser(id);
   }
+  async getUsersPaginated(pagination) {
+    return await userModel.getUsersPaginated(pagination);
+  }
 };
 var userService = new UserService();
 
@@ -2715,6 +5097,11 @@ var userService = new UserService();
 var UserController = class {
   async getAllUsers(req, res) {
     try {
+      const pagination = parsePagination(req.query, 5);
+      if (pagination) {
+        const result = await userService.getUsersPaginated(pagination);
+        return res.status(200).json(result);
+      }
       const users = await userService.getAllUsers();
       res.status(200).json(users);
     } catch (error) {
@@ -2726,10 +5113,14 @@ var UserController = class {
   async createUser(req, res) {
     try {
       const newUser = req.body;
-      if (!newUser.nombre || !newUser.email || !newUser.contrasena || !newUser.rol_id) {
+      const rolRaw = newUser.rol || (newUser.rol_id === 3 ? "ADMINISTRADOR" : newUser.rol_id === 2 ? "DOCENTE" : "ALUMNO");
+      if (!newUser.nombre || !newUser.email || !newUser.contrasena) {
         return res.status(400).json({ error: "Missing required fields" });
       }
-      const result = await userService.createUser(newUser);
+      const result = await userService.createUser({
+        ...newUser,
+        rol: String(rolRaw).toUpperCase()
+      });
       res.status(201).json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2794,21 +5185,16 @@ var UserController = class {
 var user_controller_default = new UserController();
 
 // src/routes/user.routes.ts
-var router13 = Router13();
-var roldAdmin = 3;
-router13.get(
-  "/",
-  /*verifyToken, requireRole(roldAdmin),*/
-  user_controller_default.getAllUsers
-);
-router13.get("/:id", verifyToken, user_controller_default.getUserById);
-router13.post("/", user_controller_default.createUser);
-router13.put("/:id", verifyToken, user_controller_default.updateUser);
-router13.delete("/:id", verifyToken, requireRole(roldAdmin), user_controller_default.deleteUser);
-var user_routes_default = router13;
+var router17 = Router17();
+router17.get("/", verifyToken, requireAdmin, user_controller_default.getAllUsers);
+router17.get("/:id", verifyToken, user_controller_default.getUserById);
+router17.post("/", user_controller_default.createUser);
+router17.put("/:id", verifyToken, user_controller_default.updateUser);
+router17.delete("/:id", verifyToken, requireAdmin, user_controller_default.deleteUser);
+var user_routes_default = router17;
 
 // src/routes/radio.routes.ts
-import { Router as Router14 } from "express";
+import { Router as Router18 } from "express";
 
 // src/services/radioScraper.service.ts
 import axios from "axios";
@@ -2942,7 +5328,11 @@ var obtenerTodosEpisodios = async (req, res) => {
 var obtenerEpisodioPorId = async (req, res) => {
   try {
     const { id } = req.params;
-    const episodio = await obtenerEpisodioPorIdDB(Number(id));
+    const episodioId = Number(id);
+    if (isNaN(episodioId)) {
+      return res.status(400).json({ mensaje: "ID de episodio inv\xE1lido" });
+    }
+    const episodio = await obtenerEpisodioPorIdDB(episodioId);
     if (!episodio) {
       return res.status(404).json({ mensaje: "Episodio no encontrado" });
     }
@@ -3008,13 +5398,14 @@ var sincronizarProgramas = async (req, res) => {
 };
 
 // src/routes/radio.routes.ts
-var router14 = Router14();
-router14.get("/", obtenerTodosEpisodios);
-router14.post("/sincronizar", verifyToken, sincronizarProgramas);
-router14.get("/:id", obtenerEpisodioPorId);
-router14.post("/", verifyToken, requireRole(1), crearEpisodio);
-router14.delete("/:id", verifyToken, requireRole(1), eliminarEpisodio);
-var radio_routes_default = router14;
+import { TipoRol as TipoRol5 } from "@prisma/client";
+var router18 = Router18();
+router18.get("/", obtenerTodosEpisodios);
+router18.post("/sincronizar", verifyToken, sincronizarProgramas);
+router18.get("/:id", obtenerEpisodioPorId);
+router18.post("/", verifyToken, requireRole(TipoRol5.DOCENTE, TipoRol5.ADMINISTRADOR), crearEpisodio);
+router18.delete("/:id", verifyToken, requireRole(TipoRol5.DOCENTE, TipoRol5.ADMINISTRADOR), eliminarEpisodio);
+var radio_routes_default = router18;
 
 // server.ts
 var app = express();
@@ -3023,8 +5414,14 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
+      "http://localhost:3001",
       "http://localhost:5173",
+      "http://localhost:5174",
+      "http://localhost:5175",
       "http://127.0.0.1:3000",
+      "http://127.0.0.1:3001",
+      "http://127.0.0.1:5173",
+      "http://127.0.0.1:5174",
       "https://statuesque-truffle-a9d0a3.netlify.app",
       "https://sababook-back.onrender.com"
     ],
@@ -3048,6 +5445,10 @@ app.use("/api/v1/reviews", review_routes_default);
 app.use("/api/v1/users", user_routes_default);
 app.use("/api/v1/radio", radio_routes_default);
 app.use("/api/v1/cafes", cafe_routes_default);
+app.use("/api/v1/trivia", trivia_routes_default);
+app.use("/api/v1/subjects", subject_routes_default);
+app.use("/api/v1/courses", course_routes_default);
+app.use("/api/v1/moderation", moderation_routes_default);
 app.use("/api/v1/user", user_routes_default);
 app.use("/api/v1/usuario", user_routes_default);
 app.use("/api/v1/usuarios", user_routes_default);
@@ -3060,6 +5461,7 @@ app.use("/api/v1/comentarios", comment_routes_default);
 app.use("/api/v1/lista-lectura", readingList_routes_default);
 app.use("/api/v1/radio-sabato", radio_routes_default);
 app.use("/api/v1/cafe", cafe_routes_default);
+app.use("/api/v1/moderacion", moderation_routes_default);
 app.get("/", (req, res) => {
   res.status(200).send("Hello World!\n");
 });

@@ -1,6 +1,6 @@
 // src/models/course.model.ts
 import { prisma } from '../db/connect/db';
-import type { curso, curso_docente, curso_libro } from '@prisma/client';
+import type { curso, curso_docente, curso_libro, TipoRol } from '@prisma/client';
 
 export interface DatosCurso {
   anio: number;
@@ -136,10 +136,10 @@ export const eliminarCursoDB = async (curso_id: number): Promise<void> => {
 
 export const obtenerRolUsuarioDB = async (
   usuario_id: number
-): Promise<{ rol_id: number | null } | null> => {
+): Promise<{ rol: TipoRol } | null> => {
   return await prisma.usuario.findUnique({
     where: { usuario_id },
-    select: { rol_id: true },
+    select: { rol: true },
   });
 };
 

@@ -24,10 +24,14 @@ class UserController {
   async createUser(req: Request, res: Response) {
     try {
       const newUser = req.body;
-      if (!newUser.nombre || !newUser.email || !newUser.contrasena || !newUser.rol_id) {
+      const rolRaw = newUser.rol || (newUser.rol_id === 3 ? 'ADMINISTRADOR' : newUser.rol_id === 2 ? 'DOCENTE' : 'ALUMNO');
+      if (!newUser.nombre || !newUser.email || !newUser.contrasena) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
-      const result = await userService.createUser(newUser);
+      const result = await userService.createUser({
+        ...newUser,
+        rol: String(rolRaw).toUpperCase() as any,
+      });
       res.status(201).json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

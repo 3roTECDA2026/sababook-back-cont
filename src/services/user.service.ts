@@ -1,12 +1,12 @@
-// src/services/user.service.ts
 import { userModel } from '../models/user.model';
 import { PaginationParams } from '../utils/pagination';
+import { TipoRol } from '@prisma/client';
 
 export interface CreateUserDTO {
   nombre: string;
   email: string;
   contrasena: string;
-  rol_id: number;
+  rol?: TipoRol;
   [key: string]: any;
 }
 
