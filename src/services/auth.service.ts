@@ -16,19 +16,34 @@ class AuthService {
       throw new Error('INVALID_CREDENTIALS');
     }
 
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET_NOT_CONFIGURED');
+    }
+
     const payload = {
       usuario_id: user.usuario_id,
       nombre: user.nombre,
-      rol_id: user.rol_id,
+      rol: user.rol,
     };
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+    const token = jwt.sign(payload, secret, { expiresIn: '1h', algorithm: 'HS256' });
 
     return {
       message: 'Inicio de sesión exitoso.',
       token: token,
       userId: user.usuario_id,
-      rol: user.rol_id,
+      rol: user.rol,
+      user: {
+        usuario_id: user.usuario_id,
+        nombre: user.nombre,
+        email: user.email,
+        rol: user.rol,
+        avatar_url: user.avatar_url,
+        nivel_educativo: user.nivel_educativo,
+        perfil_completo: user.perfil_completo,
+        fecha_registro: user.fecha_registro,
+      },
     };
   }
 

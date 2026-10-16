@@ -7,16 +7,16 @@ import {
   actualizarComentario,
   eliminarComentario,
 } from '../controllers/comment.controller';
-
+import { verifyToken, optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
-router.post('/', crearComentario);
-router.get('/:foro_id', obtenerComentarios);
-router.get('/:id', obtenerComentario);
-router.put('/:id', actualizarComentario);
-router.delete('/:id', eliminarComentario);
+router.post('/', verifyToken, crearComentario);
+router.get('/:foro_id', optionalAuth, obtenerComentarios);
+router.get('/:id', optionalAuth, obtenerComentario);
+router.put('/:id', verifyToken, actualizarComentario);
+router.delete('/:id', verifyToken, eliminarComentario);
 
-router.post('/:id/comentarios', crearComentario);
+router.post('/:id/comentarios', verifyToken, crearComentario);
 
 export default router;

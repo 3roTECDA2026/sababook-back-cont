@@ -1,28 +1,33 @@
 // src/controllers/metaLectura.controller.ts
-import { Request, Response } from 'express';
-import { crearMeta, obtenerMetasPorUsuario, eliminarMeta, obtenerTodasLasMetas, actualizarMeta } from '../models/metaLectura.model';
-
-// Interfaz para extender Request cuando el middleware de autenticación inyecta el usuario
-interface AuthenticatedRequest extends Request {
-  user?: {
-    usuario_id: number;
-  };
-}
+import { Response } from 'express';
+import { AuthRequest } from '../middleware/auth.middleware';
+import { TipoRol } from '@prisma/client';
+import {
+  crearMeta,
+  obtenerMetasPorUsuario,
+  eliminarMeta,
+  obtenerTodasLasMetas,
+  actualizarMeta,
+} from '../models/metaLectura.model';
 
 class MetaLecturaController {
-  async crear(req: AuthenticatedRequest, res: Response) {
+  async crear(req: AuthRequest, res: Response) {
     try {
-      const usuarioId = req.user?.usuario_id || req.body.usuario_id;
+      const usuarioId = req.userId;
+      if (!usuarioId) {
+        return res.status(401).json({ mensaje: 'Usuario no autenticado' });
+      }
+
       const { periodo_nombre, cantidad_libros, fecha_inicio, fecha_fin } = req.body;
 
-      if (!usuarioId || !periodo_nombre || !cantidad_libros || !fecha_inicio || !fecha_fin) {
+      if (!periodo_nombre || !cantidad_libros || !fecha_inicio || !fecha_fin) {
         return res.status(400).json({ mensaje: 'Faltan campos obligatorios para crear la meta' });
       }
 
       const nuevaMeta = await crearMeta({
-        usuario_id: parseInt(String(usuarioId)),
-        periodo_nombre,
-        cantidad_libros: parseInt(String(cantidad_libros)),
+        usuario_id: usuarioId,
+        periodo_nombre: String(periodo_nombre).trim(),
+        cantidad_libros: parseInt(String(cantidad_libros), 10),
         fecha_inicio: new Date(fecha_inicio),
         fecha_fin: new Date(fecha_fin),
       });
@@ -37,24 +42,35 @@ class MetaLecturaController {
     }
   }
 
-  async obtenerMisMetas(req: AuthenticatedRequest, res: Response) {
+  async obtenerMisMetas(req: AuthRequest, res: Response) {
     try {
-      const usuarioId = req.user?.usuario_id || parseInt(String(req.params.usuarioId));
+      // Si pasa usuarioId por URL, solo un docente o administrador puede consultar metas ajenas
+      const requestedUserId = req.params.usuarioId ? parseInt(String(req.params.usuarioId), 10) : undefined;
+      const targetUserId =
+        requestedUserId &&
+        requestedUserId !== req.userId &&
+        (req.userRole === TipoRol.DOCENTE || req.userRole === TipoRol.ADMINISTRADOR)
+          ? requestedUserId
+          : req.userId;
 
-      if (!usuarioId) {
-        return res.status(400).json({ mensaje: 'ID de usuario no especificado' });
+      if (!targetUserId) {
+        return res.status(401).json({ mensaje: 'Usuario no autenticado' });
       }
 
-      const metas = await obtenerMetasPorUsuario(usuarioId);
+      const metas = await obtenerMetasPorUsuario(targetUserId);
       res.json(metas);
     } catch (error) {
       console.error('Error al obtener metas de lectura:', error);
       res.status(500).json({ mensaje: 'Error al obtener las metas' });
     }
   }
-  //----------------------------------------------------------------
-  async obtenerTodas(req: AuthenticatedRequest, res: Response) {
+
+  async obtenerTodas(req: AuthRequest, res: Response) {
     try {
+      if (req.userRole !== TipoRol.DOCENTE && req.userRole !== TipoRol.ADMINISTRADOR) {
+        return res.status(403).json({ mensaje: 'Acceso denegado: se requiere rol docente o administrador' });
+      }
+
       const metas = await obtenerTodasLasMetas();
       res.json(metas);
     } catch (error) {
@@ -63,18 +79,18 @@ class MetaLecturaController {
     }
   }
 
-  async actualizar(req: AuthenticatedRequest, res: Response) {
+  async actualizar(req: AuthRequest, res: Response) {
     try {
-      const metaId = parseInt(String(req.params.id));
+      const metaId = parseInt(String(req.params.id), 10);
       const { cantidad_libros, periodo_nombre, fecha_inicio, fecha_fin } = req.body;
 
-      if (!metaId) {
-        return res.status(400).json({ mensaje: 'ID de meta no especificado' });
+      if (!metaId || isNaN(metaId)) {
+        return res.status(400).json({ mensaje: 'ID de meta no especificado o inválido' });
       }
 
-      const datosActualizar: any = {};
-      if (cantidad_libros) datosActualizar.cantidad_libros = parseInt(String(cantidad_libros));
-      if (periodo_nombre) datosActualizar.periodo_nombre = periodo_nombre;
+      const datosActualizar: Record<string, unknown> = {};
+      if (cantidad_libros) datosActualizar.cantidad_libros = parseInt(String(cantidad_libros), 10);
+      if (periodo_nombre) datosActualizar.periodo_nombre = String(periodo_nombre).trim();
       if (fecha_inicio) datosActualizar.fecha_inicio = new Date(fecha_inicio);
       if (fecha_fin) datosActualizar.fecha_fin = new Date(fecha_fin);
 
@@ -89,28 +105,26 @@ class MetaLecturaController {
       res.status(500).json({ mensaje: 'Error al actualizar la meta' });
     }
   }
-  //---------------------------------------------------------------
 
-  async eliminar(req: AuthenticatedRequest, res: Response) {
-  try {
-    const metaId = parseInt(String(req.params.id));
+  async eliminar(req: AuthRequest, res: Response) {
+    try {
+      const metaId = parseInt(String(req.params.id), 10);
 
-    if (!metaId) {
-      return res.status(400).json({ mensaje: 'ID de meta no especificado' });
+      if (!metaId || isNaN(metaId)) {
+        return res.status(400).json({ mensaje: 'ID de meta no especificado o inválido' });
+      }
+
+      const eliminado = await eliminarMeta(metaId);
+
+      if (!eliminado) {
+        return res.status(404).json({ mensaje: 'Meta no encontrada' });
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error al eliminar meta:', error);
+      res.status(500).json({ mensaje: 'Error al eliminar la meta' });
     }
-
-    // Pasamos solo el metaId para que el Admin pueda eliminar cualquier meta
-    const eliminado = await eliminarMeta(metaId);
-
-    if (!eliminado) {
-      return res.status(404).json({ mensaje: 'Meta no encontrada' });
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error al eliminar meta:', error);
-    res.status(500).json({ mensaje: 'Error al eliminar la meta' });
-  }
   }
 }
 

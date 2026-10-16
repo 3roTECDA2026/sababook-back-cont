@@ -1,14 +1,14 @@
-// src/models/user.model.ts
 import { prisma } from '../db/connect/db';
 import bcrypt from 'bcrypt';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
+import { TipoRol } from '@prisma/client';
 
 export interface User {
   usuario_id: number;
   nombre: string;
   email: string;
   contrasena: string;
-  rol_id: number;
+  rol: TipoRol;
   fecha_registro: Date;
   perfil_completo: boolean;
   avatar_url: string | null;
@@ -19,7 +19,7 @@ interface UserConRol {
   usuario_id: number;
   nombre: string;
   email: string;
-  rol: string;
+  rol: TipoRol;
   fecha_registro: Date;
   perfil_completo: boolean;
   avatar_url: string | null;
@@ -30,7 +30,7 @@ interface CreateUserData {
   nombre: string;
   email: string;
   contrasena: string;
-  rol_id: number;
+  rol?: TipoRol;
   perfil_completo?: boolean;
   avatar_url?: string | null;
   nivel_educativo?: string | null;
@@ -41,7 +41,7 @@ interface NewUserResult {
   nombre: string;
   email: string;
   fecha_registro: Date;
-  rol_id: number;
+  rol: TipoRol;
 }
 
 type UpdateUserData = Partial<Omit<User, 'usuario_id'>>;
@@ -50,13 +50,6 @@ class UserModel {
   async getAllUsers(): Promise<UserConRol[]> {
     try {
       const users = await prisma.usuario.findMany({
-        include: {
-          rol: {
-            select: {
-              nombre_rol: true,
-            },
-          },
-        },
         orderBy: {
           usuario_id: 'asc',
         },
@@ -66,7 +59,7 @@ class UserModel {
         usuario_id: u.usuario_id,
         nombre: u.nombre,
         email: u.email,
-        rol: u.rol?.nombre_rol ?? '',
+        rol: u.rol,
         fecha_registro: u.fecha_registro ?? new Date(),
         perfil_completo: u.perfil_completo ?? false,
         avatar_url: u.avatar_url,
@@ -84,7 +77,7 @@ class UserModel {
       nombre,
       email,
       contrasena,
-      rol_id,
+      rol = TipoRol.ALUMNO,
       perfil_completo = false,
       avatar_url = null,
       nivel_educativo = null,
@@ -100,7 +93,7 @@ class UserModel {
           nombre,
           email,
           contrasena: hashedPassword,
-          rol_id,
+          rol,
           fecha_registro,
           perfil_completo,
           avatar_url,
@@ -111,7 +104,7 @@ class UserModel {
           nombre: true,
           email: true,
           fecha_registro: true,
-          rol_id: true,
+          rol: true,
         },
       });
 
@@ -126,7 +119,6 @@ class UserModel {
   }
 
   async updateUser(userId: number, userData: UpdateUserData): Promise<User> {
-    // Filtrar valores undefined
     const dataToUpdate: Record<string, any> = {};
     Object.keys(userData).forEach((key) => {
       const val = (userData as any)[key];
@@ -150,7 +142,7 @@ class UserModel {
         nombre: updatedUser.nombre,
         email: updatedUser.email,
         contrasena: updatedUser.contrasena,
-        rol_id: updatedUser.rol_id,
+        rol: updatedUser.rol,
         fecha_registro: updatedUser.fecha_registro ?? new Date(),
         perfil_completo: updatedUser.perfil_completo ?? false,
         avatar_url: updatedUser.avatar_url,
@@ -170,13 +162,6 @@ class UserModel {
     try {
       const user = await prisma.usuario.findUnique({
         where: { usuario_id: userId },
-        include: {
-          rol: {
-            select: {
-              nombre_rol: true,
-            },
-          },
-        },
       });
 
       if (!user) return null;
@@ -185,7 +170,7 @@ class UserModel {
         usuario_id: user.usuario_id,
         nombre: user.nombre,
         email: user.email,
-        rol: user.rol?.nombre_rol ?? '',
+        rol: user.rol,
         fecha_registro: user.fecha_registro ?? new Date(),
         perfil_completo: user.perfil_completo ?? false,
         avatar_url: user.avatar_url,
@@ -216,34 +201,33 @@ class UserModel {
   }
 
   async getUsersPaginated(pagination: PaginationParams): Promise<Paginated<UserConRol>> {
-  try {
-    const [users, total] = await prisma.$transaction([
-      prisma.usuario.findMany({
-        include: { rol: { select: { nombre_rol: true } } },
-        orderBy: { usuario_id: 'asc' },
-        skip: pagination.skip,
-        take: pagination.limit,
-      }),
-      prisma.usuario.count(),
-    ]);
+    try {
+      const [users, total] = await prisma.$transaction([
+        prisma.usuario.findMany({
+          orderBy: { usuario_id: 'asc' },
+          skip: pagination.skip,
+          take: pagination.limit,
+        }),
+        prisma.usuario.count(),
+      ]);
 
-    const data = users.map((u) => ({
-      usuario_id: u.usuario_id,
-      nombre: u.nombre,
-      email: u.email,
-      rol: u.rol?.nombre_rol ?? '',
-      fecha_registro: u.fecha_registro ?? new Date(),
-      perfil_completo: u.perfil_completo ?? false,
-      avatar_url: u.avatar_url,
-      nivel_educativo: u.nivel_educativo,
-    }));
+      const data = users.map((u) => ({
+        usuario_id: u.usuario_id,
+        nombre: u.nombre,
+        email: u.email,
+        rol: u.rol,
+        fecha_registro: u.fecha_registro ?? new Date(),
+        perfil_completo: u.perfil_completo ?? false,
+        avatar_url: u.avatar_url,
+        nivel_educativo: u.nivel_educativo,
+      }));
 
-    return buildPaginated(data, total, pagination);
-  } catch (error) {
-    console.error('Error UserModel.getUsersPaginated:', error);
-    throw new Error('Failed to retrieve users.');
+      return buildPaginated(data, total, pagination);
+    } catch (error) {
+      console.error('Error UserModel.getUsersPaginated:', error);
+      throw new Error('Failed to retrieve users.');
+    }
   }
-}
 }
 
 export const userModel = new UserModel();

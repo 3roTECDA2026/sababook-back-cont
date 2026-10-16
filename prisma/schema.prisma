@@ -23,10 +23,10 @@ enum TipoActividad {
 // USUARIOS Y ROLES
 // ------------------------------------------------------
 
-model rol {
-  rol_id     Int       @id @default(autoincrement())
-  nombre_rol String    @unique @db.VarChar(50)
-  usuario    usuario[]
+enum TipoRol {
+  ADMINISTRADOR
+  DOCENTE
+  ALUMNO
 }
 
 model usuario {
@@ -34,7 +34,7 @@ model usuario {
   nombre                String                  @db.VarChar(100)
   email                 String                  @unique @db.VarChar(255)
   contrasena            String
-  rol_id                Int?
+  rol                   TipoRol                 @default(ALUMNO)
   fecha_registro        DateTime                @default(now()) @db.Timestamptz(6)
   perfil_completo       Boolean                 @default(false)
   avatar_url            String?
@@ -45,7 +45,6 @@ model usuario {
   foro                  foro[]
   lista_lectura         lista_lectura[]
   opinion               opinion[]
-  rol                   rol?                    @relation(fields: [rol_id], references: [rol_id], onDelete: NoAction, onUpdate: NoAction)
   usuario_club_lectura  usuario_club_lectura[]
   usuario_medalla       usuario_medalla[]
   meta_lectura          meta_lectura[]
@@ -60,7 +59,7 @@ model usuario {
   trivia_pregunta_docente  trivia_pregunta[]       @relation("trivia_pregunta_docente")
   trivia_evaluacion_docente trivia_evaluacion[]   @relation("trivia_evaluacion_docente")
 
-  @@index([rol_id])
+  @@index([rol])
 }
 
 // ------------------------------------------------------

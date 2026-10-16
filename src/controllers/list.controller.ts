@@ -1,5 +1,6 @@
 
 import { Request, Response } from 'express';
+import { AuthRequest } from '../middleware/auth.middleware';
 import { listService } from '../services/list.service';
 import { prisma } from '../db/connect/db';
 
@@ -14,7 +15,7 @@ class ListaController {
   // CREAR LISTA O RECOMENDACIÓN
   // =====================================================
 
-  async crear(req: Request, res: Response) {
+  async crear(req: AuthRequest, res: Response) {
     try {
       const {
         nombre,
@@ -27,9 +28,10 @@ class ListaController {
         libros,
       } = req.body;
 
-      const usuarioId =
-        (req as any).user?.id ??
-        (req as any).usuarioId;
+      const usuarioId = req.userId;
+      if (!usuarioId) {
+        return res.status(401).json({ error: 'Usuario no autenticado.' });
+      }
 
       // 1. Validar campos obligatorios
       if (

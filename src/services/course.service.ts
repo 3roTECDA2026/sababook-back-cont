@@ -17,9 +17,7 @@ import {
   actualizarPuntajeLibroDB,
   quitarLibroDB,
 } from '../models/course.model';
-
-const ROL_DOCENTE = 2;
-const ROL_ADMIN = 3;
+import { TipoRol } from '@prisma/client';
 
 // Error con código HTTP para reglas de negocio que no vienen de Prisma
 export class ErrorNegocio extends Error {
@@ -58,7 +56,7 @@ class CourseService {
     if (!usuario) {
       throw new ErrorNegocio(404, 'Usuario no encontrado.');
     }
-    if (usuario.rol_id !== ROL_DOCENTE) {
+    if (usuario.rol !== TipoRol.DOCENTE) {
       throw new ErrorNegocio(400, 'El usuario indicado no tiene rol docente.');
     }
     return await asignarDocenteDB(curso_id, usuario_id);
@@ -76,9 +74,9 @@ class CourseService {
     }
 
     const usuario = await obtenerRolUsuarioDB(usuario_id);
-    if (usuario?.rol_id === ROL_ADMIN) return;
+    if (usuario?.rol === TipoRol.ADMINISTRADOR) return;
 
-    if (usuario?.rol_id === ROL_DOCENTE && (await esDocenteDelCursoDB(curso_id, usuario_id))) {
+    if (usuario?.rol === TipoRol.DOCENTE && (await esDocenteDelCursoDB(curso_id, usuario_id))) {
       return;
     }
 
