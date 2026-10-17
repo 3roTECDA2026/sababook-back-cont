@@ -1,16 +1,26 @@
+
 {
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
-    "moduleResolution": "bundler", // ✅ Permite imports sin extensión
+    "moduleResolution": "bundler",
     "outDir": "./dist",
     "rootDir": "./",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "allowJs": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": false,
     "resolveJsonModule": true
   },
-  "include": ["server.ts", "src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "server.ts",
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
