@@ -59,6 +59,7 @@ export interface FiltrosHistorial {
   anio_lectivo?: number;
   curso_id?: number;
   libro_id?: number;
+  docente_id?: number;
 }
 
 export interface RegistroHistorial {
@@ -217,6 +218,10 @@ export const obtenerHistorialDB = async (
       anio_lectivo: filtros.anio_lectivo,
       curso_id: filtros.curso_id,
       libro_id: filtros.libro_id,
+      // Si viene docente_id, solo los cursos donde ese usuario es docente
+      curso: filtros.docente_id
+        ? { curso_docente: { some: { usuario_id: filtros.docente_id } } }
+        : undefined,
     },
     include: {
       curso: { select: { curso_id: true, anio: true, division: true } },

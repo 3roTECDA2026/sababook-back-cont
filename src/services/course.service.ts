@@ -88,7 +88,8 @@ class CourseService {
     );
   }
 
-  // El historial lo pueden consultar administradores y docentes
+  // El administrador ve el historial de todos los cursos;
+  // el docente, solo el de los cursos donde está asignado
   async obtenerHistorial(filtros: FiltrosHistorial, usuario_id?: number) {
     if (!usuario_id) {
       throw new ErrorNegocio(401, 'Autenticación requerida.');
@@ -100,6 +101,10 @@ class CourseService {
         403,
         'Acceso denegado. Solo administradores y docentes pueden ver el historial de asignaciones.'
       );
+    }
+
+    if (usuario?.rol === TipoRol.DOCENTE) {
+      return await obtenerHistorialDB({ ...filtros, docente_id: usuario_id });
     }
 
     return await obtenerHistorialDB(filtros);
