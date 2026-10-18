@@ -1,6 +1,7 @@
 // src/models/course.model.ts
 import { prisma } from '../db/connect/db';
-import type { curso, curso_docente, curso_libro, TipoRol } from '@prisma/client';
+import { AccionAsignacion } from '@prisma/client';
+import type { Prisma, curso, curso_docente, curso_libro, TipoRol } from '@prisma/client';
 
 export interface DatosCurso {
   anio: number;
@@ -14,6 +15,7 @@ export interface FiltrosCursos {
   materia_id?: number;
   docente_id?: number;
 }
+
 export interface MateriaCurso {
   materia_id: number;
   nombre: string;
@@ -53,6 +55,23 @@ export interface CursoDetalle {
   libros: LibroCurso[];
 }
 
+export interface FiltrosHistorial {
+  anio_lectivo?: number;
+  curso_id?: number;
+  libro_id?: number;
+}
+
+export interface RegistroHistorial {
+  historial_id: number;
+  accion: AccionAsignacion;
+  puntaje: number | null;
+  fecha: Date;
+  anio_lectivo: number;
+  curso: { curso_id: number; anio: number; division: string };
+  libro: { libro_id: number; titulo: string; autor: string };
+  usuario: { usuario_id: number; nombre: string } | null;
+}
+
 // ---------- Cursos ----------
 
 export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResumen[]> => {
@@ -81,7 +100,6 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
     cantidad_libros: c._count.curso_libro,
   }));
 };
-
 
 export const obtenerCursoPorIdDB = async (curso_id: number): Promise<CursoDetalle | null> => {
   const c = await prisma.curso.findUnique({
@@ -161,6 +179,65 @@ export const esDocenteDelCursoDB = async (curso_id: number, usuario_id: number):
   return cantidad > 0;
 };
 
+// ---------- Historial de asignaciones ----------
+
+// Registra un movimiento en el historial, dentro de la misma transacción que el cambio
+const registrarHistorial = async (
+  tx: Prisma.TransactionClient,
+  datos: {
+    curso_id: number;
+    libro_id: number;
+    accion: AccionAsignacion;
+    puntaje: number | null;
+    usuario_id?: number;
+  }
+): Promise<void> => {
+  const cursoActual = await tx.curso.findUniqueOrThrow({
+    where: { curso_id: datos.curso_id },
+    select: { anio_lectivo: true },
+  });
+
+  await tx.historial_asignacion.create({
+    data: {
+      curso_id: datos.curso_id,
+      libro_id: datos.libro_id,
+      usuario_id: datos.usuario_id ?? null,
+      anio_lectivo: cursoActual.anio_lectivo,
+      accion: datos.accion,
+      puntaje: datos.puntaje,
+    },
+  });
+};
+
+export const obtenerHistorialDB = async (
+  filtros: FiltrosHistorial
+): Promise<RegistroHistorial[]> => {
+  const registros = await prisma.historial_asignacion.findMany({
+    where: {
+      anio_lectivo: filtros.anio_lectivo,
+      curso_id: filtros.curso_id,
+      libro_id: filtros.libro_id,
+    },
+    include: {
+      curso: { select: { curso_id: true, anio: true, division: true } },
+      libro: { select: { libro_id: true, titulo: true, autor: true } },
+      usuario: { select: { usuario_id: true, nombre: true } },
+    },
+    orderBy: { fecha: 'desc' },
+  });
+
+  return registros.map((r) => ({
+    historial_id: r.historial_id,
+    accion: r.accion,
+    puntaje: r.puntaje,
+    fecha: r.fecha,
+    anio_lectivo: r.anio_lectivo,
+    curso: r.curso,
+    libro: r.libro,
+    usuario: r.usuario,
+  }));
+};
+
 // ---------- Libros del curso ----------
 
 export const obtenerLibrosDelCursoDB = async (curso_id: number): Promise<LibroCurso[]> => {
@@ -175,27 +252,65 @@ export const obtenerLibrosDelCursoDB = async (curso_id: number): Promise<LibroCu
   return filas.map((f) => ({ ...f.libro, puntaje: f.puntaje }));
 };
 
+// Cada cambio en los libros del curso se guarda junto con su registro en el historial:
+// si una de las dos operaciones falla, no se aplica ninguna
+
 export const asignarLibroDB = async (
   curso_id: number,
   libro_id: number,
-  puntaje: number
+  puntaje: number,
+  usuario_id?: number
 ): Promise<curso_libro> => {
-  return await prisma.curso_libro.create({ data: { curso_id, libro_id, puntaje } });
+  return await prisma.$transaction(async (tx) => {
+    const asignacion = await tx.curso_libro.create({ data: { curso_id, libro_id, puntaje } });
+    await registrarHistorial(tx, {
+      curso_id,
+      libro_id,
+      accion: AccionAsignacion.ASIGNADO,
+      puntaje,
+      usuario_id,
+    });
+    return asignacion;
+  });
 };
 
 export const actualizarPuntajeLibroDB = async (
   curso_id: number,
   libro_id: number,
-  puntaje: number
+  puntaje: number,
+  usuario_id?: number
 ): Promise<curso_libro> => {
-  return await prisma.curso_libro.update({
-    where: { curso_id_libro_id: { curso_id, libro_id } },
-    data: { puntaje },
+  return await prisma.$transaction(async (tx) => {
+    const asignacion = await tx.curso_libro.update({
+      where: { curso_id_libro_id: { curso_id, libro_id } },
+      data: { puntaje },
+    });
+    await registrarHistorial(tx, {
+      curso_id,
+      libro_id,
+      accion: AccionAsignacion.PUNTAJE_ACTUALIZADO,
+      puntaje,
+      usuario_id,
+    });
+    return asignacion;
   });
 };
 
-export const quitarLibroDB = async (curso_id: number, libro_id: number): Promise<void> => {
-  await prisma.curso_libro.delete({
-    where: { curso_id_libro_id: { curso_id, libro_id } },
+export const quitarLibroDB = async (
+  curso_id: number,
+  libro_id: number,
+  usuario_id?: number
+): Promise<void> => {
+  await prisma.$transaction(async (tx) => {
+    const quitada = await tx.curso_libro.delete({
+      where: { curso_id_libro_id: { curso_id, libro_id } },
+    });
+    await registrarHistorial(tx, {
+      curso_id,
+      libro_id,
+      accion: AccionAsignacion.QUITADO,
+      puntaje: quitada.puntaje,
+      usuario_id,
+    });
   });
 };
