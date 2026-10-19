@@ -8,6 +8,7 @@ import bookRoutes from './src/routes/book.routes';
 import cafeRoutes from './src/routes/cafe.routes';
 import commentRoutes from './src/routes/comment.routes';
 import courseRoutes from './src/routes/course.routes';
+import teacherPanelRoutes from './src/routes/teacherPanel.routes';
 import favoriteRoutes from './src/routes/favorite.routes';
 import feedRoutes from './src/routes/feed.routes'; // <-- AGREGADO
 import forumRoutes from './src/routes/forum.routes';
@@ -69,6 +70,7 @@ app.use('/api/v1/cafes', cafeRoutes);
 app.use('/api/v1/trivia', triviaRoutes);
 app.use('/api/v1/subjects', subjectRoutes);
 app.use('/api/v1/courses', courseRoutes);
+app.use('/api/v1/teacher-panel', teacherPanelRoutes);
 app.use('/api/v1/moderation', moderationRoutes);
 
 // -------------------------------------------------------------
