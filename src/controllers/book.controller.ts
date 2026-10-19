@@ -1,5 +1,6 @@
 // src/controllers/book.controller.ts
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
 
@@ -42,28 +43,28 @@ class BookController {
   }
 
   async buscar(req: Request, res: Response) {
-  try {
-    const { query, genero, nivel_educativo } = req.query as {
-      query?: string;
-      genero?: string;
-      nivel_educativo?: string;
-    };
-    const filtros = { query, genero, nivel_educativo };
+    try {
+      const { query, genero, nivel_educativo } = req.query as {
+        query?: string;
+        genero?: string;
+        nivel_educativo?: string;
+      };
+      const filtros = { query, genero, nivel_educativo };
 
-    const pagination = parsePagination(req.query);
-    if (pagination) {
-      const resultado = await bookService.buscarLibrosPaginado(filtros, pagination);
-      return res.json(resultado);
+      const pagination = parsePagination(req.query);
+      if (pagination) {
+        const resultado = await bookService.buscarLibrosPaginado(filtros, pagination);
+        return res.json(resultado);
+      }
+
+      // Modo legacy: sin page/limit devuelve el array completo
+      const libros = await bookService.buscarLibros(filtros);
+      res.json(libros);
+    } catch (error) {
+      console.error('Error al buscar libros:', error);
+      res.status(500).json({ mensaje: 'Error al buscar libros' });
     }
-
-    // Modo legacy: sin page/limit devuelve el array completo
-    const libros = await bookService.buscarLibros(filtros);
-    res.json(libros);
-  } catch (error) {
-    console.error('Error al buscar libros:', error);
-    res.status(500).json({ mensaje: 'Error al buscar libros' });
   }
-}
 
   async actualizar(req: Request, res: Response) {
     const id = parseInt(String(req.params.id), 10);
@@ -87,6 +88,19 @@ class BookController {
 
       res.status(204).send();
     } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        // P2003: el libro está referenciado por asignaciones a cursos o por su historial
+        if (error.code === 'P2003') {
+          return res.status(409).json({
+             mensaje:
+              'No se puede eliminar el libro porque fue asignado a cursos y forma parte del historial.',
+          });
+        }
+        // P2025: el libro no existe
+        if (error.code === 'P2025') {
+          return res.status(404).json({ mensaje: 'Libro no encontrado para eliminar' });
+        }
+      }
       console.error('Error al eliminar:', error);
       res.status(500).json({ mensaje: 'Error al eliminar libro y sus dependencias' });
     }

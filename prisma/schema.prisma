@@ -58,8 +58,10 @@ model usuario {
   inscripcion           inscripcion[]
   trivia_pregunta_docente  trivia_pregunta[]       @relation("trivia_pregunta_docente")
   trivia_evaluacion_docente trivia_evaluacion[]   @relation("trivia_evaluacion_docente")
+  historial_asignacion historial_asignacion[]
 
   @@index([rol])
+
 }
 
 // ------------------------------------------------------
@@ -106,6 +108,7 @@ activo                Boolean @default(true)
   trivia_evaluacion trivia_evaluacion[]
   trivia_pregunta   trivia_pregunta[]
   curso_libro       curso_libro[]
+  historial_asignacion historial_asignacion[]
 }
 
 model favorito {
@@ -491,6 +494,7 @@ model curso {
   inscripcion   inscripcion[]
   trivia_pregunta   trivia_pregunta[]
   trivia_evaluacion trivia_evaluacion[]
+  historial_asignacion historial_asignacion[]
 
   @@unique([anio, division, anio_lectivo])
   @@index([materia_id])
@@ -528,5 +532,34 @@ model inscripcion {
 
   @@unique([usuario_id, anio_lectivo])
   @@index([curso_id])
+  @@index([usuario_id])
+}
+
+// ------------------------------------------------------
+//HISTORIAL DE ASIGNACIONES DE LIBROS
+// ------------------------------------------------------
+
+enum AccionAsignacion {
+  ASIGNADO
+  PUNTAJE_ACTUALIZADO
+  QUITADO
+}
+
+model historial_asignacion {
+  historial_id Int              @id @default(autoincrement())
+  curso_id     Int
+  libro_id     Int
+  usuario_id   Int?
+  anio_lectivo Int
+  accion       AccionAsignacion
+  puntaje      Int?
+  fecha        DateTime         @default(now()) @db.Timestamptz(6)
+  curso        curso            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  libro        libro            @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario      usuario?         @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([anio_lectivo])
+  @@index([curso_id])
+  @@index([libro_id])
   @@index([usuario_id])
 }
