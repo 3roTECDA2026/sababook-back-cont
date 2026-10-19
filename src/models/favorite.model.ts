@@ -87,12 +87,22 @@ export const favoriteModel = {
     libro_id: number,
     estado_lectura: ReadingStatus
   ): Promise<ReadingStatusRecord | null> {
-    const favorito = await prisma.favorito.updateMany({
-      where: { usuario_id, libro_id },
-      data: { estado_lectura },
+    const actual = await prisma.favorito.findUnique({
+      where: { usuario_id_libro_id: { usuario_id, libro_id } },
+      select: { estado_lectura: true },
     });
 
-    if (favorito.count === 0) return null;
+    if (!actual) return null;
+
+    // Si el estado no cambia, no se toca fecha_estado: volver a marcar
+    // "leyendo" no debe reiniciar el tiempo que lleva el libro en ese estado.
+
+    if (actual.estado_lectura !== estado_lectura) {
+      await prisma.favorito.update({
+        where: { usuario_id_libro_id: { usuario_id, libro_id } },
+        data: { estado_lectura, fecha_estado: new Date() },
+      });
+    }
 
     return { libro_id, estado_lectura };
   },
