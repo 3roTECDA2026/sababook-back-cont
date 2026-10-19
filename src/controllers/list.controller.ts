@@ -29,8 +29,11 @@ class ListaController {
       } = req.body;
 
       const usuarioId = req.userId;
+
       if (!usuarioId) {
-        return res.status(401).json({ error: 'Usuario no autenticado.' });
+        return res.status(401).json({
+          error: 'Usuario no autenticado.',
+        });
       }
 
       // 1. Validar campos obligatorios
@@ -112,12 +115,14 @@ class ListaController {
       }
 
       // 3. Validar cantidad de libros
+      // RECOMENDACION: mínimo uno, sin límite máximo
+
       if (
         tipo === 'RECOMENDACION' &&
-        (librosRecibidos.length < 1 || librosRecibidos.length > 2)
+        librosRecibidos.length < 1
       ) {
         return res.status(400).json({
-          error: 'Debés recomendar uno o dos libros.',
+          error: 'Debés recomendar al menos un libro.',
         });
       }
 
@@ -140,7 +145,7 @@ class ListaController {
         (item) => item.libroId
       );
 
-      // 4. Evitar libros duplicados
+      // 4. Evitar libros duplicados dentro de la misma lista
       if (new Set(ids).size !== ids.length) {
         return res.status(400).json({
           error: 'No podés recomendar el mismo libro dos veces.',
