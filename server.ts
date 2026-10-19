@@ -23,9 +23,6 @@ import triviaRoutes from './src/routes/trivia.routes';
 import userRoutes from './src/routes/user.routes';
 import radioRoutes from './src/routes/radio.routes';
 
-// NUEVO: rutas de recomendaciones de libros
-import recomendacionRoutes from './src/routes/recomendacion.routes';
-
 // Conexión a la base de datos
 import { testConnection } from './src/db/connect/db';
 
@@ -81,16 +78,6 @@ app.use('/api/v1/trivia', triviaRoutes);
 app.use('/api/v1/subjects', subjectRoutes);
 app.use('/api/v1/courses', courseRoutes);
 app.use('/api/v1/moderation', moderationRoutes);
-
-// -------------------------------------------------------------
-// NUEVO: RECOMENDACIONES DE LIBROS
-// -------------------------------------------------------------
-
-// GET: consultar todas las recomendaciones
-// POST: recomendar un libro (administrador y docente)
-// DELETE: quitar recomendaciones (administrador y docente)
-
-app.use('/api/v1/recomendaciones', recomendacionRoutes);
 
 // -------------------------------------------------------------
 // ALIAS DE COMPATIBILIDAD CON EL FRONTEND LEGACY
