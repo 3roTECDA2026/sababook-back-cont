@@ -21,6 +21,7 @@ import subjectRoutes from './src/routes/subject.routes';
 import triviaRoutes from './src/routes/trivia.routes';
 import userRoutes from './src/routes/user.routes';
 import radioRoutes from './src/routes/radio.routes';
+import recomendacionRoutes from './src/routes/recomendacion.routes';
 
 import { testConnection } from './src/db/connect/db';
 const app = express();
@@ -70,6 +71,7 @@ app.use('/api/v1/trivia', triviaRoutes);
 app.use('/api/v1/subjects', subjectRoutes);
 app.use('/api/v1/courses', courseRoutes);
 app.use('/api/v1/moderation', moderationRoutes);
+app.use('/api/v1/recomendaciones', recomendacionRoutes);
 
 // -------------------------------------------------------------
 // ALIAS DE COMPATIBILIDAD CON EL FRONTEND LEGACY
