@@ -9,7 +9,7 @@ router.get('/', verifyToken, requireAdmin, UserController.getAllUsers);
 
 router.get('/:id', verifyToken, UserController.getUserById);
 
-router.post('/', UserController.createUser);
+router.post('/', verifyToken, requireAdmin, UserController.createUser);
 
 router.put('/:id', verifyToken, UserController.updateUser);
 

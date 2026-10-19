@@ -53,7 +53,11 @@ class AuthService {
       throw new Error('EMAIL_EXISTS');
     }
 
-    const newUser = await userModel.createUser(userData);
+    const { rol, ...safeUserData } = userData;
+    const newUser = await userModel.createUser({
+      ...safeUserData,
+      rol: 'ALUMNO' as any,
+    });
 
     return {
       message: 'Usuario registrado con éxito.',
