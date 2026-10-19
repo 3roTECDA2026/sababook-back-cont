@@ -2,6 +2,7 @@
 import {
   DatosCurso,
   FiltrosCursos,
+  FiltrosHistorial,
   obtenerCursosDB,
   obtenerCursoPorIdDB,
   existeCursoDB,
@@ -12,6 +13,7 @@ import {
   asignarDocenteDB,
   quitarDocenteDB,
   esDocenteDelCursoDB,
+  obtenerHistorialDB,
   obtenerLibrosDelCursoDB,
   asignarLibroDB,
   actualizarPuntajeLibroDB,
@@ -86,6 +88,28 @@ class CourseService {
     );
   }
 
+  // El administrador ve el historial de todos los cursos;
+  // el docente, solo el de los cursos donde está asignado
+  async obtenerHistorial(filtros: FiltrosHistorial, usuario_id?: number) {
+    if (!usuario_id) {
+      throw new ErrorNegocio(401, 'Autenticación requerida.');
+    }
+
+    const usuario = await obtenerRolUsuarioDB(usuario_id);
+    if (usuario?.rol !== TipoRol.ADMINISTRADOR && usuario?.rol !== TipoRol.DOCENTE) {
+      throw new ErrorNegocio(
+        403,
+        'Acceso denegado. Solo administradores y docentes pueden ver el historial de asignaciones.'
+      );
+    }
+
+    if (usuario?.rol === TipoRol.DOCENTE) {
+      return await obtenerHistorialDB({ ...filtros, docente_id: usuario_id });
+    }
+
+    return await obtenerHistorialDB(filtros);
+  }
+
   async obtenerLibros(curso_id: number) {
     if (!(await existeCursoDB(curso_id))) {
       throw new ErrorNegocio(404, 'Curso no encontrado.');
@@ -95,7 +119,7 @@ class CourseService {
 
   async asignarLibro(curso_id: number, libro_id: number, puntaje: number, usuario_id?: number) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
-    return await asignarLibroDB(curso_id, libro_id, puntaje);
+    return await asignarLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
 
   async actualizarPuntajeLibro(
@@ -105,12 +129,12 @@ class CourseService {
     usuario_id?: number
   ) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
-    return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje);
+    return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
 
   async quitarLibro(curso_id: number, libro_id: number, usuario_id?: number) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
-    await quitarLibroDB(curso_id, libro_id);
+    await quitarLibroDB(curso_id, libro_id, usuario_id);
   }
 }
 

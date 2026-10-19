@@ -12,6 +12,7 @@ import {
   asignarLibro,
   actualizarPuntajeLibro,
   quitarLibro,
+  obtenerHistorial,
 } from '../controllers/course.controller';
 import { verifyToken, requireAdmin } from '../middleware/auth.middleware';
 
@@ -19,6 +20,11 @@ const router = Router();
 
 // Cursos: solo el administrador crea, edita o elimina
 router.get('/', verifyToken, obtenerCursos);
+
+// Historial de asignaciones de libros (administrador y docente).
+// Va antes de '/:id' para que "history" no se interprete como un ID.
+router.get('/history', verifyToken, obtenerHistorial);
+
 router.get('/:id', verifyToken, obtenerCurso);
 router.post('/', verifyToken, requireAdmin, crearCurso);
 router.put('/:id', verifyToken, requireAdmin, actualizarCurso);
