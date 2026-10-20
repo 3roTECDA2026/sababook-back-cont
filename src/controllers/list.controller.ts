@@ -239,6 +239,26 @@ class ListaController {
             throw new Error('LIBROS_NO_ENCONTRADOS');
           }
 
+          // Evitar recomendaciones duplicadas del mismo usuario
+          if (tipo.trim() === 'RECOMENDACION') {
+            const existente = await tx.lista.findFirst({
+              where: {
+                tipo: 'RECOMENDACION',
+                creador_id: usuarioId,
+                lista_libro: {
+                  some: {
+                    libro_id: { in: ids },
+                  },
+                },
+              },
+              select: { lista_id: true },
+            });
+
+            if (existente) {
+              throw new Error('RECOMENDACION_DUPLICADA');
+            }
+          }
+
           // Crear lista
           // PostgreSQL genera el ID automáticamente
           const nuevaLista = await tx.lista.create({
@@ -321,6 +341,15 @@ class ListaController {
       ) {
         return res.status(400).json({
           error: 'Uno o más libros no existen en el catálogo.',
+        });
+      }
+
+      if (
+        error instanceof Error &&
+        error.message === 'RECOMENDACION_DUPLICADA'
+      ) {
+        return res.status(409).json({
+          error: 'Ya recomendaste uno o más de estos libros.',
         });
       }
 
