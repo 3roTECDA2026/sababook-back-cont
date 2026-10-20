@@ -332,6 +332,30 @@ class TriviaController {
     }
   }
 
+  async enableEvaluation(req: AuthRequest, res: Response) {
+    try {
+      const evaluationId = parseInt(String(req.params.evaluationId), 10);
+      if (isNaN(evaluationId)) {
+        return res.status(400).json({ error: 'Invalid evaluation ID' });
+      }
+
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const updated = await triviaModel.enableEvaluation(evaluationId, req.userId, req.userRole === TipoRol.ADMINISTRADOR);
+      if (!updated) {
+        return res.status(403).json({ error: 'No tenés permiso para habilitar esta evaluación.' });
+      }
+
+      return res.status(200).json(updated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error enabling evaluation:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
   async getEvaluationById(req: Request, res: Response) {
     try {
       const evaluationId = parseInt(String(req.params.evaluationId), 10);
@@ -388,6 +412,10 @@ class TriviaController {
           if (!studentCourses.includes(courseId)) {
             return res.status(403).json({ error: 'Esta evaluación no pertenece a tus cursos.' });
           }
+        }
+        const detail = await triviaModel.getEvaluationById(evaluationId);
+        if (detail && detail.evaluation.habilitada === false) {
+          return res.status(403).json({ error: 'La evaluación aún no fue habilitada por el docente.' });
         }
       }
 

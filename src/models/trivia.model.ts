@@ -64,6 +64,7 @@ export interface Evaluacion {
   deadline: string | null;
   createdAt: string;
   questionCount: number;
+  habilitada?: boolean;
 }
 
 export type PlayQuestion = {
@@ -391,6 +392,7 @@ class TriviaModel {
         deadline: toISODate(row.fecha_limite),
         createdAt: row.fecha_creacion.toISOString(),
         questionCount: row._count.trivia_pregunta,
+        habilitada: row.habilitada,
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -458,6 +460,7 @@ class TriviaModel {
       const where: any = { libro_id: bookId };
       if (courseIds) {
         where.OR = [{ curso_id: { in: courseIds } }, { curso_id: null }];
+        where.habilitada = true;
       }
       const rows = await prisma.trivia_evaluacion.findMany({
         where,
@@ -473,6 +476,7 @@ class TriviaModel {
         deadline: toISODate(row.fecha_limite),
         createdAt: row.fecha_creacion.toISOString(),
         questionCount: row._count.trivia_pregunta,
+        habilitada: row.habilitada,
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -494,6 +498,7 @@ class TriviaModel {
           curso_id: cursoId || null,
           docente_id: docenteId ?? null,
           fecha_limite: deadline ? new Date(`${deadline}T00:00:00Z`) : null,
+          habilitada: false,
         },
         include: {
           _count: { select: { trivia_pregunta: true } },
@@ -503,15 +508,47 @@ class TriviaModel {
       return {
         evaluationId: created.evaluacion_id,
         bookId: created.libro_id,
-        cursoId: created.curso_id,
-        docenteId: created.docente_id,
         deadline: toISODate(created.fecha_limite),
         createdAt: created.fecha_creacion.toISOString(),
         questionCount: created._count.trivia_pregunta,
+        habilitada: created.habilitada,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error TriviaModel.createEvaluation:', message);
+      throw error;
+    }
+  }
+
+  async enableEvaluation(evaluationId: number, userId: number, isAdmin: boolean): Promise<any | null> {
+    try {
+      const row = await prisma.trivia_evaluacion.findUnique({
+        where: { evaluacion_id: evaluationId },
+        select: { evaluacion_id: true, docente_id: true, curso_id: true },
+      });
+      if (!row) return null;
+      if (!isAdmin && row.docente_id !== userId) {
+        if (row.curso_id) {
+          const esDocente = await this.isDocenteDeCurso(userId, row.curso_id);
+          if (!esDocente) return null;
+        } else {
+          return null;
+        }
+      }
+
+      const updated = await prisma.trivia_evaluacion.update({
+        where: { evaluacion_id: evaluationId },
+        data: { habilitada: true },
+      });
+
+      return {
+        evaluationId: updated.evaluacion_id,
+        bookId: updated.libro_id,
+        habilitada: updated.habilitada,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.enableEvaluation:', message);
       throw error;
     }
   }
@@ -542,6 +579,9 @@ class TriviaModel {
           deadline: toISODate(row.fecha_limite),
           createdAt: row.fecha_creacion.toISOString(),
           questionCount: row._count.trivia_pregunta,
+          habilitada: row.habilitada,
+          cursoId: row.curso_id,
+          docenteId: row.docente_id,
         },
         questions: row.trivia_pregunta.map((question) =>
           this.mapToQuestion(

@@ -5,9 +5,10 @@ import { verifyToken, optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
-router.get('/evaluacion/libro/:bookId', TriviaController.getEvaluationsByBook);
+router.get('/evaluacion/libro/:bookId', optionalAuth, TriviaController.getEvaluationsByBook);
 router.get('/evaluacion/curso/:cursoId', verifyToken, TriviaController.getEvaluationsByCourse);
 router.post('/evaluacion', verifyToken, TriviaController.createEvaluation);
+router.patch('/evaluacion/:evaluationId/habilitar', verifyToken, TriviaController.enableEvaluation);
 router.get('/evaluacion/:evaluationId', TriviaController.getEvaluationById);
 
 router.get('/jugar/libro/:bookId', optionalAuth, TriviaController.getTriviaForPlay);
