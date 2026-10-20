@@ -1,17 +1,59 @@
 // src/controllers/trivia.controller.ts
 import { Request, Response } from 'express';
-import { triviaModel, CreateTriviaData, PlayAnswerEntry } from '../models/trivia.model';
+import { TipoRol } from '@prisma/client';
+import { triviaModel, CreateTriviaData, UpdateTriviaData, PlayAnswerEntry } from '../models/trivia.model';
 import { AuthRequest } from '../middleware/auth.middleware';
 
+const validateQuestionContent = (body: any): string | null => {
+  const { format, options, correctAnswer, pairs, text, answers } = body;
+
+  if (!format || !['multiple', 'truefalse', 'conexion', 'completar'].includes(format)) {
+    return 'format must be multiple, truefalse, conexion, or completar';
+  }
+
+  if (format === 'multiple' || format === 'truefalse') {
+    if (!options || !Array.isArray(options) || options.length < 2) {
+      return 'At least 2 options are required for multiple/truefalse';
+    }
+    if (correctAnswer === undefined || correctAnswer < 0 || correctAnswer >= options.length) {
+      return 'correctAnswer must be a valid option index';
+    }
+  }
+  if (format === 'conexion') {
+    if (!pairs || !Array.isArray(pairs) || pairs.length < 2) {
+      return 'At least 2 pairs are required for conexion format';
+    }
+  }
+  if (format === 'completar') {
+    if (!text || !String(text).trim()) {
+      return 'text is required for completar format';
+    }
+    if (!answers || !Array.isArray(answers) || answers.length === 0) {
+      return 'At least 1 answer is required for completar format';
+    }
+  }
+
+  return null;
+};
+
 class TriviaController {
-  async getByBook(req: Request, res: Response) {
+  async getByBook(req: AuthRequest, res: Response) {
     try {
       const bookId = parseInt(String(req.params.bookId), 10);
       if (isNaN(bookId)) {
         return res.status(400).json({ error: 'Invalid book ID' });
       }
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      if (req.userRole !== TipoRol.DOCENTE && req.userRole !== TipoRol.ADMINISTRADOR) {
+        return res.status(403).json({ error: 'Solo docentes o administradores pueden administrar las preguntas de trivia.' });
+      }
 
-      const questions = await triviaModel.getByBook(bookId);
+      const questions = await triviaModel.getByBook(bookId, {
+        userId: req.userId,
+        isAdmin: req.userRole === TipoRol.ADMINISTRADOR,
+      });
       return res.status(200).json(questions);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -44,30 +86,10 @@ class TriviaController {
       if (!['trivia', 'evaluacion'].includes(mode)) {
         return res.status(400).json({ error: 'mode must be trivia or evaluacion' });
       }
-      if (!['multiple', 'truefalse', 'conexion', 'completar'].includes(format)) {
-        return res.status(400).json({ error: 'format must be multiple, truefalse, conexion, or completar' });
-      }
 
-      if (format === 'multiple' || format === 'truefalse') {
-        if (!options || !Array.isArray(options) || options.length < 2) {
-          return res.status(400).json({ error: 'At least 2 options are required for multiple/truefalse' });
-        }
-        if (correctAnswer === undefined || correctAnswer < 0 || correctAnswer >= options.length) {
-          return res.status(400).json({ error: 'correctAnswer must be a valid option index' });
-        }
-      }
-      if (format === 'conexion') {
-        if (!pairs || !Array.isArray(pairs) || pairs.length < 2) {
-          return res.status(400).json({ error: 'At least 2 pairs are required for conexion format' });
-        }
-      }
-      if (format === 'completar') {
-        if (!text || !String(text).trim()) {
-          return res.status(400).json({ error: 'text is required for completar format' });
-        }
-        if (!answers || !Array.isArray(answers) || answers.length === 0) {
-          return res.status(400).json({ error: 'At least 1 answer is required for completar format' });
-        }
+      const contentError = validateQuestionContent({ format, options, correctAnswer, pairs, text, answers });
+      if (contentError) {
+        return res.status(400).json({ error: contentError });
       }
 
       const numericCursoId = cursoId != null ? parseInt(String(cursoId), 10) : null;
@@ -75,8 +97,7 @@ class TriviaController {
         return res.status(400).json({ error: 'cursoId must be a valid number' });
       }
 
-      const isAdmin = Number(req.userRole) === 3;
-      if (!isAdmin && numericCursoId !== null) {
+      if (req.userRole !== TipoRol.ADMINISTRADOR && numericCursoId !== null) {
         if (!req.userId) {
           return res.status(401).json({ error: 'Authentication required' });
         }
@@ -110,6 +131,59 @@ class TriviaController {
     }
   }
 
+  async update(req: AuthRequest, res: Response) {
+    try {
+      const questionId = parseInt(String(req.params.questionId), 10);
+      if (isNaN(questionId)) {
+        return res.status(400).json({ error: 'Invalid question ID' });
+      }
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const existing = await triviaModel.getById(questionId);
+      if (!existing) {
+        return res.status(404).json({ error: `Trivia question ${questionId} not found.` });
+      }
+
+      const isAdmin = req.userRole === TipoRol.ADMINISTRADOR;
+      const isOwner = existing.docenteId === req.userId;
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({
+          error: 'No puedes editar esta pregunta: solo el docente que la creó.',
+        });
+      }
+
+      const { format, question, deadline, options, correctAnswer, pairs, text, answers } = req.body;
+
+      const contentError = validateQuestionContent({ format, options, correctAnswer, pairs, text, answers });
+      if (contentError) {
+        return res.status(400).json({ error: contentError });
+      }
+
+      const data: UpdateTriviaData = {
+        format,
+        question,
+        deadline: deadline !== undefined ? deadline : existing.deadline,
+        options: options || [],
+        correctAnswer: correctAnswer ?? -1,
+        pairs: pairs || [],
+        text: text || '',
+        answers: answers || [],
+      };
+
+      const updated = await triviaModel.update(questionId, data);
+      return res.status(200).json(updated);
+    } catch (error: any) {
+      if (error.message?.includes('not found')) {
+        return res.status(404).json({ error: error.message });
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error updating trivia question:', message);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
   async delete(req: AuthRequest, res: Response) {
     try {
       const questionId = parseInt(String(req.params.questionId), 10);
@@ -125,7 +199,7 @@ class TriviaController {
         return res.status(404).json({ error: `Trivia question ${questionId} not found.` });
       }
 
-      const isAdmin = Number(req.userRole) === 3;
+      const isAdmin = req.userRole === TipoRol.ADMINISTRADOR;
       const isOwner = question.docenteId === req.userId;
       const esDocente =
         question.cursoId != null ? await triviaModel.isDocenteDeCurso(req.userId, question.cursoId) : false;
