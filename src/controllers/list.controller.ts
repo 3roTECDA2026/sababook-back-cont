@@ -10,8 +10,7 @@ interface LibroRecomendado {
   explicacion: string;
 }
 
-
-// Verificar identidad y propiedad de la lista.
+// Verificar identidad y permisos sobre la lista.
 async function verificarPermisoLista(
   usuarioId: number | undefined,
   listaId: number
@@ -39,9 +38,19 @@ async function verificarPermisoLista(
     return { status: 404, error: 'Lista no encontrada.' };
   }
 
+  // NUEVO: verificar si el docente está asociado a la lista.
+  const esDocenteDeLaLista = await prisma.lista_lectura.count({
+    where: {
+      lista_id: listaId,
+      docente_id: usuario.usuario_id,
+    },
+  });
+
+  // Administrador, creador o docente asociado tienen permiso.
   if (
     usuario.rol !== TipoRol.ADMINISTRADOR &&
-    lista.creador_id !== usuario.usuario_id
+    lista.creador_id !== usuario.usuario_id &&
+    esDocenteDeLaLista === 0
   ) {
     return {
       status: 403,
