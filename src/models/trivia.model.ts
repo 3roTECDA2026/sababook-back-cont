@@ -40,6 +40,22 @@ export interface CreateTriviaData {
   answers?: string[];
 }
 
+export interface UpdateTriviaData {
+  format: TriviaFormato;
+  question?: string;
+  deadline?: string | null;
+  options?: string[];
+  correctAnswer?: number;
+  pairs?: TriviaPar[];
+  text?: string;
+  answers?: string[];
+}
+
+export interface TriviaViewer {
+  userId: number;
+  isAdmin: boolean;
+}
+
 export interface Evaluacion {
   evaluationId: number;
   bookId: number;
@@ -151,10 +167,15 @@ class TriviaModel {
     return question;
   }
 
-  async getByBook(bookId: number): Promise<TriviaQuestion[]> {
+  async getByBook(bookId: number, viewer?: TriviaViewer): Promise<TriviaQuestion[]> {
     try {
+      const where: any = { libro_id: bookId };
+      if (viewer && !viewer.isAdmin) {
+        where.OR = [{ docente_id: viewer.userId }, { docente_id: null }];
+      }
+
       const rows = await prisma.trivia_pregunta.findMany({
-        where: { libro_id: bookId },
+        where,
         include: {
           opciones: { orderBy: { opcion_id: 'asc' } },
           pares: { orderBy: { orden: 'asc' } },
@@ -230,6 +251,63 @@ class TriviaModel {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error TriviaModel.create:', message);
+      throw error;
+    }
+  }
+
+  async update(questionId: number, data: UpdateTriviaData): Promise<TriviaQuestion> {
+    const { format, question, deadline, options, correctAnswer, pairs, text, answers } = data;
+    const prompt = format === 'completar' ? (text ?? '') : (question ?? '');
+
+    const updateData: any = {
+      formato: format,
+      consigna: prompt,
+      fecha_limite: deadline ? new Date(`${deadline}T00:00:00Z`) : null,
+      opciones: { deleteMany: {} },
+      pares: { deleteMany: {} },
+      respuestas: { deleteMany: {} },
+    };
+
+    if (format === 'multiple' || format === 'truefalse') {
+      updateData.opciones.create = (options ?? []).map((optionText, index) => ({
+        texto: optionText,
+        es_correcta: index === correctAnswer,
+      }));
+    }
+    if (format === 'conexion') {
+      updateData.pares.create = (pairs ?? []).map((pair, index) => ({
+        orden: index,
+        izquierda: pair.left,
+        derecha: pair.right,
+      }));
+    }
+    if (format === 'completar') {
+      updateData.respuestas.create = (answers ?? []).map((answerText, index) => ({
+        orden: index,
+        texto: answerText,
+      }));
+    }
+
+    try {
+      const updated = await prisma.trivia_pregunta.update({
+        where: { pregunta_id: questionId },
+        data: updateData,
+        include: {
+          opciones: true,
+          pares: true,
+          respuestas: true,
+        },
+      });
+
+      return this.mapToQuestion(
+        updated as Exclude<TriviaRow, null> & { opciones: any[]; pares: any[]; respuestas: any[] },
+      );
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        throw new Error(`Trivia question ${questionId} not found.`);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.update:', message);
       throw error;
     }
   }

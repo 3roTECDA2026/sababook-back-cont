@@ -17,9 +17,10 @@ router.get('/jugar/evaluacion/:evaluationId/status', verifyToken, TriviaControll
 
 router.get('/evaluacion/:evaluationId/attempts', verifyToken, TriviaController.getAttemptsByEvaluation);
 
-router.get('/libro/:bookId', TriviaController.getByBook);
+router.get('/libro/:bookId', verifyToken, TriviaController.getByBook);
 router.get('/curso/:cursoId', verifyToken, TriviaController.getByCourse);
 router.post('/', verifyToken, TriviaController.create);
+router.put('/:questionId', verifyToken, TriviaController.update);
 router.delete('/:questionId', verifyToken, TriviaController.delete);
 
 export default router;
