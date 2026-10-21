@@ -232,7 +232,7 @@ class TriviaController {
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      const isAdmin = Number(req.userRole) === 3;
+      const isAdmin = req.userRole === TipoRol.ADMINISTRADOR;
       const esDocente = await triviaModel.isDocenteDeCurso(req.userId, cursoId);
       const esAlumno = await triviaModel.isInscripto(cursoId, req.userId);
 
@@ -261,7 +261,7 @@ class TriviaController {
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      const isAdmin = Number(req.userRole) === 3;
+      const isAdmin = req.userRole === TipoRol.ADMINISTRADOR;
       const esDocente = await triviaModel.isDocenteDeCurso(req.userId, cursoId);
       const esAlumno = await triviaModel.isInscripto(cursoId, req.userId);
 
@@ -287,7 +287,7 @@ class TriviaController {
         return res.status(400).json({ error: 'Invalid book ID' });
       }
 
-      const isStudent = req.userId != null && Number(req.userRole) === 1;
+      const isStudent = req.userId != null && req.userRole === TipoRol.ALUMNO;
       const courseIds = isStudent ? await triviaModel.getStudentCourseIds(req.userId as number) : undefined;
 
       const evaluations = await triviaModel.getEvaluationsByBook(bookId, courseIds);
@@ -312,7 +312,7 @@ class TriviaController {
         return res.status(400).json({ error: 'cursoId must be a valid number' });
       }
 
-      const isAdmin = Number(req.userRole) === 3;
+      const isAdmin = req.userRole === TipoRol.ADMINISTRADOR;
       if (!isAdmin && numericCursoId !== null) {
         if (!req.userId) {
           return res.status(401).json({ error: 'Authentication required' });
@@ -332,7 +332,7 @@ class TriviaController {
     }
   }
 
-  async enableEvaluation(req: AuthRequest, res: Response) {
+  async setEvaluationHabilitada(req: AuthRequest, res: Response) {
     try {
       const evaluationId = parseInt(String(req.params.evaluationId), 10);
       if (isNaN(evaluationId)) {
@@ -343,12 +343,28 @@ class TriviaController {
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      const updated = await triviaModel.enableEvaluation(evaluationId, req.userId, req.userRole === TipoRol.ADMINISTRADOR);
-      if (!updated) {
+      const habilitada = req.body?.habilitada !== false;
+
+      const result = await triviaModel.setEvaluationHabilitada(
+        evaluationId,
+        req.userId,
+        req.userRole === TipoRol.ADMINISTRADOR,
+        habilitada,
+      );
+
+      if (result.status === 'not_found') {
+        return res.status(404).json({ error: 'Evaluación no encontrada.' });
+      }
+      if (result.status === 'forbidden') {
         return res.status(403).json({ error: 'No tenés permiso para habilitar esta evaluación.' });
       }
+      if (result.status === 'sin_preguntas') {
+        return res.status(400).json({
+          error: 'No podés habilitar una evaluación sin preguntas. Cargá al menos una pregunta primero.',
+        });
+      }
 
-      return res.status(200).json(updated);
+      return res.status(200).json(result.evaluation);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error enabling evaluation:', message);
@@ -356,16 +372,35 @@ class TriviaController {
     }
   }
 
-  async getEvaluationById(req: Request, res: Response) {
+  async getEvaluationById(req: AuthRequest, res: Response) {
     try {
       const evaluationId = parseInt(String(req.params.evaluationId), 10);
       if (isNaN(evaluationId)) {
         return res.status(400).json({ error: 'Invalid evaluation ID' });
       }
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
       const detail = await triviaModel.getEvaluationById(evaluationId);
       if (!detail) {
         return res.status(404).json({ error: 'Evaluation not found' });
+      }
+
+      if (req.userRole === TipoRol.ALUMNO) {
+        const courseId = await triviaModel.getEvaluationCourse(evaluationId);
+        if (courseId === undefined) {
+          return res.status(404).json({ error: 'Evaluation not found' });
+        }
+        if (courseId !== null) {
+          const studentCourses = await triviaModel.getStudentCourseIds(req.userId);
+          if (!studentCourses.includes(courseId)) {
+            return res.status(403).json({ error: 'Esta evaluación no pertenece a tus cursos.' });
+          }
+        }
+        if (detail.evaluation.habilitada === false) {
+          return res.status(403).json({ error: 'La evaluación aún no fue habilitada por el docente.' });
+        }
       }
 
       return res.status(200).json(detail);
@@ -383,7 +418,7 @@ class TriviaController {
         return res.status(400).json({ error: 'Invalid book ID' });
       }
 
-      const isStudent = req.userId != null && Number(req.userRole) === 1;
+      const isStudent = req.userId != null && req.userRole === TipoRol.ALUMNO;
       const courseIds = isStudent ? await triviaModel.getStudentCourseIds(req.userId as number) : undefined;
 
       const questions = await triviaModel.getTriviaForPlay(bookId, courseIds);
@@ -402,7 +437,7 @@ class TriviaController {
         return res.status(400).json({ error: 'Invalid evaluation ID' });
       }
 
-      if (req.userId != null && Number(req.userRole) === 1) {
+      if (req.userId != null && req.userRole === TipoRol.ALUMNO) {
         const courseId = await triviaModel.getEvaluationCourse(evaluationId);
         if (courseId === undefined) {
           return res.status(404).json({ error: 'Evaluation not found' });
@@ -440,7 +475,7 @@ class TriviaController {
       const evaluationNumber = evaluationId ? parseInt(String(evaluationId), 10) : null;
 
       if (evaluationNumber && req.userId) {
-        if (Number(req.userRole) === 1) {
+        if (req.userRole === TipoRol.ALUMNO) {
           const courseId = await triviaModel.getEvaluationCourse(evaluationNumber);
           if (courseId === undefined) {
             return res.status(404).json({ error: 'Evaluation not found' });
@@ -450,6 +485,10 @@ class TriviaController {
             if (!studentCourses.includes(courseId)) {
               return res.status(403).json({ error: 'Esta evaluación no pertenece a tus cursos.' });
             }
+          }
+          const detail = await triviaModel.getEvaluationById(evaluationNumber);
+          if (detail && detail.evaluation.habilitada === false) {
+            return res.status(403).json({ error: 'La evaluación aún no fue habilitada por el docente.' });
           }
         }
         const existing = await triviaModel.getAttempt(evaluationNumber, req.userId);
@@ -490,7 +529,7 @@ class TriviaController {
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      if (Number(req.userRole) === 1) {
+      if (req.userRole === TipoRol.ALUMNO) {
         const courseId = await triviaModel.getEvaluationCourse(evaluationId);
         if (courseId === undefined) {
           return res.status(404).json({ error: 'Evaluation not found' });

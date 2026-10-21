@@ -198,8 +198,8 @@ INSERT INTO trivia_par (par_id, pregunta_id, orden, izquierda, derecha) VALUES
   (4, 3, 4, 'El Gran Hermano',    'Líder omnipresente del Partido');
 
 -- Evaluación del libro 3 ("1984") para el curso 1, con fecha límite futura.
-INSERT INTO trivia_evaluacion (evaluacion_id, libro_id, curso_id, docente_id, fecha_limite, descripcion, fecha_creacion) VALUES
-  (1, 3, 1, 1, '2026-12-31', 'Evaluación de cierre sobre "1984".', '2026-10-02T12:00:00.000Z');
+INSERT INTO trivia_evaluacion (evaluacion_id, libro_id, curso_id, docente_id, fecha_limite, descripcion, habilitada, fecha_creacion) VALUES
+  (1, 3, 1, 1, '2026-12-31', 'Evaluación de cierre sobre "1984".', true, '2026-10-02T12:00:00.000Z');
 
 -- Preguntas de la evaluación (modo 'evaluacion'), asociadas a la evaluación 1.
 INSERT INTO trivia_pregunta (pregunta_id, libro_id, evaluacion_id, curso_id, docente_id, modo, formato, consigna, fecha_limite, fecha_creacion) VALUES

@@ -67,6 +67,15 @@ export interface Evaluacion {
   habilitada?: boolean;
 }
 
+export type SetEvaluationHabilitadaResult =
+  | {
+      status: 'ok';
+      evaluation: { evaluationId: number; bookId: number; habilitada: boolean };
+    }
+  | { status: 'not_found' }
+  | { status: 'forbidden' }
+  | { status: 'sin_preguntas' };
+
 export type PlayQuestion = {
   id: number;
   mode: TriviaModo;
@@ -520,35 +529,49 @@ class TriviaModel {
     }
   }
 
-  async enableEvaluation(evaluationId: number, userId: number, isAdmin: boolean): Promise<any | null> {
+  async setEvaluationHabilitada(
+    evaluationId: number,
+    userId: number,
+    isAdmin: boolean,
+    habilitada: boolean,
+  ): Promise<SetEvaluationHabilitadaResult> {
     try {
       const row = await prisma.trivia_evaluacion.findUnique({
         where: { evaluacion_id: evaluationId },
-        select: { evaluacion_id: true, docente_id: true, curso_id: true },
+        select: {
+          evaluacion_id: true,
+          docente_id: true,
+          curso_id: true,
+          _count: { select: { trivia_pregunta: true } },
+        },
       });
-      if (!row) return null;
+      if (!row) return { status: 'not_found' };
+
       if (!isAdmin && row.docente_id !== userId) {
-        if (row.curso_id) {
-          const esDocente = await this.isDocenteDeCurso(userId, row.curso_id);
-          if (!esDocente) return null;
-        } else {
-          return null;
-        }
+        const esDocente = row.curso_id ? await this.isDocenteDeCurso(userId, row.curso_id) : false;
+        if (!esDocente) return { status: 'forbidden' };
+      }
+
+      if (habilitada && row._count.trivia_pregunta === 0) {
+        return { status: 'sin_preguntas' };
       }
 
       const updated = await prisma.trivia_evaluacion.update({
         where: { evaluacion_id: evaluationId },
-        data: { habilitada: true },
+        data: { habilitada },
       });
 
       return {
-        evaluationId: updated.evaluacion_id,
-        bookId: updated.libro_id,
-        habilitada: updated.habilitada,
+        status: 'ok',
+        evaluation: {
+          evaluationId: updated.evaluacion_id,
+          bookId: updated.libro_id,
+          habilitada: updated.habilitada,
+        },
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error TriviaModel.enableEvaluation:', message);
+      console.error('Error TriviaModel.setEvaluationHabilitada:', message);
       throw error;
     }
   }
