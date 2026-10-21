@@ -55,31 +55,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS "voto_cafe_cafe_id_usuario_id_key" ON "voto_ca
 -- AddForeignKey (solo si todavía no existen)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'foro_cafe_id_fkey') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'foro_cafe_id_fkey' AND conrelid = '"foro"'::regclass) THEN
         ALTER TABLE "foro" ADD CONSTRAINT "foro_cafe_id_fkey" FOREIGN KEY ("cafe_id") REFERENCES "cafe_literario"("cafe_id") ON DELETE CASCADE ON UPDATE NO ACTION;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cafe_literario_libro_id_fkey') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cafe_literario_libro_id_fkey' AND conrelid = '"cafe_literario"'::regclass) THEN
         ALTER TABLE "cafe_literario" ADD CONSTRAINT "cafe_literario_libro_id_fkey" FOREIGN KEY ("libro_id") REFERENCES "libro"("libro_id") ON DELETE SET NULL ON UPDATE NO ACTION;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cafe_literario_docente_id_fkey') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cafe_literario_docente_id_fkey' AND conrelid = '"cafe_literario"'::regclass) THEN
         ALTER TABLE "cafe_literario" ADD CONSTRAINT "cafe_literario_docente_id_fkey" FOREIGN KEY ("docente_id") REFERENCES "usuario"("usuario_id") ON DELETE SET NULL ON UPDATE NO ACTION;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'asistencia_cafe_cafe_id_fkey') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'asistencia_cafe_cafe_id_fkey' AND conrelid = '"asistencia_cafe"'::regclass) THEN
         ALTER TABLE "asistencia_cafe" ADD CONSTRAINT "asistencia_cafe_cafe_id_fkey" FOREIGN KEY ("cafe_id") REFERENCES "cafe_literario"("cafe_id") ON DELETE CASCADE ON UPDATE NO ACTION;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'asistencia_cafe_usuario_id_fkey') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'asistencia_cafe_usuario_id_fkey' AND conrelid = '"asistencia_cafe"'::regclass) THEN
         ALTER TABLE "asistencia_cafe" ADD CONSTRAINT "asistencia_cafe_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuario"("usuario_id") ON DELETE CASCADE ON UPDATE NO ACTION;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voto_cafe_cafe_id_fkey') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voto_cafe_cafe_id_fkey' AND conrelid = '"voto_cafe"'::regclass) THEN
         ALTER TABLE "voto_cafe" ADD CONSTRAINT "voto_cafe_cafe_id_fkey" FOREIGN KEY ("cafe_id") REFERENCES "cafe_literario"("cafe_id") ON DELETE CASCADE ON UPDATE NO ACTION;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voto_cafe_usuario_id_fkey') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'voto_cafe_usuario_id_fkey' AND conrelid = '"voto_cafe"'::regclass) THEN
         ALTER TABLE "voto_cafe" ADD CONSTRAINT "voto_cafe_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuario"("usuario_id") ON DELETE CASCADE ON UPDATE NO ACTION;
     END IF;
 END $$;
