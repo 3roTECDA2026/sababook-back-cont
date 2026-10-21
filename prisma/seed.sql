@@ -7,23 +7,17 @@ TRUNCATE TABLE
   asistencia_cafe, voto_cafe, comentario_foro, foro, cafe_literario,
   usuario_medalla, medalla, usuario_club_lectura, club_lectura,
   favorito, lista_libro, lista_lectura, lista, recurso_educativo,
-  opinion, exportacion, libro, usuario, rol,
+  opinion, exportacion, libro, usuario, 
   actividad_feed, meta_lectura, radio_episodio
 RESTART IDENTITY CASCADE;
 
--- Tabla: rol
-INSERT INTO rol (rol_id, nombre_rol) VALUES
-  (1, 'alumno'),
-  (2, 'docente'),
-  (3, 'administrador');
-
 -- Tabla: usuario
-INSERT INTO usuario (usuario_id, nombre, email, contrasena, rol_id, fecha_registro, perfil_completo, avatar_url, nivel_educativo) VALUES
-  (1, 'Ana García',      'ana.garcia@email.com',      '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 2, '2026-08-27T22:20:19.605Z', true,  NULL, 'Secundario'),
-  (2, 'Juan Pérez',      'juan.perez@email.com',      '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 1, '2026-08-27T22:20:19.605Z', false, NULL, NULL),
-  (3, 'Laura Martínez',  'laura.martinez@email.com',  '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 3, '2026-08-27T22:20:19.605Z', true,  NULL, 'Universitario'),
-  (4, 'Pedro Gómez',     'pedro.gomez@email.com',     '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 1, '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/pedro.jpg', 'Primario'),
-  (5, 'Sofía Torres',    'sofia.torres@email.com',    '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 2, '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/sofia.jpg', 'Secundario');
+INSERT INTO usuario (usuario_id, nombre, email, contrasena, rol, fecha_registro, perfil_completo, avatar_url, nivel_educativo) VALUES
+  (1, 'Ana García',      'ana.garcia@email.com',      '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'DOCENTE',        '2026-08-27T22:20:19.605Z', true,  NULL, 'Secundario'),
+  (2, 'Juan Pérez',      'juan.perez@email.com',      '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'ALUMNO',         '2026-08-27T22:20:19.605Z', false, NULL, NULL),
+  (3, 'Laura Martínez',  'laura.martinez@email.com',  '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'ADMINISTRADOR',  '2026-08-27T22:20:19.605Z', true,  NULL, 'Universitario'),
+  (4, 'Pedro Gómez',     'pedro.gomez@email.com',     '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'ALUMNO',         '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/pedro.jpg', 'Primario'),
+  (5, 'Sofía Torres',    'sofia.torres@email.com',    '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'DOCENTE',        '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/sofia.jpg', 'Secundario');
 
 -- Tabla: libro
 INSERT INTO libro (libro_id, titulo, autor, genero, descripcion, portada_url, nivel_educativo, calificacion_promedio, activo) VALUES
