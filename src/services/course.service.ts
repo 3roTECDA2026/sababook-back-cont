@@ -18,6 +18,8 @@ import {
   asignarLibroDB,
   actualizarPuntajeLibroDB,
   quitarLibroDB,
+  obtenerPuntajeMinimoAnualDB,
+  obtenerProgresoAlumnoDB,
 } from '../models/course.model';
 import { TipoRol } from '@prisma/client';
 
@@ -131,11 +133,19 @@ class CourseService {
     await this.verificarPermisoLibros(curso_id, usuario_id);
     return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
-
   async quitarLibro(curso_id: number, libro_id: number, usuario_id?: number) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
     await quitarLibroDB(curso_id, libro_id, usuario_id);
   }
-}
 
+  async obtenerPuntajeMinimoAnual() {
+    return await obtenerPuntajeMinimoAnualDB();
+  }
+
+   async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number) {
+    const minimo = await obtenerPuntajeMinimoAnualDB();
+    return await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo, minimo);
+  }
+  
+}
 export const courseService = new CourseService();

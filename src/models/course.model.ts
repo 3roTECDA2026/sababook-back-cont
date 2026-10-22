@@ -319,3 +319,75 @@ export const quitarLibroDB = async (
     });
   });
 };
+
+// ---------- creditos / progreso ----------
+
+// Criterio 2: lee el mínimo anual desde configuracion_sistema (140 por defecto si no está cargado)
+export const obtenerPuntajeMinimoAnualDB = async (): Promise<number> => {
+  const config = await prisma.configuracion_sistema.findUnique({
+    where: { clave: 'puntaje_minimo_anual' },
+  });
+  const valor = config ? Number(config.valor) : NaN;
+  return Number.isFinite(valor) && valor > 0 ? valor : 140;
+};
+
+export interface ProgresoAlumno {
+  anio_lectivo: number;
+  curso: { curso_id: number; anio: number; division: string } | null;
+  puntaje_acumulado: number;
+  minimo_requerido: number;
+  faltante: number;
+  cumplido: boolean;
+}
+
+// Criterio 3: progreso de un alumno en un año lectivo.
+// Suma el puntaje de los libros que el alumno marcó como "leido" Y que están asignados a su curso de ese año.
+export const obtenerProgresoAlumnoDB = async (
+  alumno_id: number,
+  anio_lectivo: number,
+  minimo: number
+): Promise<ProgresoAlumno> => {
+  // 1. Curso del alumno en ese año lectivo
+  const inscripcion = await prisma.inscripcion.findUnique({
+    where: { usuario_id_anio_lectivo: { usuario_id: alumno_id, anio_lectivo } },
+    include: { curso: { select: { curso_id: true, anio: true, division: true } } },
+  });
+
+  if (!inscripcion) {
+    return {
+      anio_lectivo,
+      curso: null,
+      puntaje_acumulado: 0,
+      minimo_requerido: minimo,
+      faltante: minimo,
+      cumplido: false,
+    };
+  }
+
+  // 2. Libros asignados al curso (con su puntaje)
+  const asignados = await prisma.curso_libro.findMany({
+    where: { curso_id: inscripcion.curso_id },
+    select: { libro_id: true, puntaje: true },
+  });
+
+  // 3. Libros que el alumno marcó como leídos
+  const leidos = await prisma.favorito.findMany({
+    where: { usuario_id: alumno_id, estado_lectura: 'leido' },
+    select: { libro_id: true },
+  });
+  const leidosIds = new Set(leidos.map((f) => f.libro_id));
+
+  // 4. Suma del puntaje de los libros asignados Y leídos
+  const puntaje_acumulado = asignados
+    .filter((a) => leidosIds.has(a.libro_id))
+    .reduce((suma, a) => suma + a.puntaje, 0);
+
+  return {
+    anio_lectivo,
+    curso: inscripcion.curso,
+    puntaje_acumulado,
+    minimo_requerido: minimo,
+    faltante: Math.max(0, minimo - puntaje_acumulado),
+    cumplido: puntaje_acumulado >= minimo,
+  };
+};

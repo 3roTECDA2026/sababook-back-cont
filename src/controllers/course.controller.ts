@@ -1,6 +1,6 @@
 // src/controllers/course.controller.ts
 import { Response } from 'express';
-import { Prisma } from '@prisma/client';
+import { Prisma, TipoRol } from '@prisma/client';
 import { courseService, ErrorNegocio } from '../services/course.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 import type { DatosCurso, FiltrosCursos, FiltrosHistorial } from '../models/course.model';
@@ -437,6 +437,35 @@ export const obtenerHistorial = async (req: AuthRequest, res: Response): Promise
   }
 };
 
+// SAB-063: progreso del alumno (puntos acumulados vs mínimo anual) en un año lectivo
+export const obtenerProgresoAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
+  const alumnoId = parsearId(req.params.studentId);
+  const anioLectivo = parsearEntero(req.query.anio_lectivo);
+
+  if (!alumnoId) {
+    res.status(400).json({ error: 'El ID del alumno no es válido.' });
+    return;
+  }
+  if (anioLectivo === null || anioLectivo < 2000) {
+    res.status(400).json({ error: 'El año lectivo no es válido.' });
+    return;
+  }
+
+  // Un alumno solo puede ver su propio progreso; docente y admin, el de cualquiera
+  if (req.userRole === TipoRol.ALUMNO && alumnoId !== req.userId) {
+    res.status(403).json({ error: 'Solo podés consultar tu propio progreso.' });
+    return;
+  }
+
+  try {
+    const progreso = await courseService.obtenerProgresoAlumno(alumnoId, anioLectivo);
+    res.status(200).json(progreso);
+  } catch (err) {
+    console.error('Error al obtener el progreso del alumno:', err);
+    res.status(500).json({ error: 'Error interno al obtener el progreso.' });
+  }
+};
+
 export default {
   obtenerCursos,
   obtenerCurso,
@@ -450,4 +479,5 @@ export default {
   actualizarPuntajeLibro,
   quitarLibro,
   obtenerHistorial,
+  obtenerProgresoAlumno,
 };
