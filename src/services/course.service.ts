@@ -18,6 +18,7 @@ import {
   asignarLibroDB,
   actualizarPuntajeLibroDB,
   quitarLibroDB,
+  obtenerAsignacionesAnterioresDB,
 } from '../models/course.model';
 import { TipoRol } from '@prisma/client';
 
@@ -135,6 +136,19 @@ class CourseService {
   async quitarLibro(curso_id: number, libro_id: number, usuario_id?: number) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
     await quitarLibroDB(curso_id, libro_id, usuario_id);
+  }
+
+  // Cursos de años anteriores a los que ya se asignó el libro (SAB-066).
+  // Lo puede consultar quien puede asignar libros en este curso.
+  async obtenerAsignacionesAnteriores(curso_id: number, libro_id: number, usuario_id?: number) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+
+    const anteriores = await obtenerAsignacionesAnterioresDB(curso_id, libro_id);
+    if (anteriores === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    return anteriores;
   }
 }
 
