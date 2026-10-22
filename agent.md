@@ -106,6 +106,20 @@ seguir el patrón en capas de `course` o `teacherPanel`.
 - **Comentarios:** explicar el porqué, no repetir el código.
 - **Constantes con nombre** para valores de negocio (ej. `DIAS_ABANDONO_POR_DEFECTO`).
 
+### Eliminaciones
+
+Toda eliminación se confirma con el usuario **antes** de llamar a la API: el front muestra un
+modal de confirmación y recién ahí hace el `DELETE`. Del lado del back:
+
+- Validar permisos en el service (quién puede borrar qué) y responder 404 si no existe.
+- Si el elemento está en uso y no se puede borrar (claves foráneas), responder **409 con un
+  mensaje claro** que el front pueda mostrar (ver `eliminarCurso` o `eliminar` de libros).
+- Si el borrado arrastra otros datos en cascada (foro → comentarios, café → asistencias y votos),
+  dejarlo comentado en el código y avisarlo en el PR.
+- No exponer endpoints que borren en lote sin un filtro explícito.
+- Los scripts que borran datos (por ejemplo, `--limpiar` en `prisma/seeds/`) deben tener modo
+  `--simular` que muestre qué se borraría, y borrar **solo** lo que el propio script creó.
+
 ## 7. Autenticación y roles
 
 - El token se manda como `Authorization: Bearer <token>`. Su payload incluye `usuario_id` y `rol`.
@@ -222,4 +236,5 @@ CORS: los orígenes permitidos están en `server.ts`. Agregar ahí cualquier dom
 - [ ] Permisos validados en el back (el front no reemplaza esa validación).
 - [ ] Roles comparados con `TipoRol`, identidad tomada de `req.userId`.
 - [ ] Endpoints probados con los casos 400 / 401 / 403 / 404 relevantes.
+- [ ] Los `DELETE` validan permisos y devuelven 404/409 con mensajes claros (el front confirma antes de llamarlos).
 - [ ] Sin secretos, `console.log` de depuración ni archivos ajenos a la tarea.
