@@ -94,10 +94,10 @@ const validarDatosCurso = (body: Record<string, unknown>, parcial: boolean) => {
   return { datos, error: null };
 };
 
-// Valida el puntaje de un libro: entero mayor o igual a 0
+// Valida el puntaje (créditos) de un libro: entero entre 1 y 100
 const validarPuntaje = (valor: unknown): number | null => {
   const puntaje = parsearEntero(valor);
-  return puntaje !== null && puntaje >= 0 ? puntaje : null;
+  return puntaje !== null && puntaje >= 1 && puntaje <= 100 ? puntaje : null;
 };
 
 // ---------- Cursos ----------
@@ -320,7 +320,7 @@ export const asignarLibro = async (req: AuthRequest, res: Response): Promise<voi
 
   const puntaje = validarPuntaje(req.body?.puntaje);
   if (puntaje === null) {
-    res.status(400).json({ error: 'El puntaje debe ser un número entero mayor o igual a 0.' });
+    res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
 
@@ -351,7 +351,7 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
 
   const puntaje = validarPuntaje(req.body?.puntaje);
   if (puntaje === null) {
-    res.status(400).json({ error: 'El puntaje debe ser un número entero mayor o igual a 0.' });
+    res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
 
