@@ -319,3 +319,43 @@ export const quitarLibroDB = async (
     });
   });
 };
+
+// ---------- Alerta de asignaciones en años anteriores (SAB-066) ----------
+
+export interface AsignacionAnterior {
+  anio_lectivo: number;
+  curso: { curso_id: number; anio: number; division: string };
+}
+
+// Devuelve los cursos de años anteriores a los que ya se asignó el libro.
+// Devuelve null si el curso no existe.
+export const obtenerAsignacionesAnterioresDB = async (
+  curso_id: number,
+  libro_id: number
+): Promise<AsignacionAnterior[] | null> => {
+  const cursoActual = await prisma.curso.findUnique({
+    where: { curso_id },
+    select: { anio_lectivo: true },
+  });
+
+  if (!cursoActual) return null;
+
+  const registros = await prisma.historial_asignacion.findMany({
+    where: {
+      libro_id,
+      accion: AccionAsignacion.ASIGNADO,
+      anio_lectivo: { lt: cursoActual.anio_lectivo },
+    },
+    include: {
+      curso: { select: { curso_id: true, anio: true, division: true } },
+    },
+    // Una sola fila por curso, de los años más recientes a los más viejos
+    distinct: ['curso_id'],
+    orderBy: [{ anio_lectivo: 'desc' }, { curso_id: 'asc' }],
+  });
+
+  return registros.map((r) => ({
+    anio_lectivo: r.anio_lectivo,
+    curso: r.curso,
+  }));
+};
