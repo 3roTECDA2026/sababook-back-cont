@@ -45,6 +45,11 @@ class ReviewController {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
+      const nota = Number(calificacion);
+      if (!Number.isInteger(nota) || nota < 1 || nota > 5) {
+        return res.status(400).json({ error: 'La calificación debe ser un entero entre 1 y 5' });
+      }
+
       const validacion = validarComentarioOpinion(comentario);
       if (!validacion.valido) {
         return res.status(400).json({ error: validacion.error });
@@ -89,6 +94,13 @@ class ReviewController {
         const validacion = validarComentarioOpinion(req.body.comentario);
         if (!validacion.valido) {
           return res.status(400).json({ error: validacion.error });
+        }
+      }
+
+      if (req.body.calificacion !== undefined) {
+        const nota = Number(req.body.calificacion);
+        if (!Number.isInteger(nota) || nota < 1 || nota > 5) {
+          return res.status(400).json({ error: 'La calificación debe ser un entero entre 1 y 5' });
         }
       }
 
