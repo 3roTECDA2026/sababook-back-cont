@@ -8,9 +8,10 @@ interface Favorite {
 
 export type ReadingStatus = 'general' | 'quiero-leer' | 'leyendo' | 'leido';
 
-interface ReadingStatusRecord {
+export interface ReadingStatusRecord {
   libro_id: number;
   estado_lectura: ReadingStatus;
+  fecha_estado: Date;
 }
 
 interface FavoriteBook {
@@ -22,6 +23,7 @@ interface FavoriteBook {
   portada_url: string;
   calificacion_promedio: number;
   estado_lectura: ReadingStatus;
+  fecha_estado: Date;
 }
 
 export const favoriteModel = {
@@ -64,6 +66,7 @@ export const favoriteModel = {
       portada_url: f.libro.portada_url ?? '',
       calificacion_promedio: Number(f.libro.calificacion_promedio ?? 0),
       estado_lectura: f.estado_lectura as ReadingStatus,
+      fecha_estado: f.fecha_estado,
     }));
   },
 
@@ -73,12 +76,14 @@ export const favoriteModel = {
       select: {
         libro_id: true,
         estado_lectura: true,
+        fecha_estado: true,
       },
     });
 
     return favoritos.map((favorito) => ({
       libro_id: favorito.libro_id,
       estado_lectura: favorito.estado_lectura as ReadingStatus,
+      fecha_estado: favorito.fecha_estado,
     }));
   },
 
@@ -86,25 +91,44 @@ export const favoriteModel = {
     usuario_id: number,
     libro_id: number,
     estado_lectura: ReadingStatus
-  ): Promise<ReadingStatusRecord | null> {
+  ): Promise<ReadingStatusRecord> {
     const actual = await prisma.favorito.findUnique({
       where: { usuario_id_libro_id: { usuario_id, libro_id } },
-      select: { estado_lectura: true },
+      select: { estado_lectura: true, fecha_estado: true },
     });
 
-    if (!actual) return null;
+    // Si el libro todavía no está en la biblioteca del alumno, se agrega con ese estado
+    // (por ejemplo, para poder marcar como leído cualquier libro)
+    if (!actual) {
+      const creado = await prisma.favorito.create({
+        data: { usuario_id, libro_id, estado_lectura },
+        select: { libro_id: true, estado_lectura: true, fecha_estado: true },
+      });
+
+      return {
+        libro_id: creado.libro_id,
+        estado_lectura: creado.estado_lectura as ReadingStatus,
+        fecha_estado: creado.fecha_estado,
+      };
+    }
 
     // Si el estado no cambia, no se toca fecha_estado: volver a marcar
     // "leyendo" no debe reiniciar el tiempo que lleva el libro en ese estado.
-
-    if (actual.estado_lectura !== estado_lectura) {
-      await prisma.favorito.update({
-        where: { usuario_id_libro_id: { usuario_id, libro_id } },
-        data: { estado_lectura, fecha_estado: new Date() },
-      });
+    if (actual.estado_lectura === estado_lectura) {
+      return { libro_id, estado_lectura, fecha_estado: actual.fecha_estado };
     }
 
-    return { libro_id, estado_lectura };
+    const actualizado = await prisma.favorito.update({
+      where: { usuario_id_libro_id: { usuario_id, libro_id } },
+      data: { estado_lectura, fecha_estado: new Date() },
+      select: { libro_id: true, estado_lectura: true, fecha_estado: true },
+    });
+
+    return {
+      libro_id: actualizado.libro_id,
+      estado_lectura: actualizado.estado_lectura as ReadingStatus,
+      fecha_estado: actualizado.fecha_estado,
+    };
   },
 
   async deleteFavorite(usuario_id: number, libro_id: number): Promise<boolean> {
