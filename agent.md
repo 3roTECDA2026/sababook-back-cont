@@ -125,13 +125,16 @@ seguir el patrón en capas de `course` o `teacherPanel`.
 
 ## 8. Base de datos y migraciones ⚠️
 
-La base de **Supabase es compartida por todo el equipo**. Un error acá afecta a todos.
+Cada integrante trabaja con **su propia base Supabase** de desarrollo (la del `.env`).
+Producción es otra base, a la que el equipo no tiene acceso: los cambios de esquema llegan
+ahí **solo a través de las migraciones incluidas en los PR**.
 
 ### Reglas
 
-1. **Nunca** correr `prisma migrate dev`, `prisma migrate reset` ni `prisma db push`
-   contra Supabase. Si Prisma pide un reset ("Drift detected... All data will be lost"),
-   responder **NO**.
+1. **Nunca** correr `prisma migrate reset` ni `prisma db push` contra una base con datos
+   que quieras conservar, y evitar `prisma migrate dev` si la base tiene drift.
+   Si Prisma pide un reset ("Drift detected... All data will be lost"), responder **NO**:
+   borra todos los datos de tu base.
 2. **Todo cambio en `schema.prisma` lleva su migración** en el mismo PR. Sin migración,
    el cliente pide columnas que no existen y se caen todas las consultas a esa tabla.
 3. Las migraciones se escriben **idempotentes**:
@@ -146,7 +149,8 @@ La base de **Supabase es compartida por todo el equipo**. Un error acá afecta a
    aplicar a mano lo que faltó: la marca como aplicada pero no la ejecuta.
 7. Al agregar columnas `NOT NULL` con default, pensar qué valor deben tomar las filas
    existentes (puede requerir un `UPDATE` en la misma migración).
-8. `prisma/seed.sql` empieza con `TRUNCATE ... CASCADE`: **solo** para bases locales.
+8. `prisma/seed.sql` empieza con `TRUNCATE ... CASCADE`: borra todos los datos de tu base.
+   Usarlo solo para empezar de cero.
 
 ### Flujo para un cambio de esquema
 
@@ -159,7 +163,7 @@ DATABASE_URL="$DIRECT_URL" npx prisma migrate diff \
   --from-url "$DIRECT_URL" --to-schema-datamodel prisma/schema.prisma --script
 # 3. Hacer el SQL idempotente, regenerar el cliente y verificar tipos
 npx prisma generate && npm run typecheck
-# 4. Después del merge en develop (avisando al equipo), aplicar:
+# 4. Aplicar en tu base (cada compañero la aplica en la suya al traer los cambios):
 DATABASE_URL="$DIRECT_URL" npx prisma migrate deploy
 # 5. Verificar
 DATABASE_URL="$DIRECT_URL" npx prisma migrate status   # "Database schema is up to date!"
