@@ -1,8 +1,9 @@
 // src/controllers/favorite.controller.ts
 import { Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { favoriteService } from '../services/favorite.service';
-import { favoriteModel, ReadingStatus } from '../models/favorite.model';
+import { ReadingStatus } from '../models/favorite.model';
 
 const READING_STATUSES: ReadingStatus[] = ['general', 'quiero-leer', 'leyendo', 'leido'];
 
@@ -81,24 +82,30 @@ class FavoriteController {
     }
   }
 
+  // PATCH: Cambiar el estado de lectura de un libro.
+  // Si el libro no está en la biblioteca del usuario, se agrega con ese estado.
   async updateReadingStatus(req: AuthRequest, res: Response) {
     try {
       const usuario_id = req.userId;
       const libro_id = Number(req.body.libro_id);
       const estado_lectura = req.body.estado_lectura as ReadingStatus;
 
-      if (!usuario_id || !Number.isInteger(libro_id) || !READING_STATUSES.includes(estado_lectura)) {
+      if (
+        !usuario_id ||
+        !Number.isInteger(libro_id) ||
+        libro_id <= 0 ||
+        !READING_STATUSES.includes(estado_lectura)
+      ) {
         return res.status(400).json({ error: 'Invalid book ID or reading status' });
       }
 
       const updated = await favoriteService.updateReadingStatus(usuario_id, libro_id, estado_lectura);
-
-      if (!updated) {
-        return res.status(404).json({ error: 'Favorite not found' });
-      }
-
       return res.status(200).json(updated);
     } catch (error) {
+      // P2003: el libro indicado no existe
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        return res.status(404).json({ error: 'Book not found' });
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error updating reading status:', message);
       return res.status(500).json({ error: 'Internal server error' });
