@@ -62,6 +62,7 @@ model usuario {
 
   @@index([rol])
 
+  listas_creadas lista[] @relation("CreadorLista")
 }
 
 // ------------------------------------------------------
@@ -159,6 +160,10 @@ model lista {
   fecha_creacion DateTime        @default(now()) @db.Timestamptz(6)
   lista_lectura  lista_lectura[]
   lista_libro    lista_libro[]
+  creador_id Int?
+  creador usuario? @relation("CreadorLista", fields: [creador_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([creador_id])
 }
 
 model lista_lectura {
@@ -371,6 +376,7 @@ model trivia_evaluacion {
   docente_id     Int?
   fecha_limite   DateTime?         @db.Date
   descripcion    String?           @db.Text
+  habilitada     Boolean           @default(false)
   fecha_creacion DateTime          @default(now()) @db.Timestamptz(6)
   libro          libro             @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
   curso          curso?            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)

@@ -3,10 +3,62 @@ import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { listService } from '../services/list.service';
 import { prisma } from '../db/connect/db';
+import { TipoRol } from '@prisma/client';
 
 interface LibroRecomendado {
   libroId: number;
   explicacion: string;
+}
+
+// Verificar identidad y permisos sobre la lista.
+async function verificarPermisoLista(
+  usuarioId: number | undefined,
+  listaId: number
+): Promise<{ status: number; error: string } | null> {
+  if (!usuarioId) {
+    return { status: 401, error: 'Usuario no autenticado.' };
+  }
+
+  const [usuario, lista] = await Promise.all([
+    prisma.usuario.findUnique({
+      where: { usuario_id: usuarioId },
+      select: { usuario_id: true, rol: true },
+    }),
+    prisma.lista.findUnique({
+      where: { lista_id: listaId },
+      select: { creador_id: true },
+    }),
+  ]);
+
+  if (!usuario) {
+    return { status: 401, error: 'Usuario inexistente.' };
+  }
+
+  if (!lista) {
+    return { status: 404, error: 'Lista no encontrada.' };
+  }
+
+  // NUEVO: verificar si el docente está asociado a la lista.
+  const esDocenteDeLaLista = await prisma.lista_lectura.count({
+    where: {
+      lista_id: listaId,
+      docente_id: usuario.usuario_id,
+    },
+  });
+
+  // Administrador, creador o docente asociado tienen permiso.
+  if (
+    usuario.rol !== TipoRol.ADMINISTRADOR &&
+    lista.creador_id !== usuario.usuario_id &&
+    esDocenteDeLaLista === 0
+  ) {
+    return {
+      status: 403,
+      error: 'No tenés permisos para modificar esta lista.',
+    };
+  }
+
+  return null;
 }
 
 class ListaController {
@@ -29,8 +81,11 @@ class ListaController {
       } = req.body;
 
       const usuarioId = req.userId;
+
       if (!usuarioId) {
-        return res.status(401).json({ error: 'Usuario no autenticado.' });
+        return res.status(401).json({
+          error: 'Usuario no autenticado.',
+        });
       }
 
       // 1. Validar campos obligatorios
@@ -112,12 +167,14 @@ class ListaController {
       }
 
       // 3. Validar cantidad de libros
+      // RECOMENDACION: mínimo uno, sin límite máximo
+
       if (
         tipo === 'RECOMENDACION' &&
-        (librosRecibidos.length < 1 || librosRecibidos.length > 2)
+        librosRecibidos.length < 1
       ) {
         return res.status(400).json({
-          error: 'Debés recomendar uno o dos libros.',
+          error: 'Debés recomendar al menos un libro.',
         });
       }
 
@@ -140,7 +197,7 @@ class ListaController {
         (item) => item.libroId
       );
 
-      // 4. Evitar libros duplicados
+      // 4. Evitar libros duplicados dentro de la misma lista
       if (new Set(ids).size !== ids.length) {
         return res.status(400).json({
           error: 'No podés recomendar el mismo libro dos veces.',
@@ -191,6 +248,26 @@ class ListaController {
             throw new Error('LIBROS_NO_ENCONTRADOS');
           }
 
+          // Evitar recomendaciones duplicadas del mismo usuario
+          if (tipo.trim() === 'RECOMENDACION') {
+            const existente = await tx.lista.findFirst({
+              where: {
+                tipo: 'RECOMENDACION',
+                creador_id: usuarioId,
+                lista_libro: {
+                  some: {
+                    libro_id: { in: ids },
+                  },
+                },
+              },
+              select: { lista_id: true },
+            });
+
+            if (existente) {
+              throw new Error('RECOMENDACION_DUPLICADA');
+            }
+          }
+
           // Crear lista
           // PostgreSQL genera el ID automáticamente
           const nuevaLista = await tx.lista.create({
@@ -198,6 +275,7 @@ class ListaController {
               nombre: nombre.trim(),
               descripcion: descripcionFinal,
               tipo: tipo.trim(),
+              creador_id: usuarioId,
             },
           });
 
@@ -275,6 +353,15 @@ class ListaController {
         });
       }
 
+      if (
+        error instanceof Error &&
+        error.message === 'RECOMENDACION_DUPLICADA'
+      ) {
+        return res.status(409).json({
+          error: 'Ya recomendaste uno o más de estos libros.',
+        });
+      }
+
       console.error('Error creando lista:', error);
 
       return res.status(500).json({
@@ -348,23 +435,46 @@ class ListaController {
   // ACTUALIZAR LISTA
   // =====================================================
 
-  async actualizar(req: Request, res: Response) {
+  async actualizar(req: AuthRequest, res: Response) {
     try {
-      const id = Number(req.params.id);
+      const valor = req.params.id;
+      const id = typeof valor === 'string' ? Number(valor) : NaN;
 
       if (!Number.isSafeInteger(id) || id <= 0) {
-        return res.status(400).json({
-          error: 'ID inválido.',
+        return res.status(400).json({ error: 'ID inválido.' });
+      }
+
+      const permiso = await verificarPermisoLista(req.userId, id);
+
+      if (permiso) {
+        return res.status(permiso.status).json({
+          error: permiso.error,
         });
       }
 
-      const { nombre, descripcion, tipo } = req.body;
+      const { nombre, descripcion, tipo } = req.body ?? {};
+
+      if (tipo !== undefined) {
+        return res.status(400).json({
+          error: 'No se permite cambiar el tipo de una lista.',
+        });
+      }
+
+      if (
+        (nombre !== undefined && typeof nombre !== 'string') ||
+        (descripcion !== undefined &&
+          descripcion !== null &&
+          typeof descripcion !== 'string')
+      ) {
+        return res.status(400).json({
+          error: 'Los campos deben contener texto.',
+        });
+      }
 
       await listService.actualizarLista(
         id,
         nombre,
-        descripcion,
-        tipo
+        descripcion
       );
 
       return res.status(200).json({
@@ -372,11 +482,7 @@ class ListaController {
       });
 
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
-
-      console.error('Error actualizando lista:', message);
-
+      console.error('Error actualizando lista:', error);
       return res.status(500).json({
         error: 'Error interno al actualizar.',
       });
@@ -387,13 +493,20 @@ class ListaController {
   // ELIMINAR LISTA
   // =====================================================
 
-  async eliminar(req: Request, res: Response) {
+  async eliminar(req: AuthRequest, res: Response) {
     try {
-      const id = Number(req.params.id);
+      const valor = req.params.id;
+      const id = typeof valor === 'string' ? Number(valor) : NaN;
 
       if (!Number.isSafeInteger(id) || id <= 0) {
-        return res.status(400).json({
-          error: 'ID inválido.',
+        return res.status(400).json({ error: 'ID inválido.' });
+      }
+
+      const permiso = await verificarPermisoLista(req.userId, id);
+
+      if (permiso) {
+        return res.status(permiso.status).json({
+          error: permiso.error,
         });
       }
 
@@ -404,16 +517,13 @@ class ListaController {
       });
 
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
-
-      console.error('Error eliminando lista:', message);
-
+      console.error('Error eliminando lista:', error);
       return res.status(500).json({
         error: 'Error interno al eliminar.',
       });
     }
   }
+
 }
 
 export default new ListaController();

@@ -1,29 +1,29 @@
 -- Seed para la base de datos de desarrollo.
--- El esquema lo crea `prisma db push`; este archivo solo carga datos.
+-- El esquema lo crea `prisma migrate deploy`; este archivo solo carga datos.
 -- Datos tomados de dump.sql, corregidos y completados con lo que faltaba.
 -- Todas las contraseñas son "123456".
+-- El rol de usuario es el enum "TipoRol" (ALUMNO | DOCENTE | ADMINISTRADOR).
 
 TRUNCATE TABLE
   asistencia_cafe, voto_cafe, comentario_foro, foro, cafe_literario,
   usuario_medalla, medalla, usuario_club_lectura, club_lectura,
   favorito, lista_libro, lista_lectura, lista, recurso_educativo,
-  opinion, exportacion, libro, usuario, rol,
-  actividad_feed, meta_lectura, radio_episodio
+  opinion, exportacion, libro, usuario,
+  actividad_feed, meta_lectura, radio_episodio,
+  trivia_intento, trivia_opcion, trivia_par, trivia_respuesta,
+  trivia_pregunta, trivia_evaluacion,
+  historial_asignacion, curso_libro, curso_docente, inscripcion,
+  curso, materia, configuracion_sistema, incidencia_moderacion
 RESTART IDENTITY CASCADE;
 
--- Tabla: rol
-INSERT INTO rol (rol_id, nombre_rol) VALUES
-  (1, 'alumno'),
-  (2, 'docente'),
-  (3, 'administrador');
-
 -- Tabla: usuario
-INSERT INTO usuario (usuario_id, nombre, email, contrasena, rol_id, fecha_registro, perfil_completo, avatar_url, nivel_educativo) VALUES
-  (1, 'Ana García',      'ana.garcia@email.com',      '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 2, '2026-08-27T22:20:19.605Z', true,  NULL, 'Secundario'),
-  (2, 'Juan Pérez',      'juan.perez@email.com',      '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 1, '2026-08-27T22:20:19.605Z', false, NULL, NULL),
-  (3, 'Laura Martínez',  'laura.martinez@email.com',  '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 3, '2026-08-27T22:20:19.605Z', true,  NULL, 'Universitario'),
-  (4, 'Pedro Gómez',     'pedro.gomez@email.com',     '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 1, '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/pedro.jpg', 'Primario'),
-  (5, 'Sofía Torres',    'sofia.torres@email.com',    '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 2, '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/sofia.jpg', 'Secundario');
+-- El rol se guarda como enum "TipoRol" (ALUMNO | DOCENTE | ADMINISTRADOR).
+INSERT INTO usuario (usuario_id, nombre, email, contrasena, rol, fecha_registro, perfil_completo, avatar_url, nivel_educativo) VALUES
+  (1, 'Ana García',      'ana.garcia@email.com',      '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'DOCENTE',       '2026-08-27T22:20:19.605Z', true,  NULL, 'Secundario'),
+  (2, 'Juan Pérez',      'juan.perez@email.com',      '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'ALUMNO',        '2026-08-27T22:20:19.605Z', false, NULL, NULL),
+  (3, 'Laura Martínez',  'laura.martinez@email.com',  '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'ADMINISTRADOR', '2026-08-27T22:20:19.605Z', true,  NULL, 'Universitario'),
+  (4, 'Pedro Gómez',     'pedro.gomez@email.com',     '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'ALUMNO',        '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/pedro.jpg', 'Primario'),
+  (5, 'Sofía Torres',    'sofia.torres@email.com',    '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'DOCENTE',       '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/sofia.jpg', 'Secundario');
 
 -- Tabla: libro
 INSERT INTO libro (libro_id, titulo, autor, genero, descripcion, portada_url, nivel_educativo, calificacion_promedio, activo) VALUES
@@ -155,6 +155,69 @@ INSERT INTO actividad_feed (actividad_id, usuario_id, tipo, titulo, descripcion,
   (3, 5, 'FORO_APL',       'Nuevo foro de actividad',                    'Debate en el aula: Fahrenheit 451',                      4, '2026-08-27T22:20:19.605Z'),
   (4, 2, 'NUEVA_OPINION',  'Nueva opinión sobre un libro',                'Juan Pérez opina sobre "1984".',                          3, '2026-08-27T22:20:19.605Z'),
   (5, 3, 'AVISO',          'Cierre de inscripciones',                      'Este fin de semana no hay actividades en la biblioteca.',  NULL, '2026-08-27T22:20:19.605Z');
+
+-- -------------------------------------------------------------
+-- TRIVIA Y EVALUACIONES
+-- -------------------------------------------------------------
+
+-- Tabla: materia
+INSERT INTO materia (materia_id, nombre) VALUES
+  (1, 'Literatura'),
+  (2, 'Historia');
+
+-- Tabla: curso
+INSERT INTO curso (curso_id, anio, division, anio_lectivo, materia_id) VALUES
+  (1, 5, 'A', 2026, 1);
+
+-- Docentes del curso 1 (Ana García y Sofía Torres)
+INSERT INTO curso_docente (curso_id, usuario_id) VALUES
+  (1, 1),
+  (1, 5);
+
+-- Trivia normal (modo 'trivia') del libro 3 ("1984"), sin curso ni evaluación.
+-- docente_id = 1 (Ana García) para poder ver la edición como autora.
+INSERT INTO trivia_pregunta (pregunta_id, libro_id, evaluacion_id, curso_id, docente_id, modo, formato, consigna, fecha_limite, fecha_creacion) VALUES
+  (1, 3, NULL, NULL, 1, 'trivia', 'multiple',  '¿Quién es el protagonista de "1984"?',            NULL, '2026-10-01T12:00:00.000Z'),
+  (2, 3, NULL, NULL, 1, 'trivia', 'truefalse', '¿El Gran Hermano es un personaje real en la novela?', NULL, '2026-10-01T12:01:00.000Z'),
+  (3, 3, NULL, NULL, 1, 'trivia', 'conexion',  'Relacioná cada personaje con su rol.',             NULL, '2026-10-01T12:02:00.000Z');
+
+-- Opciones de las preguntas de opción múltiple / verdadero-falso
+INSERT INTO trivia_opcion (opcion_id, pregunta_id, texto, es_correcta) VALUES
+  (1, 1, 'Winston Smith', true),
+  (2, 1, 'Julia',         false),
+  (3, 1, 'O''Brien',      false),
+  (4, 1, 'Emmanuel Goldstein', false),
+  (5, 2, 'Verdadero',     false),
+  (6, 2, 'Falso',         true);
+
+-- Pares de la pregunta de conexión
+INSERT INTO trivia_par (par_id, pregunta_id, orden, izquierda, derecha) VALUES
+  (1, 3, 1, 'Winston Smith',      'Funcionario que se rebela'),
+  (2, 3, 2, 'Julia',              'Miembro de la Liga Anti-Sexo'),
+  (3, 3, 3, 'O''Brien',           'Agente del Partido Interior'),
+  (4, 3, 4, 'El Gran Hermano',    'Líder omnipresente del Partido');
+
+-- Evaluación del libro 3 ("1984") para el curso 1, con fecha límite futura.
+INSERT INTO trivia_evaluacion (evaluacion_id, libro_id, curso_id, docente_id, fecha_limite, descripcion, habilitada, fecha_creacion) VALUES
+  (1, 3, 1, 1, '2026-12-31', 'Evaluación de cierre sobre "1984".', true, '2026-10-02T12:00:00.000Z');
+
+-- Preguntas de la evaluación (modo 'evaluacion'), asociadas a la evaluación 1.
+INSERT INTO trivia_pregunta (pregunta_id, libro_id, evaluacion_id, curso_id, docente_id, modo, formato, consigna, fecha_limite, fecha_creacion) VALUES
+  (4, 3, 1, 1, 1, 'evaluacion', 'multiple',  '¿Cómo se llama el Ministerio que controla la verdad?', '2026-12-31', '2026-10-02T12:01:00.000Z'),
+  (5, 3, 1, 1, 1, 'evaluacion', 'truefalse', '¿El libro fue escrito por George Orwell?',             '2026-12-31', '2026-10-02T12:02:00.000Z'),
+  (6, 3, 1, 1, 1, 'evaluacion', 'completar', 'Completá el lema del Partido: "La guerra es la paz, la libertad es la esclavitud, la ignorancia es la ___".', '2026-12-31', '2026-10-02T12:03:00.000Z');
+
+INSERT INTO trivia_opcion (opcion_id, pregunta_id, texto, es_correcta) VALUES
+  (7, 4, 'Ministerio del Amor',     false),
+  (8, 4, 'Ministerio de la Verdad', true),
+  (9, 4, 'Ministerio de la Paz',    false),
+  (10, 4, 'Ministerio de la Abundancia', false),
+  (11, 5, 'Verdadero', true),
+  (12, 5, 'Falso',     false);
+
+INSERT INTO trivia_respuesta (respuesta_id, pregunta_id, orden, texto) VALUES
+  (1, 6, 1, 'fuerza'),
+  (2, 6, 2, 'fortaleza');
 
 -- -------------------------------------------------------------
 -- El seed inserta los IDs a mano, así que las secuencias quedan

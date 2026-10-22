@@ -14,6 +14,7 @@ import {
   quitarLibro,
   obtenerHistorial,
   obtenerProgresoAlumno,
+  obtenerAsignacionesAnteriores,
 } from '../controllers/course.controller';
 import { verifyToken, requireAdmin } from '../middleware/auth.middleware';
 
@@ -41,5 +42,8 @@ router.get('/:id/books', verifyToken, obtenerLibrosDelCurso);
 router.post('/:id/books', verifyToken, asignarLibro);
 router.put('/:id/books/:bookId', verifyToken, actualizarPuntajeLibro);
 router.delete('/:id/books/:bookId', verifyToken, quitarLibro);
+
+// Asignaciones del libro en años anteriores, para la alerta al asignar (SAB-066)
+router.get('/:id/books/:bookId/previous-assignments', verifyToken, obtenerAsignacionesAnteriores);
 
 export default router;

@@ -436,8 +436,7 @@ export const obtenerHistorial = async (req: AuthRequest, res: Response): Promise
     res.status(500).json({ error: 'Error interno al obtener el historial de asignaciones.' });
   }
 };
-
-// SAB-063: progreso del alumno (puntos acumulados vs mínimo anual) en un año lectivo
+// progreso del alumno (puntos acumulados vs mínimo anual) en un año lectivo
 export const obtenerProgresoAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
   const alumnoId = parsearId(req.params.studentId);
   const anioLectivo = parsearEntero(req.query.anio_lectivo);
@@ -466,6 +465,28 @@ export const obtenerProgresoAlumno = async (req: AuthRequest, res: Response): Pr
   }
 };
 
+// ---------- Alerta de asignaciones en años anteriores ----------
+
+export const obtenerAsignacionesAnteriores = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  const id = parsearId(req.params.id);
+  const libroId = parsearId(req.params.bookId);
+  if (!id || !libroId) {
+    res.status(400).json({ error: 'El ID del curso o del libro no es válido.' });
+    return;
+  }
+
+  try {
+    const anteriores = await courseService.obtenerAsignacionesAnteriores(id, libroId, req.userId);
+    res.status(200).json(anteriores);
+  } catch (err) {
+    if (responderError(res, err)) return;
+    console.error('Error al obtener asignaciones anteriores:', err);
+    res.status(500).json({ error: 'Error interno al obtener asignaciones anteriores.' });
+  }
+};
 export default {
   obtenerCursos,
   obtenerCurso,
@@ -480,4 +501,5 @@ export default {
   quitarLibro,
   obtenerHistorial,
   obtenerProgresoAlumno,
+  obtenerAsignacionesAnteriores,
 };

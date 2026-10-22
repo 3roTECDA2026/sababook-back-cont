@@ -340,14 +340,12 @@ export interface ProgresoAlumno {
   cumplido: boolean;
 }
 
-// Criterio 3: progreso de un alumno en un año lectivo.
-// Suma el puntaje de los libros que el alumno marcó como "leido" Y que están asignados a su curso de ese año.
+//Progreso de un alumno en un año lectivo.
 export const obtenerProgresoAlumnoDB = async (
   alumno_id: number,
   anio_lectivo: number,
   minimo: number
 ): Promise<ProgresoAlumno> => {
-  // 1. Curso del alumno en ese año lectivo
   const inscripcion = await prisma.inscripcion.findUnique({
     where: { usuario_id_anio_lectivo: { usuario_id: alumno_id, anio_lectivo } },
     include: { curso: { select: { curso_id: true, anio: true, division: true } } },
@@ -364,20 +362,17 @@ export const obtenerProgresoAlumnoDB = async (
     };
   }
 
-  // 2. Libros asignados al curso (con su puntaje)
   const asignados = await prisma.curso_libro.findMany({
     where: { curso_id: inscripcion.curso_id },
     select: { libro_id: true, puntaje: true },
   });
 
-  // 3. Libros que el alumno marcó como leídos
   const leidos = await prisma.favorito.findMany({
     where: { usuario_id: alumno_id, estado_lectura: 'leido' },
     select: { libro_id: true },
   });
   const leidosIds = new Set(leidos.map((f) => f.libro_id));
 
-  // 4. Suma del puntaje de los libros asignados Y leídos
   const puntaje_acumulado = asignados
     .filter((a) => leidosIds.has(a.libro_id))
     .reduce((suma, a) => suma + a.puntaje, 0);
@@ -390,4 +385,41 @@ export const obtenerProgresoAlumnoDB = async (
     faltante: Math.max(0, minimo - puntaje_acumulado),
     cumplido: puntaje_acumulado >= minimo,
   };
+};
+
+// ---------- Alerta de asignaciones en años anteriores ----------
+
+export interface AsignacionAnterior {
+  anio_lectivo: number;
+  curso: { curso_id: number; anio: number; division: string };
+}
+
+export const obtenerAsignacionesAnterioresDB = async (
+  curso_id: number,
+  libro_id: number
+): Promise<AsignacionAnterior[] | null> => {
+  const cursoActual = await prisma.curso.findUnique({
+    where: { curso_id },
+    select: { anio_lectivo: true },
+  });
+
+  if (!cursoActual) return null;
+
+  const registros = await prisma.historial_asignacion.findMany({
+    where: {
+      libro_id,
+      accion: AccionAsignacion.ASIGNADO,
+      anio_lectivo: { lt: cursoActual.anio_lectivo },
+    },
+    include: {
+      curso: { select: { curso_id: true, anio: true, division: true } },
+    },
+    distinct: ['curso_id'],
+    orderBy: [{ anio_lectivo: 'desc' }, { curso_id: 'asc' }],
+  });
+
+  return registros.map((r) => ({
+    anio_lectivo: r.anio_lectivo,
+    curso: r.curso,
+  }));
 };
