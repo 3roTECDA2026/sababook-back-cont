@@ -219,6 +219,10 @@ INSERT INTO trivia_respuesta (respuesta_id, pregunta_id, orden, texto) VALUES
   (1, 6, 1, 'fuerza'),
   (2, 6, 2, 'fortaleza');
 
+-- Tabla: configuracion_sistema
+INSERT INTO configuracion_sistema (clave, valor, descripcion) VALUES
+  ('puntaje_minimo_anual', '140', 'Puntos mínimos que un alumno debe juntar por año lectivo (SAB-063).');
+
 -- -------------------------------------------------------------
 -- El seed inserta los IDs a mano, así que las secuencias quedan
 -- atrás y el próximo INSERT automático choca con un duplicado.

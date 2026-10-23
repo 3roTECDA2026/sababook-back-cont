@@ -1,6 +1,6 @@
 // src/controllers/course.controller.ts
 import { Response } from 'express';
-import { Prisma } from '@prisma/client';
+import { Prisma, TipoRol } from '@prisma/client';
 import { courseService, ErrorNegocio } from '../services/course.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 import type { DatosCurso, FiltrosCursos, FiltrosHistorial } from '../models/course.model';
@@ -94,10 +94,10 @@ const validarDatosCurso = (body: Record<string, unknown>, parcial: boolean) => {
   return { datos, error: null };
 };
 
-// Valida el puntaje de un libro: entero mayor o igual a 0
+// Valida el puntaje (créditos) de un libro: entero entre 1 y 100
 const validarPuntaje = (valor: unknown): number | null => {
   const puntaje = parsearEntero(valor);
-  return puntaje !== null && puntaje >= 0 ? puntaje : null;
+  return puntaje !== null && puntaje >= 1 && puntaje <= 100 ? puntaje : null;
 };
 
 // ---------- Cursos ----------
@@ -320,7 +320,7 @@ export const asignarLibro = async (req: AuthRequest, res: Response): Promise<voi
 
   const puntaje = validarPuntaje(req.body?.puntaje);
   if (puntaje === null) {
-    res.status(400).json({ error: 'El puntaje debe ser un número entero mayor o igual a 0.' });
+    res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
 
@@ -351,7 +351,7 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
 
   const puntaje = validarPuntaje(req.body?.puntaje);
   if (puntaje === null) {
-    res.status(400).json({ error: 'El puntaje debe ser un número entero mayor o igual a 0.' });
+    res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
 
@@ -436,8 +436,36 @@ export const obtenerHistorial = async (req: AuthRequest, res: Response): Promise
     res.status(500).json({ error: 'Error interno al obtener el historial de asignaciones.' });
   }
 };
+// progreso del alumno (puntos acumulados vs mínimo anual) en un año lectivo
+export const obtenerProgresoAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
+  const alumnoId = parsearId(req.params.studentId);
+  const anioLectivo = parsearEntero(req.query.anio_lectivo);
 
-// ---------- Alerta de asignaciones en años anteriores (SAB-066) ----------
+  if (!alumnoId) {
+    res.status(400).json({ error: 'El ID del alumno no es válido.' });
+    return;
+  }
+  if (anioLectivo === null || anioLectivo < 2000) {
+    res.status(400).json({ error: 'El año lectivo no es válido.' });
+    return;
+  }
+
+  // Un alumno solo puede ver su propio progreso; docente y admin, el de cualquiera
+  if (req.userRole === TipoRol.ALUMNO && alumnoId !== req.userId) {
+    res.status(403).json({ error: 'Solo podés consultar tu propio progreso.' });
+    return;
+  }
+
+  try {
+    const progreso = await courseService.obtenerProgresoAlumno(alumnoId, anioLectivo);
+    res.status(200).json(progreso);
+  } catch (err) {
+    console.error('Error al obtener el progreso del alumno:', err);
+    res.status(500).json({ error: 'Error interno al obtener el progreso.' });
+  }
+};
+
+// ---------- Alerta de asignaciones en años anteriores ----------
 
 export const obtenerAsignacionesAnteriores = async (
   req: AuthRequest,
@@ -459,7 +487,6 @@ export const obtenerAsignacionesAnteriores = async (
     res.status(500).json({ error: 'Error interno al obtener asignaciones anteriores.' });
   }
 };
-
 export default {
   obtenerCursos,
   obtenerCurso,
@@ -473,4 +500,6 @@ export default {
   actualizarPuntajeLibro,
   quitarLibro,
   obtenerHistorial,
+  obtenerProgresoAlumno,
+  obtenerAsignacionesAnteriores,
 };

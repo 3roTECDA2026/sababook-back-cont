@@ -320,15 +320,80 @@ export const quitarLibroDB = async (
   });
 };
 
-// ---------- Alerta de asignaciones en años anteriores (SAB-066) ----------
+// ---------- creditos / progreso ----------
+
+// Criterio 2: lee el mínimo anual desde configuracion_sistema (140 por defecto si no está cargado)
+export const obtenerPuntajeMinimoAnualDB = async (): Promise<number> => {
+  const config = await prisma.configuracion_sistema.findUnique({
+    where: { clave: 'puntaje_minimo_anual' },
+  });
+  const valor = config ? Number(config.valor) : NaN;
+  return Number.isFinite(valor) && valor > 0 ? valor : 140;
+};
+
+export interface ProgresoAlumno {
+  anio_lectivo: number;
+  curso: { curso_id: number; anio: number; division: string } | null;
+  puntaje_acumulado: number;
+  minimo_requerido: number;
+  faltante: number;
+  cumplido: boolean;
+}
+
+//Progreso de un alumno en un año lectivo.
+export const obtenerProgresoAlumnoDB = async (
+  alumno_id: number,
+  anio_lectivo: number,
+  minimo: number
+): Promise<ProgresoAlumno> => {
+  const inscripcion = await prisma.inscripcion.findUnique({
+    where: { usuario_id_anio_lectivo: { usuario_id: alumno_id, anio_lectivo } },
+    include: { curso: { select: { curso_id: true, anio: true, division: true } } },
+  });
+
+  if (!inscripcion) {
+    return {
+      anio_lectivo,
+      curso: null,
+      puntaje_acumulado: 0,
+      minimo_requerido: minimo,
+      faltante: minimo,
+      cumplido: false,
+    };
+  }
+
+  const asignados = await prisma.curso_libro.findMany({
+    where: { curso_id: inscripcion.curso_id },
+    select: { libro_id: true, puntaje: true },
+  });
+
+  const leidos = await prisma.favorito.findMany({
+    where: { usuario_id: alumno_id, estado_lectura: 'leido' },
+    select: { libro_id: true },
+  });
+  const leidosIds = new Set(leidos.map((f) => f.libro_id));
+
+  const puntaje_acumulado = asignados
+    .filter((a) => leidosIds.has(a.libro_id))
+    .reduce((suma, a) => suma + a.puntaje, 0);
+
+  return {
+    anio_lectivo,
+    curso: inscripcion.curso,
+    puntaje_acumulado,
+    minimo_requerido: minimo,
+    faltante: Math.max(0, minimo - puntaje_acumulado),
+    cumplido: puntaje_acumulado >= minimo,
+  };
+};
+
+// ---------- Alerta de asignaciones en años anteriores ----------
 
 export interface AsignacionAnterior {
   anio_lectivo: number;
   curso: { curso_id: number; anio: number; division: string };
 }
 
-// Devuelve los cursos de años anteriores a los que ya se asignó el libro.
-// Devuelve null si el curso no existe.
 export const obtenerAsignacionesAnterioresDB = async (
   curso_id: number,
   libro_id: number
@@ -349,7 +414,6 @@ export const obtenerAsignacionesAnterioresDB = async (
     include: {
       curso: { select: { curso_id: true, anio: true, division: true } },
     },
-    // Una sola fila por curso, de los años más recientes a los más viejos
     distinct: ['curso_id'],
     orderBy: [{ anio_lectivo: 'desc' }, { curso_id: 'asc' }],
   });

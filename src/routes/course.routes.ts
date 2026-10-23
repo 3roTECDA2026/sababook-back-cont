@@ -13,6 +13,7 @@ import {
   actualizarPuntajeLibro,
   quitarLibro,
   obtenerHistorial,
+  obtenerProgresoAlumno,
   obtenerAsignacionesAnteriores,
 } from '../controllers/course.controller';
 import { verifyToken, requireAdmin } from '../middleware/auth.middleware';
@@ -25,7 +26,8 @@ router.get('/', verifyToken, obtenerCursos);
 // Historial de asignaciones de libros (administrador y docente).
 // Va antes de '/:id' para que "history" no se interprete como un ID.
 router.get('/history', verifyToken, obtenerHistorial);
-
+// Progreso de lectura de un alumno en un año lectivo (alumno: solo el suyo; docente/admin: cualquiera)
+router.get('/students/:studentId/progress', verifyToken, obtenerProgresoAlumno);
 router.get('/:id', verifyToken, obtenerCurso);
 router.post('/', verifyToken, requireAdmin, crearCurso);
 router.put('/:id', verifyToken, requireAdmin, actualizarCurso);

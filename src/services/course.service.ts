@@ -18,6 +18,8 @@ import {
   asignarLibroDB,
   actualizarPuntajeLibroDB,
   quitarLibroDB,
+  obtenerPuntajeMinimoAnualDB,
+  obtenerProgresoAlumnoDB,
   obtenerAsignacionesAnterioresDB,
 } from '../models/course.model';
 import { TipoRol } from '@prisma/client';
@@ -132,13 +134,12 @@ class CourseService {
     await this.verificarPermisoLibros(curso_id, usuario_id);
     return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
-
   async quitarLibro(curso_id: number, libro_id: number, usuario_id?: number) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
     await quitarLibroDB(curso_id, libro_id, usuario_id);
   }
 
-  // Cursos de años anteriores a los que ya se asignó el libro (SAB-066).
+  // Cursos de años anteriores a los que ya se asignó el libro.
   // Lo puede consultar quien puede asignar libros en este curso.
   async obtenerAsignacionesAnteriores(curso_id: number, libro_id: number, usuario_id?: number) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
@@ -149,6 +150,17 @@ class CourseService {
     }
 
     return anteriores;
+  }
+
+  //Mínimo anual configurable
+  async obtenerPuntajeMinimoAnual() {
+    return await obtenerPuntajeMinimoAnualDB();
+  }
+
+  //Progreso del alumno en un año lectivo
+  async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number) {
+    const minimo = await obtenerPuntajeMinimoAnualDB();
+    return await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo, minimo);
   }
 }
 
