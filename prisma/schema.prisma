@@ -39,6 +39,9 @@ model usuario {
   perfil_completo       Boolean                 @default(false)
   avatar_url            String?
   nivel_educativo       String?                 @db.VarChar(50)
+  racha_actual          Int                     @default(0)
+  record_racha          Int                     @default(0)
+  ultima_fecha_lectura  DateTime?               @db.Timestamptz(6)
   comentario_foro       comentario_foro[]
   exportacion           exportacion[]
   favorito              favorito[]
