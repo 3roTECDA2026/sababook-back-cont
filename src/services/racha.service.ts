@@ -9,8 +9,7 @@ export interface RachaEstado {
 }
 
 const MILISEGUNDOS_HORA = 1000 * 60 * 60;
-const HORAS_INTERVALO_MINIMO = 20; // Ventana para considerar lectura del día siguiente
-const HORAS_LIMITE_GRACIA = 36;   // 24hs + 12hs de gracia
+const HORAS_LIMITE_GRACIA = 36;   // 24hs + 12hs de ventana de gracia máxima
 
 const esMismoDiaCalendario = (f1: Date, f2: Date): boolean => {
   return (
@@ -93,11 +92,19 @@ export class RachaService {
           MILISEGUNDOS_HORA;
 
         if (esMismoDiaCalendario(ahora, new Date(user.ultima_fecha_lectura))) {
-          // Ya leyó hoy en día calendario
+          // Ya leyó hoy en día calendario: no incrementa la racha pero actualiza el timestamp
+          // para no acortar la ventana de 36 hs hacia el día siguiente
+          await tx.usuario.update({
+            where: { usuario_id: usuarioId },
+            data: {
+              ultima_fecha_lectura: ahora,
+            },
+          });
+
           return {
             rachaActual: user.racha_actual,
             recordRacha: user.record_racha,
-            ultimaFechaLectura: user.ultima_fecha_lectura,
+            ultimaFechaLectura: ahora,
             haLeidoHoy: true,
           };
         } else if (horasDesdeUltima <= HORAS_LIMITE_GRACIA) {
