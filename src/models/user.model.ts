@@ -215,35 +215,52 @@ class UserModel {
     }
   }
 
-  async getUsersPaginated(pagination: PaginationParams): Promise<Paginated<UserConRol>> {
-  try {
-    const [users, total] = await prisma.$transaction([
-      prisma.usuario.findMany({
-        include: { rol: { select: { nombre_rol: true } } },
-        orderBy: { usuario_id: 'asc' },
-        skip: pagination.skip,
-        take: pagination.limit,
-      }),
-      prisma.usuario.count(),
-    ]);
+async getUsersPaginated(pagination: PaginationParams & { search?: string; filter?: string }): Promise<Paginated<UserConRol>> {
+    try {
+      const { skip, limit, search, filter } = pagination;
 
-    const data = users.map((u) => ({
-      usuario_id: u.usuario_id,
-      nombre: u.nombre,
-      email: u.email,
-      rol: u.rol?.nombre_rol ?? '',
-      fecha_registro: u.fecha_registro ?? new Date(),
-      perfil_completo: u.perfil_completo ?? false,
-      avatar_url: u.avatar_url,
-      nivel_educativo: u.nivel_educativo,
-    }));
+      // Construimos dinámicamente las condiciones de búsqueda
+      const whereClause: any = {};
 
-    return buildPaginated(data, total, pagination);
-  } catch (error) {
-    console.error('Error UserModel.getUsersPaginated:', error);
-    throw new Error('Failed to retrieve users.');
+      if (search) {
+        whereClause.OR = [
+          { nombre: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
+      if (filter) {
+        whereClause.rol_id = parseInt(filter, 10);
+      }
+
+      const [users, total] = await prisma.$transaction([
+        prisma.usuario.findMany({
+          where: whereClause,
+          include: { rol: { select: { nombre_rol: true } } },
+          orderBy: { usuario_id: 'asc' },
+          skip: skip,
+          take: limit,
+        }),
+        prisma.usuario.count({ where: whereClause }),
+      ]);
+
+      const data = users.map((u) => ({
+        usuario_id: u.usuario_id,
+        nombre: u.nombre,
+        email: u.email,
+        rol: u.rol?.nombre_rol ?? '',
+        fecha_registro: u.fecha_registro ?? new Date(),
+        perfil_completo: u.perfil_completo ?? false,
+        avatar_url: u.avatar_url,
+        nivel_educativo: u.nivel_educativo,
+      }));
+
+      return buildPaginated(data, total, pagination);
+    } catch (error) {
+      console.error('Error UserModel.getUsersPaginated:', error);
+      throw new Error('Failed to retrieve users.');
+    }
   }
-}
 }
 
 export const userModel = new UserModel();
