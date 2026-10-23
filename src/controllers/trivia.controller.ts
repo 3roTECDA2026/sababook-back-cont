@@ -50,6 +50,13 @@ class TriviaController {
         return res.status(403).json({ error: 'Solo docentes o administradores pueden administrar las preguntas de trivia.' });
       }
 
+      if (req.userRole === TipoRol.DOCENTE) {
+        const courseIds = await triviaModel.getDocenteCourseIdsForBook(req.userId, bookId);
+        if (courseIds.length === 0) {
+          return res.status(403).json({ error: 'El libro no está asignado a tus cursos.' });
+        }
+      }
+
       const questions = await triviaModel.getByBook(bookId, {
         userId: req.userId,
         isAdmin: req.userRole === TipoRol.ADMINISTRADOR,
@@ -419,7 +426,18 @@ class TriviaController {
       }
 
       const isStudent = req.userId != null && req.userRole === TipoRol.ALUMNO;
-      const courseIds = isStudent ? await triviaModel.getStudentCourseIds(req.userId as number) : undefined;
+      const isTeacher = req.userId != null && req.userRole === TipoRol.DOCENTE;
+
+      let courseIds: number[] | undefined;
+
+      if (isStudent) {
+        courseIds = await triviaModel.getStudentCourseIds(req.userId as number);
+      } else if (isTeacher) {
+        courseIds = await triviaModel.getDocenteCourseIdsForBook(req.userId as number, bookId);
+        if (courseIds.length === 0) {
+          return res.status(403).json({ error: 'El libro no está asignado a tus cursos.' });
+        }
+      }
 
       const questions = await triviaModel.getTriviaForPlay(bookId, courseIds);
       return res.status(200).json(questions);

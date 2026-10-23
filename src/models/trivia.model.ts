@@ -450,6 +450,23 @@ class TriviaModel {
     }
   }
 
+  async getDocenteCourseIdsForBook(userId: number, bookId: number): Promise<number[]> {
+    try {
+      const rows = await prisma.curso_libro.findMany({
+        where: {
+          libro_id: bookId,
+          curso: { curso_docente: { some: { usuario_id: userId } } },
+        },
+        select: { curso_id: true },
+      });
+      return rows.map((row) => row.curso_id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error TriviaModel.getDocenteCourseIdsForBook:', message);
+      throw error;
+    }
+  }
+
   async getEvaluationCourse(evaluationId: number): Promise<number | null | undefined> {
     try {
       const row = await prisma.trivia_evaluacion.findUnique({
