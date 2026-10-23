@@ -93,8 +93,19 @@ seguir el patrón en capas de `course` o `teacherPanel`.
 
 ## 6. Convenciones de código
 
-- **Idioma:** nombres de dominio, mensajes de error y comentarios en **español**
-  (`obtenerCursos`, `'Curso no encontrado.'`). Mantener el idioma del archivo que se edita.
+- **Idioma: el código nuevo va en inglés; lo que ve el usuario, en español.**
+  - En **inglés**: variables, funciones, clases, interfaces, tipos, constantes, parámetros,
+    nombres de archivos y propiedades nuevas de la API
+    (`getCourses`, `ReadingStats`, `DEFAULT_ABANDON_DAYS`, `teacherPanel.service.ts`).
+  - En **español**: todo lo que llega a la persona que usa la app, como los mensajes de error
+    y de éxito de la API (`{ error: 'Curso no encontrado.' }`).
+  - Gran parte del código existente está en español (`obtenerCursos`, `ErrorNegocio`,
+    `parsearId`): **no se migra por ahora**. Se puede seguir usando tal cual, pero lo que se
+    agregue (funciones, archivos, módulos nuevos) va en inglés. Si se edita una función
+    existente, no hace falta renombrarla en el mismo PR.
+  - **Base de datos:** las tablas y columnas existentes no se renombran (`usuario`, `curso_libro`,
+    `estado_lectura`). Las tablas y columnas nuevas, en inglés.
+  - Comentarios en el código y mensajes de commit: en español, como hasta ahora.
 - **Archivos:** `nombre.capa.ts` (`teacherPanel.service.ts`, `course.routes.ts`).
 - **Primera línea:** comentario con la ruta del archivo (`// src/models/course.model.ts`).
 - **Errores:** responder `{ error: 'mensaje' }` con el status correcto
@@ -104,7 +115,7 @@ seguir el patrón en capas de `course` o `teacherPanel`.
 - **IDs:** validar que sean enteros positivos antes de consultar (ver `parsearId` en `course.controller.ts`).
 - **Errores de Prisma:** mapear `P2002` → 409, `P2003` → 400/409, `P2025` → 404.
 - **Comentarios:** explicar el porqué, no repetir el código.
-- **Constantes con nombre** para valores de negocio (ej. `DIAS_ABANDONO_POR_DEFECTO`).
+- **Constantes con nombre** para valores de negocio (ej. `DEFAULT_ABANDON_DAYS`).
 
 ### Eliminaciones
 
@@ -232,6 +243,7 @@ CORS: los orígenes permitidos están en `server.ts`. Agregar ahí cualquier dom
 ## 11. Checklist antes de abrir un PR
 
 - [ ] `npm run typecheck` sin errores.
+- [ ] Código nuevo con nombres en inglés; mensajes para el usuario en español.
 - [ ] Si cambió `schema.prisma`: migración incluida, idempotente y probada.
 - [ ] Permisos validados en el back (el front no reemplaza esa validación).
 - [ ] Roles comparados con `TipoRol`, identidad tomada de `req.userId`.
