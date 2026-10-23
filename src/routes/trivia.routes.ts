@@ -5,10 +5,11 @@ import { verifyToken, optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
-router.get('/evaluacion/libro/:bookId', TriviaController.getEvaluationsByBook);
+router.get('/evaluacion/libro/:bookId', optionalAuth, TriviaController.getEvaluationsByBook);
 router.get('/evaluacion/curso/:cursoId', verifyToken, TriviaController.getEvaluationsByCourse);
 router.post('/evaluacion', verifyToken, TriviaController.createEvaluation);
-router.get('/evaluacion/:evaluationId', TriviaController.getEvaluationById);
+router.patch('/evaluacion/:evaluationId/habilitar', verifyToken, TriviaController.setEvaluationHabilitada);
+router.get('/evaluacion/:evaluationId', verifyToken, TriviaController.getEvaluationById);
 
 router.get('/jugar/libro/:bookId', optionalAuth, TriviaController.getTriviaForPlay);
 router.get('/jugar/evaluacion/:evaluationId', optionalAuth, TriviaController.getEvaluationForPlay);
@@ -17,9 +18,10 @@ router.get('/jugar/evaluacion/:evaluationId/status', verifyToken, TriviaControll
 
 router.get('/evaluacion/:evaluationId/attempts', verifyToken, TriviaController.getAttemptsByEvaluation);
 
-router.get('/libro/:bookId', TriviaController.getByBook);
+router.get('/libro/:bookId', verifyToken, TriviaController.getByBook);
 router.get('/curso/:cursoId', verifyToken, TriviaController.getByCourse);
 router.post('/', verifyToken, TriviaController.create);
+router.put('/:questionId', verifyToken, TriviaController.update);
 router.delete('/:questionId', verifyToken, TriviaController.delete);
 
 export default router;

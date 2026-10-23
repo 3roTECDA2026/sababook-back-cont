@@ -1,9 +1,9 @@
 // src/controllers/course.controller.ts
 import { Response } from 'express';
-import { Prisma } from '@prisma/client';
+import { Prisma, TipoRol } from '@prisma/client';
 import { courseService, ErrorNegocio } from '../services/course.service';
 import { AuthRequest } from '../middleware/auth.middleware';
-import type { DatosCurso, FiltrosCursos } from '../models/course.model';
+import type { DatosCurso, FiltrosCursos, FiltrosHistorial } from '../models/course.model';
 
 type MapaErrores = Record<string, { status: number; mensaje: string }>;
 
@@ -94,10 +94,10 @@ const validarDatosCurso = (body: Record<string, unknown>, parcial: boolean) => {
   return { datos, error: null };
 };
 
-// Valida el puntaje de un libro: entero mayor o igual a 0
+// Valida el puntaje (créditos) de un libro: entero entre 1 y 100
 const validarPuntaje = (valor: unknown): number | null => {
   const puntaje = parsearEntero(valor);
-  return puntaje !== null && puntaje >= 0 ? puntaje : null;
+  return puntaje !== null && puntaje >= 1 && puntaje <= 100 ? puntaje : null;
 };
 
 // ---------- Cursos ----------
@@ -122,7 +122,7 @@ export const obtenerCursos = async (req: AuthRequest, res: Response): Promise<vo
     }
     filtros.materia_id = materiaId;
   }
-  
+
   // ?mine=true devuelve solo los cursos donde el usuario logueado es docente
   if (req.query.mine === 'true') {
     filtros.docente_id = req.userId;
@@ -229,7 +229,7 @@ export const eliminarCurso = async (req: AuthRequest, res: Response): Promise<vo
         P2003: {
           status: 409,
           mensaje:
-            'No se puede eliminar el curso porque tiene docentes, libros, alumnos o trivias asociados.',
+            'No se puede eliminar el curso porque tiene docentes, libros, alumnos, trivias o historial de asignaciones asociados.',
         },
       })
     ) {
@@ -320,7 +320,7 @@ export const asignarLibro = async (req: AuthRequest, res: Response): Promise<voi
 
   const puntaje = validarPuntaje(req.body?.puntaje);
   if (puntaje === null) {
-    res.status(400).json({ error: 'El puntaje debe ser un número entero mayor o igual a 0.' });
+    res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
 
@@ -351,7 +351,7 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
 
   const puntaje = validarPuntaje(req.body?.puntaje);
   if (puntaje === null) {
-    res.status(400).json({ error: 'El puntaje debe ser un número entero mayor o igual a 0.' });
+    res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
 
@@ -395,6 +395,98 @@ export const quitarLibro = async (req: AuthRequest, res: Response): Promise<void
   }
 };
 
+// ---------- Historial de asignaciones ----------
+
+export const obtenerHistorial = async (req: AuthRequest, res: Response): Promise<void> => {
+  const filtros: FiltrosHistorial = {};
+
+  if (req.query.anio_lectivo !== undefined) {
+    const anioLectivo = parsearEntero(req.query.anio_lectivo);
+    if (anioLectivo === null) {
+      res.status(400).json({ error: 'El filtro anio_lectivo no es válido.' });
+      return;
+    }
+    filtros.anio_lectivo = anioLectivo;
+  }
+
+  if (req.query.curso_id !== undefined) {
+    const cursoId = parsearId(req.query.curso_id);
+    if (cursoId === null) {
+      res.status(400).json({ error: 'El filtro curso_id no es válido.' });
+      return;
+    }
+    filtros.curso_id = cursoId;
+  }
+
+  if (req.query.libro_id !== undefined) {
+    const libroId = parsearId(req.query.libro_id);
+    if (libroId === null) {
+      res.status(400).json({ error: 'El filtro libro_id no es válido.' });
+      return;
+    }
+    filtros.libro_id = libroId;
+  }
+
+  try {
+    const historial = await courseService.obtenerHistorial(filtros, req.userId);
+    res.status(200).json(historial);
+  } catch (err) {
+    if (responderError(res, err)) return;
+    console.error('Error al obtener el historial de asignaciones:', err);
+    res.status(500).json({ error: 'Error interno al obtener el historial de asignaciones.' });
+  }
+};
+// progreso del alumno (puntos acumulados vs mínimo anual) en un año lectivo
+export const obtenerProgresoAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
+  const alumnoId = parsearId(req.params.studentId);
+  const anioLectivo = parsearEntero(req.query.anio_lectivo);
+
+  if (!alumnoId) {
+    res.status(400).json({ error: 'El ID del alumno no es válido.' });
+    return;
+  }
+  if (anioLectivo === null || anioLectivo < 2000) {
+    res.status(400).json({ error: 'El año lectivo no es válido.' });
+    return;
+  }
+
+  // Un alumno solo puede ver su propio progreso; docente y admin, el de cualquiera
+  if (req.userRole === TipoRol.ALUMNO && alumnoId !== req.userId) {
+    res.status(403).json({ error: 'Solo podés consultar tu propio progreso.' });
+    return;
+  }
+
+  try {
+    const progreso = await courseService.obtenerProgresoAlumno(alumnoId, anioLectivo);
+    res.status(200).json(progreso);
+  } catch (err) {
+    console.error('Error al obtener el progreso del alumno:', err);
+    res.status(500).json({ error: 'Error interno al obtener el progreso.' });
+  }
+};
+
+// ---------- Alerta de asignaciones en años anteriores ----------
+
+export const obtenerAsignacionesAnteriores = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  const id = parsearId(req.params.id);
+  const libroId = parsearId(req.params.bookId);
+  if (!id || !libroId) {
+    res.status(400).json({ error: 'El ID del curso o del libro no es válido.' });
+    return;
+  }
+
+  try {
+    const anteriores = await courseService.obtenerAsignacionesAnteriores(id, libroId, req.userId);
+    res.status(200).json(anteriores);
+  } catch (err) {
+    if (responderError(res, err)) return;
+    console.error('Error al obtener asignaciones anteriores:', err);
+    res.status(500).json({ error: 'Error interno al obtener asignaciones anteriores.' });
+  }
+};
 export default {
   obtenerCursos,
   obtenerCurso,
@@ -407,4 +499,7 @@ export default {
   asignarLibro,
   actualizarPuntajeLibro,
   quitarLibro,
+  obtenerHistorial,
+  obtenerProgresoAlumno,
+  obtenerAsignacionesAnteriores,
 };

@@ -108,6 +108,8 @@ class OpinionModel {
         },
       });
 
+      await this.recalcularPromedio(libro_id);
+
       return {
         opinion_id: nuevaOpinion.opinion_id,
         usuario_id: nuevaOpinion.usuario_id,
@@ -144,6 +146,8 @@ class OpinionModel {
         data: dataToUpdate,
       });
 
+      await this.recalcularPromedio(updated.libro_id);
+
       return {
         opinion_id: updated.opinion_id,
         usuario_id: updated.usuario_id,
@@ -164,9 +168,12 @@ class OpinionModel {
 
   async deleteOpinion(opinionId: number): Promise<boolean> {
     try {
-      await prisma.opinion.delete({
+      const eliminada = await prisma.opinion.delete({
         where: { opinion_id: opinionId },
       });
+
+      await this.recalcularPromedio(eliminada.libro_id);
+
       return true;
     } catch (error: any) {
       if (error.code === 'P2025') {
@@ -207,6 +214,21 @@ class OpinionModel {
       throw new Error('Failed to retrieve opinions for libro.');
     }
   }
+
+  private async recalcularPromedio(libroId: number): Promise<void> {
+  const { _avg } = await prisma.opinion.aggregate({
+    where: { libro_id: libroId, calificacion: { not: null } },
+    _avg: { calificacion: true },
+  });
+
+  const promedio =
+    _avg.calificacion === null ? null : Math.round(_avg.calificacion * 100) / 100;
+
+  await prisma.libro.update({
+    where: { libro_id: libroId },
+    data: { calificacion_promedio: promedio },
+  });
+}
 }
 
 export const opinionModel = new OpinionModel();

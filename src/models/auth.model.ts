@@ -1,12 +1,18 @@
 // src/models/auth.model.ts
 import { prisma } from '../db/connect/db';
 
+import { TipoRol } from '@prisma/client';
+
 interface UserAuth {
   usuario_id: number;
   nombre: string;
   email: string;
   contrasena: string;
-  rol_id: number;
+  rol: TipoRol;
+  avatar_url: string | null;
+  nivel_educativo: string | null;
+  perfil_completo: boolean;
+  fecha_registro: Date;
 }
 
 class AuthModel {
@@ -19,11 +25,15 @@ class AuthModel {
           nombre: true,
           email: true,
           contrasena: true,
-          rol_id: true,
+          rol: true,
+          avatar_url: true,
+          nivel_educativo: true,
+          perfil_completo: true,
+          fecha_registro: true,
         },
       });
 
-      if (!user || user.rol_id === null) {
+      if (!user) {
         return null;
       }
 

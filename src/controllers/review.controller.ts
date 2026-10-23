@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { reviewService } from '../services/review.service';
 import { validarComentarioOpinion } from '../services/opinion-content.service';
+import { TipoRol } from '@prisma/client';
 
 class ReviewController {
   async getAllOpinions(req: Request, res: Response) {
@@ -44,6 +45,11 @@ class ReviewController {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
+      const nota = Number(calificacion);
+      if (!Number.isInteger(nota) || nota < 1 || nota > 5) {
+        return res.status(400).json({ error: 'La calificación debe ser un entero entre 1 y 5' });
+      }
+
       const validacion = validarComentarioOpinion(comentario);
       if (!validacion.valido) {
         return res.status(400).json({ error: validacion.error });
@@ -76,11 +82,11 @@ class ReviewController {
         return res.status(404).json({ error: 'Opinion not found' });
       }
 
-      // Permisos: admin (rol 3) o dueño de la publicación
+      // Permisos: admin o dueño de la publicación
       const userId = req.userId;
       const userRole = req.userRole;
 
-      if (userRole !== 3 && userId !== existingOpinion.usuario_id) {
+      if (userRole !== TipoRol.ADMINISTRADOR && userId !== existingOpinion.usuario_id) {
         return res.status(403).json({ error: 'Not authorized to modify this opinion' });
       }
 
@@ -88,6 +94,13 @@ class ReviewController {
         const validacion = validarComentarioOpinion(req.body.comentario);
         if (!validacion.valido) {
           return res.status(400).json({ error: validacion.error });
+        }
+      }
+
+      if (req.body.calificacion !== undefined) {
+        const nota = Number(req.body.calificacion);
+        if (!Number.isInteger(nota) || nota < 1 || nota > 5) {
+          return res.status(400).json({ error: 'La calificación debe ser un entero entre 1 y 5' });
         }
       }
 
@@ -116,7 +129,7 @@ class ReviewController {
       const userId = req.userId;
       const userRole = req.userRole;
 
-      if (userRole !== 3 && userId !== existingOpinion.usuario_id) {
+      if (userRole !== TipoRol.ADMINISTRADOR && userId !== existingOpinion.usuario_id) {
         return res.status(403).json({ error: 'Not authorized to delete this opinion' });
       }
 

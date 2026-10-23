@@ -23,10 +23,10 @@ enum TipoActividad {
 // USUARIOS Y ROLES
 // ------------------------------------------------------
 
-model rol {
-  rol_id     Int       @id @default(autoincrement())
-  nombre_rol String    @unique @db.VarChar(50)
-  usuario    usuario[]
+enum TipoRol {
+  ADMINISTRADOR
+  DOCENTE
+  ALUMNO
 }
 
 model usuario {
@@ -34,7 +34,7 @@ model usuario {
   nombre                String                  @db.VarChar(100)
   email                 String                  @unique @db.VarChar(255)
   contrasena            String
-  rol_id                Int?
+  rol                   TipoRol                 @default(ALUMNO)
   fecha_registro        DateTime                @default(now()) @db.Timestamptz(6)
   perfil_completo       Boolean                 @default(false)
   avatar_url            String?
@@ -45,7 +45,6 @@ model usuario {
   foro                  foro[]
   lista_lectura         lista_lectura[]
   opinion               opinion[]
-  rol                   rol?                    @relation(fields: [rol_id], references: [rol_id], onDelete: NoAction, onUpdate: NoAction)
   usuario_club_lectura  usuario_club_lectura[]
   usuario_medalla       usuario_medalla[]
   meta_lectura          meta_lectura[]
@@ -59,8 +58,11 @@ model usuario {
   inscripcion           inscripcion[]
   trivia_pregunta_docente  trivia_pregunta[]       @relation("trivia_pregunta_docente")
   trivia_evaluacion_docente trivia_evaluacion[]   @relation("trivia_evaluacion_docente")
+  historial_asignacion historial_asignacion[]
 
-  @@index([rol_id])
+  @@index([rol])
+
+  listas_creadas lista[] @relation("CreadorLista")
 }
 
 // ------------------------------------------------------
@@ -107,12 +109,14 @@ activo                Boolean @default(true)
   trivia_evaluacion trivia_evaluacion[]
   trivia_pregunta   trivia_pregunta[]
   curso_libro       curso_libro[]
+  historial_asignacion historial_asignacion[]
 }
 
 model favorito {
   usuario_id Int
   libro_id   Int
-  estado_lectura String @default("general") @db.VarChar(20)
+  estado_lectura String @default("general") @db.VarChar(20)  
+  fecha_estado   DateTime @default(now()) @db.Timestamptz(6)
   libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
   usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
@@ -156,6 +160,10 @@ model lista {
   fecha_creacion DateTime        @default(now()) @db.Timestamptz(6)
   lista_lectura  lista_lectura[]
   lista_libro    lista_libro[]
+  creador_id Int?
+  creador usuario? @relation("CreadorLista", fields: [creador_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([creador_id])
 }
 
 model lista_lectura {
@@ -368,6 +376,7 @@ model trivia_evaluacion {
   docente_id     Int?
   fecha_limite   DateTime?         @db.Date
   descripcion    String?           @db.Text
+  habilitada     Boolean           @default(false)
   fecha_creacion DateTime          @default(now()) @db.Timestamptz(6)
   libro          libro             @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
   curso          curso?            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
@@ -492,6 +501,7 @@ model curso {
   inscripcion   inscripcion[]
   trivia_pregunta   trivia_pregunta[]
   trivia_evaluacion trivia_evaluacion[]
+  historial_asignacion historial_asignacion[]
 
   @@unique([anio, division, anio_lectivo])
   @@index([materia_id])
@@ -529,5 +539,34 @@ model inscripcion {
 
   @@unique([usuario_id, anio_lectivo])
   @@index([curso_id])
+  @@index([usuario_id])
+}
+
+// ------------------------------------------------------
+//HISTORIAL DE ASIGNACIONES DE LIBROS
+// ------------------------------------------------------
+
+enum AccionAsignacion {
+  ASIGNADO
+  PUNTAJE_ACTUALIZADO
+  QUITADO
+}
+
+model historial_asignacion {
+  historial_id Int              @id @default(autoincrement())
+  curso_id     Int
+  libro_id     Int
+  usuario_id   Int?
+  anio_lectivo Int
+  accion       AccionAsignacion
+  puntaje      Int?
+  fecha        DateTime         @default(now()) @db.Timestamptz(6)
+  curso        curso            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  libro        libro            @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario      usuario?         @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([anio_lectivo])
+  @@index([curso_id])
+  @@index([libro_id])
   @@index([usuario_id])
 }

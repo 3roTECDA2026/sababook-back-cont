@@ -8,6 +8,7 @@ import bookRoutes from './src/routes/book.routes';
 import cafeRoutes from './src/routes/cafe.routes';
 import commentRoutes from './src/routes/comment.routes';
 import courseRoutes from './src/routes/course.routes';
+import teacherPanelRoutes from './src/routes/teacherPanel.routes';
 import favoriteRoutes from './src/routes/favorite.routes';
 import feedRoutes from './src/routes/feed.routes'; // <-- AGREGADO
 import forumRoutes from './src/routes/forum.routes';
@@ -21,6 +22,7 @@ import subjectRoutes from './src/routes/subject.routes';
 import triviaRoutes from './src/routes/trivia.routes';
 import userRoutes from './src/routes/user.routes';
 import radioRoutes from './src/routes/radio.routes';
+import recomendacionRoutes from './src/routes/recomendacion.routes';
 
 import { testConnection } from './src/db/connect/db';
 const app = express();
@@ -69,7 +71,9 @@ app.use('/api/v1/cafes', cafeRoutes);
 app.use('/api/v1/trivia', triviaRoutes);
 app.use('/api/v1/subjects', subjectRoutes);
 app.use('/api/v1/courses', courseRoutes);
+app.use('/api/v1/teacher-panel', teacherPanelRoutes);
 app.use('/api/v1/moderation', moderationRoutes);
+app.use('/api/v1/recomendaciones', recomendacionRoutes);
 
 // -------------------------------------------------------------
 // ALIAS DE COMPATIBILIDAD CON EL FRONTEND LEGACY

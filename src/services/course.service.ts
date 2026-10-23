@@ -2,6 +2,7 @@
 import {
   DatosCurso,
   FiltrosCursos,
+  FiltrosHistorial,
   obtenerCursosDB,
   obtenerCursoPorIdDB,
   existeCursoDB,
@@ -12,14 +13,16 @@ import {
   asignarDocenteDB,
   quitarDocenteDB,
   esDocenteDelCursoDB,
+  obtenerHistorialDB,
   obtenerLibrosDelCursoDB,
   asignarLibroDB,
   actualizarPuntajeLibroDB,
   quitarLibroDB,
+  obtenerPuntajeMinimoAnualDB,
+  obtenerProgresoAlumnoDB,
+  obtenerAsignacionesAnterioresDB,
 } from '../models/course.model';
-
-const ROL_DOCENTE = 2;
-const ROL_ADMIN = 3;
+import { TipoRol } from '@prisma/client';
 
 // Error con código HTTP para reglas de negocio que no vienen de Prisma
 export class ErrorNegocio extends Error {
@@ -58,7 +61,7 @@ class CourseService {
     if (!usuario) {
       throw new ErrorNegocio(404, 'Usuario no encontrado.');
     }
-    if (usuario.rol_id !== ROL_DOCENTE) {
+    if (usuario.rol !== TipoRol.DOCENTE) {
       throw new ErrorNegocio(400, 'El usuario indicado no tiene rol docente.');
     }
     return await asignarDocenteDB(curso_id, usuario_id);
@@ -76,9 +79,9 @@ class CourseService {
     }
 
     const usuario = await obtenerRolUsuarioDB(usuario_id);
-    if (usuario?.rol_id === ROL_ADMIN) return;
+    if (usuario?.rol === TipoRol.ADMINISTRADOR) return;
 
-    if (usuario?.rol_id === ROL_DOCENTE && (await esDocenteDelCursoDB(curso_id, usuario_id))) {
+    if (usuario?.rol === TipoRol.DOCENTE && (await esDocenteDelCursoDB(curso_id, usuario_id))) {
       return;
     }
 
@@ -86,6 +89,28 @@ class CourseService {
       403,
       'Acceso denegado. Solo el administrador o un docente del curso pueden gestionar sus libros.'
     );
+  }
+
+  // El administrador ve el historial de todos los cursos;
+  // el docente, solo el de los cursos donde está asignado
+  async obtenerHistorial(filtros: FiltrosHistorial, usuario_id?: number) {
+    if (!usuario_id) {
+      throw new ErrorNegocio(401, 'Autenticación requerida.');
+    }
+
+    const usuario = await obtenerRolUsuarioDB(usuario_id);
+    if (usuario?.rol !== TipoRol.ADMINISTRADOR && usuario?.rol !== TipoRol.DOCENTE) {
+      throw new ErrorNegocio(
+        403,
+        'Acceso denegado. Solo administradores y docentes pueden ver el historial de asignaciones.'
+      );
+    }
+
+    if (usuario?.rol === TipoRol.DOCENTE) {
+      return await obtenerHistorialDB({ ...filtros, docente_id: usuario_id });
+    }
+
+    return await obtenerHistorialDB(filtros);
   }
 
   async obtenerLibros(curso_id: number) {
@@ -97,7 +122,7 @@ class CourseService {
 
   async asignarLibro(curso_id: number, libro_id: number, puntaje: number, usuario_id?: number) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
-    return await asignarLibroDB(curso_id, libro_id, puntaje);
+    return await asignarLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
 
   async actualizarPuntajeLibro(
@@ -107,12 +132,35 @@ class CourseService {
     usuario_id?: number
   ) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
-    return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje);
+    return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
-
   async quitarLibro(curso_id: number, libro_id: number, usuario_id?: number) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
-    await quitarLibroDB(curso_id, libro_id);
+    await quitarLibroDB(curso_id, libro_id, usuario_id);
+  }
+
+  // Cursos de años anteriores a los que ya se asignó el libro.
+  // Lo puede consultar quien puede asignar libros en este curso.
+  async obtenerAsignacionesAnteriores(curso_id: number, libro_id: number, usuario_id?: number) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+
+    const anteriores = await obtenerAsignacionesAnterioresDB(curso_id, libro_id);
+    if (anteriores === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    return anteriores;
+  }
+
+  //Mínimo anual configurable
+  async obtenerPuntajeMinimoAnual() {
+    return await obtenerPuntajeMinimoAnualDB();
+  }
+
+  //Progreso del alumno en un año lectivo
+  async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number) {
+    const minimo = await obtenerPuntajeMinimoAnualDB();
+    return await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo, minimo);
   }
 }
 

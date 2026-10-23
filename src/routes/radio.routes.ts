@@ -8,6 +8,7 @@ import {
   sincronizarProgramas,
 } from '../controllers/radio.controller';
 import { verifyToken, requireRole } from '../middleware/auth.middleware';
+import { TipoRol } from '@prisma/client';
 
 const router = Router();
 
@@ -20,8 +21,8 @@ router.post('/sincronizar', verifyToken, sincronizarProgramas);
 // Consulta por ID
 router.get('/:id', obtenerEpisodioPorId);
 
-// Rutas protegidas para gestión (Rol 1 = Docente / Admin)
-router.post('/', verifyToken, requireRole(1), crearEpisodio);
-router.delete('/:id', verifyToken, requireRole(1), eliminarEpisodio);
+// Rutas protegidas para gestión (Docente o Administrador)
+router.post('/', verifyToken, requireRole(TipoRol.DOCENTE, TipoRol.ADMINISTRADOR), crearEpisodio);
+router.delete('/:id', verifyToken, requireRole(TipoRol.DOCENTE, TipoRol.ADMINISTRADOR), eliminarEpisodio);
 
 export default router;

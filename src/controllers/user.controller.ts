@@ -1,5 +1,6 @@
 // src/controllers/user.controller.ts
 import { Request, Response } from 'express';
+import { TipoRol } from '@prisma/client';
 import { userService } from '../services/user.service';
 import { parsePagination } from '../utils/pagination';
 
@@ -30,10 +31,14 @@ class UserController {
   async createUser(req: Request, res: Response) {
     try {
       const newUser = req.body;
-      if (!newUser.nombre || !newUser.email || !newUser.contrasena || !newUser.rol_id) {
+      const rolRaw = newUser.rol ? String(newUser.rol).toUpperCase() : 'ALUMNO';
+      if (!newUser.nombre || !newUser.email || !newUser.contrasena) {
         return res.status(400).json({ error: 'Missing required fields' });
       }
-      const result = await userService.createUser(newUser);
+      const result = await userService.createUser({
+        ...newUser,
+        rol: rolRaw as TipoRol,
+      });
       res.status(201).json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
