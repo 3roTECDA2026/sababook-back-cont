@@ -23,6 +23,7 @@ import triviaRoutes from './src/routes/trivia.routes';
 import userRoutes from './src/routes/user.routes';
 import radioRoutes from './src/routes/radio.routes';
 import recomendacionRoutes from './src/routes/recomendacion.routes';
+import rachaRoutes from './src/routes/racha.routes';
 
 import { testConnection } from './src/db/connect/db';
 const app = express();
@@ -74,6 +75,7 @@ app.use('/api/v1/courses', courseRoutes);
 app.use('/api/v1/teacher-panel', teacherPanelRoutes);
 app.use('/api/v1/moderation', moderationRoutes);
 app.use('/api/v1/recomendaciones', recomendacionRoutes);
+app.use('/api/v1/racha', rachaRoutes);
 
 // -------------------------------------------------------------
 // ALIAS DE COMPATIBILIDAD CON EL FRONTEND LEGACY
