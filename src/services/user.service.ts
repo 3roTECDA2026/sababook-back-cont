@@ -14,6 +14,12 @@ export interface UpdateUserDTO {
   [key: string]: any;
 }
 
+// NUEVO: Extendemos los parámetros de paginación para incluir la búsqueda y el filtro
+export interface ExtendedPaginationParams extends PaginationParams {
+  search?: string;
+  filter?: string;
+}
+
 class UserService {
   async getAllUsers() {
     return await userModel.getAllUsers();
@@ -35,9 +41,10 @@ class UserService {
     return await userModel.deleteUser(id);
   }
 
-  async getUsersPaginated(pagination: PaginationParams) {
-  return await userModel.getUsersPaginated(pagination);
-}
+  // MODIFICADO: Ahora acepta ExtendedPaginationParams y los pasa al modelo
+  async getUsersPaginated(pagination: ExtendedPaginationParams) {
+    return await userModel.getUsersPaginated(pagination);
+  }
 }
 
 export const userService = new UserService();

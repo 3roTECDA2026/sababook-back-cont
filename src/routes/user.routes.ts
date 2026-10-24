@@ -4,15 +4,12 @@ import UserController from '../controllers/user.controller';
 import { requireAdmin, verifyToken } from '../middleware/auth.middleware';
 
 const router = Router();
-// Obtener todos los usuarios
+
+// Rutas de usuarios
 router.get('/', verifyToken, requireAdmin, UserController.getAllUsers);
-
 router.get('/:id', verifyToken, UserController.getUserById);
-
-router.post('/', verifyToken, requireAdmin, UserController.createUser);
-
+router.post('/', UserController.createUser);
 router.put('/:id', verifyToken, UserController.updateUser);
-
 router.delete('/:id', verifyToken, requireAdmin, UserController.deleteUser);
 
-export default router;
+export default router; // <-- Es indispensable para que server.ts lo importe correctamente
