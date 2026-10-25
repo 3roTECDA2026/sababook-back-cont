@@ -48,7 +48,7 @@ export const favoriteModel = {
   },
 
   async getAllFavorites(): Promise<Favorite[]> {
-    const favoritos = await prisma.favorito.findMany();
+    const favoritos = await prisma.favorito.findMany({ where: { es_favorito: true } });
     return favoritos.map((f) => ({
       usuario_id: f.usuario_id,
       libro_id: f.libro_id,
