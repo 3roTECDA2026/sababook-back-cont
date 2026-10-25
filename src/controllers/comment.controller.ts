@@ -2,7 +2,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { commentService } from '../services/comment.service';
-import { TipoRol } from '@prisma/client';
 
 export const crearComentario = async (req: AuthRequest, res: Response) => {
   try {
@@ -69,7 +68,7 @@ export const actualizarComentario = async (req: AuthRequest, res: Response) => {
     if (!comentario) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
 
     // Solo el autor o un administrador pueden editarlo
-    if (comentario.usuario_id !== usuario_id && req.userRole !== TipoRol.ADMINISTRADOR) {
+    if (comentario.usuario_id !== usuario_id && req.userRole !== 'ADMINISTRADOR') {
       return res.status(403).json({ mensaje: 'No tienes permiso para modificar este comentario' });
     }
 
@@ -99,7 +98,7 @@ export const eliminarComentario = async (req: AuthRequest, res: Response) => {
     if (!comentario) return res.status(404).json({ mensaje: 'Comentario no encontrado' });
 
     // Solo el autor o un administrador pueden eliminarlo
-    if (comentario.usuario_id !== usuario_id && req.userRole !== TipoRol.ADMINISTRADOR) {
+    if (comentario.usuario_id !== usuario_id && req.userRole !== 'ADMINISTRADOR') {
       return res.status(403).json({ mensaje: 'No tienes permiso para eliminar este comentario' });
     }
 

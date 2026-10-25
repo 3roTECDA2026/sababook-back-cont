@@ -7,118 +7,81 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ------------------------------------------------------
-// ENUMS
-// ------------------------------------------------------
-
-enum TipoActividad {
-  NUEVO_LIBRO
-  RADIO_EPISODIO
-  FORO_APL
-  NUEVA_OPINION
-  AVISO
-}
-
-// ------------------------------------------------------
-// USUARIOS Y ROLES
-// ------------------------------------------------------
-
-enum TipoRol {
-  ADMINISTRADOR
-  DOCENTE
-  ALUMNO
-}
-
 model usuario {
-  usuario_id            Int                     @id @default(autoincrement())
-  nombre                String                  @db.VarChar(100)
-  email                 String                  @unique @db.VarChar(255)
-  contrasena            String
-  rol                   TipoRol                 @default(ALUMNO)
-  fecha_registro        DateTime                @default(now()) @db.Timestamptz(6)
-  perfil_completo       Boolean                 @default(false)
-  avatar_url            String?
-  nivel_educativo       String?                 @db.VarChar(50)
-  comentario_foro       comentario_foro[]
-  exportacion           exportacion[]
-  favorito              favorito[]
-  foro                  foro[]
-  lista_lectura         lista_lectura[]
-  opinion               opinion[]
-  usuario_club_lectura  usuario_club_lectura[]
-  usuario_medalla       usuario_medalla[]
-  meta_lectura          meta_lectura[]
-  triviaAttempt         triviaAttempt[]
-  actividad_feed        actividad_feed[]
-  cafe_literario        cafe_literario[]
-  asistencia_cafe       asistencia_cafe[]
-  voto_cafe             voto_cafe[]
-  incidencia_moderacion incidencia_moderacion[]
-  curso_docente         curso_docente[]
-  inscripcion           inscripcion[]
-  trivia_pregunta_docente  trivia_pregunta[]       @relation("trivia_pregunta_docente")
-  trivia_evaluacion_docente trivia_evaluacion[]   @relation("trivia_evaluacion_docente")
-  historial_asignacion historial_asignacion[]
+  usuario_id                Int                     @id @default(autoincrement())
+  nombre                    String                  @db.VarChar(100)
+  email                     String                  @unique @db.VarChar(255)
+  contrasena                String
+  rol_id                    Int?
+  fecha_registro            DateTime                @default(now()) @db.Timestamptz(6)
+  perfil_completo           Boolean                 @default(false)
+  avatar_url                String?
+  nivel_educativo           String?                 @db.VarChar(50)
+  actividad_feed            actividad_feed[]
+  asistencia_cafe           asistencia_cafe[]
+  cafe_literario            cafe_literario[]
+  comentario_foro           comentario_foro[]
+  curso_docente             curso_docente[]
+  exportacion               exportacion[]
+  favorito                  favorito[]
+  foro                      foro[]
+  incidencia_moderacion     incidencia_moderacion[]
+  inscripcion               inscripcion[]
+  lista_lectura             lista_lectura[]
+  meta_lectura              meta_lectura[]
+  opinion                   opinion[]
+  trivia_evaluacion_docente trivia_evaluacion[]     @relation("trivia_evaluacion_docente")
+  triviaAttempt             triviaAttempt[]
+  trivia_pregunta_docente   trivia_pregunta[]       @relation("trivia_pregunta_docente")
+  rol                       rol?                    @relation(fields: [rol_id], references: [rol_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario_club_lectura      usuario_club_lectura[]
+  usuario_medalla           usuario_medalla[]
+  voto_cafe                 voto_cafe[]
 
-  @@index([rol])
-
-  listas_creadas lista[] @relation("CreadorLista")
+  @@index([rol_id])
 }
-
-// ------------------------------------------------------
-// FEED DE ACTIVIDAD
-// ------------------------------------------------------
 
 model actividad_feed {
   actividad_id Int           @id @default(autoincrement())
   usuario_id   Int?
   tipo         TipoActividad
   titulo       String        @db.VarChar(255)
-  descripcion  String?       @db.Text
-  entidad_id   Int? // ID referencial opcional (libro_id, foro_id, episodio_id)
+  descripcion  String?
+  entidad_id   Int?
   fecha        DateTime      @default(now()) @db.Timestamptz(6)
-
-  usuario usuario? @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull)
+  usuario      usuario?      @relation(fields: [usuario_id], references: [usuario_id])
 
   @@index([fecha(sort: Desc)])
 }
 
-// ------------------------------------------------------
-// CATÁLOGO Y LIBROS
-// ------------------------------------------------------
-
 model libro {
-  libro_id              Int     @id @default(autoincrement())
-  titulo                String  @db.VarChar(255)
-  autor                 String  @db.VarChar(255)
-  genero                String? @db.VarChar(100)
+  libro_id              Int                 @id @default(autoincrement())
+  titulo                String              @db.VarChar(255)
+  autor                 String              @db.VarChar(255)
+  genero                String?             @db.VarChar(100)
   descripcion           String?
   portada_url           String?
-  nivel_educativo       String? @db.VarChar(50)
+  nivel_educativo       String?             @db.VarChar(50)
   calificacion_promedio Float?
-activo                Boolean @default(true)
-  pagina_actual         Int?    @default(0)
-  paginas_totales       Int?    @default(100)
-
-  //Relaciones
-  favorito          favorito[]
-  lista_libro       lista_libro[]
-  opinion           opinion[]
-  recurso_educativo recurso_educativo[]
-  cafe_literario    cafe_literario[]
-  trivia_evaluacion trivia_evaluacion[]
-  trivia_pregunta   trivia_pregunta[]
-  curso_libro       curso_libro[]
-  historial_asignacion historial_asignacion[]
+  activo                Boolean             @default(true)
+  pagina_actual         Int?                @default(0)
+  paginas_totales       Int?                @default(100)
+  cafe_literario        cafe_literario[]
+  curso_libro           curso_libro[]
+  favorito              favorito[]
+  lista_libro           lista_libro[]
+  opinion               opinion[]
+  recurso_educativo     recurso_educativo[]
+  trivia_evaluacion     trivia_evaluacion[]
+  trivia_pregunta       trivia_pregunta[]
 }
 
 model favorito {
-  usuario_id Int
-  libro_id   Int
-  estado_lectura String @default("general") @db.VarChar(20)  
-  fecha_estado   DateTime @default(now()) @db.Timestamptz(6)
-  libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
-  usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
+  usuario_id     Int
+  libro_id       Int
+  estado_lectura String  @default("general") @db.VarChar(20)
+  libro          libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
+  usuario        usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
   @@id([usuario_id, libro_id])
 }
@@ -128,7 +91,7 @@ model opinion {
   usuario_id   Int
   libro_id     Int
   calificacion Int?      @db.SmallInt
-  comentario   String?   @db.Text
+  comentario   String?
   fecha        DateTime? @default(now()) @db.Timestamptz(6)
   libro        libro     @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
   usuario      usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
@@ -141,16 +104,12 @@ model recurso_educativo {
   recurso_id  Int     @id @default(autoincrement())
   libro_id    Int
   tipo        String  @db.VarChar(50)
-  url         String  @db.Text
-  descripcion String? @db.Text
+  url         String
+  descripcion String?
   libro       libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([libro_id])
 }
-
-// ------------------------------------------------------
-// LISTAS DE LECTURA
-// ------------------------------------------------------
 
 model lista {
   lista_id       Int             @id @default(autoincrement())
@@ -160,10 +119,6 @@ model lista {
   fecha_creacion DateTime        @default(now()) @db.Timestamptz(6)
   lista_lectura  lista_lectura[]
   lista_libro    lista_libro[]
-  creador_id Int?
-  creador usuario? @relation("CreadorLista", fields: [creador_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
-
-  @@index([creador_id])
 }
 
 model lista_lectura {
@@ -181,43 +136,36 @@ model lista_lectura {
 model lista_libro {
   lista_id    Int
   libro_id    Int
-  explicacion String? @db.Text
-
-  libro libro @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
-  lista lista @relation(fields: [lista_id], references: [lista_id], onDelete: Cascade, onUpdate: NoAction)
+  explicacion String?
+  libro       libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+  lista       lista   @relation(fields: [lista_id], references: [lista_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([lista_id, libro_id])
 }
 
-// ------------------------------------------------------
-// REQ-11: FOROS APL Y RADIO SÁBATO
-// ------------------------------------------------------
-
 model radio_episodio {
   episodio_id   Int       @id @default(autoincrement())
   titulo        String    @db.VarChar(255)
-  descripcion   String?   @db.Text
-  audio_url     String    @db.Text
+  descripcion   String?
+  audio_url     String
   programa      String?   @db.VarChar(100)
   fecha_emision DateTime? @default(now()) @db.Timestamptz(6)
-
-  foro foro[]
+  foro          foro[]
 }
 
 model foro {
-  foro_id        Int       @id @default(autoincrement())
-  titulo         String    @db.VarChar(255)
-  descripcion    String?
-  creador_id     Int?
-  cafe_id        Int?
-  episodio_id    Int? // Vinculación opcional con Radio Sábato
-  es_apl         Boolean   @default(false)
-  fecha_creacion DateTime? @default(now()) @db.Timestamptz(6)
-
+  foro_id         Int               @id @default(autoincrement())
+  titulo          String            @db.VarChar(255)
+  descripcion     String?
+  creador_id      Int?
+  fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
+  episodio_id     Int?
+  es_apl          Boolean           @default(false)
+  cafe_id         Int?
   comentario_foro comentario_foro[]
-  usuario         usuario?          @relation(fields: [creador_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
   cafe_literario  cafe_literario?   @relation(fields: [cafe_id], references: [cafe_id], onDelete: Cascade, onUpdate: NoAction)
-  radio_episodio  radio_episodio?   @relation(fields: [episodio_id], references: [episodio_id], onDelete: SetNull)
+  usuario         usuario?          @relation(fields: [creador_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+  radio_episodio  radio_episodio?   @relation(fields: [episodio_id], references: [episodio_id])
 
   @@index([episodio_id])
 }
@@ -234,10 +182,6 @@ model comentario_foro {
   @@index([foro_id])
   @@index([usuario_id])
 }
-
-// ------------------------------------------------------
-// CLUB DE LECTURA, MEDALLAS Y EXPORTACIÓN
-// ------------------------------------------------------
 
 model club_lectura {
   club_id              Int                    @id @default(autoincrement())
@@ -289,59 +233,51 @@ model exportacion {
   usuario                       usuario?  @relation(fields: [usuario_admin_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-// ------------------------------------------------------
-// CAFÉ LITERARIO
-// ------------------------------------------------------
-
 model cafe_literario {
-  cafe_id        Int               @id @default(autoincrement())
-  titulo         String            @db.VarChar(255)
-  descripcion    String?           @db.Text
-  libro_id       Int?
-  docente_id     Int?
-  fecha_evento   DateTime          @db.Timestamptz(6)
-  lugar          String?           @default("Biblioteca Ernesto Sábato") @db.VarChar(255)
-  estado         String?           @default("programado") @db.VarChar(50)
-  fecha_creacion DateTime?         @default(now()) @db.Timestamptz(6)
-  libro          libro?            @relation(fields: [libro_id], references: [libro_id], onDelete: SetNull, onUpdate: NoAction)
-  usuario        usuario?          @relation(fields: [docente_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+  cafe_id         Int               @id @default(autoincrement())
+  titulo          String            @db.VarChar(255)
+  descripcion     String?
+  libro_id        Int?
+  docente_id      Int?
+  fecha_evento    DateTime          @db.Timestamptz(6)
+  lugar           String?           @default("Biblioteca Ernesto Sábato") @db.VarChar(255)
+  estado          String?           @default("programado") @db.VarChar(50)
+  fecha_creacion  DateTime?         @default(now()) @db.Timestamptz(6)
   asistencia_cafe asistencia_cafe[]
-  voto_cafe       voto_cafe[]
+  usuario         usuario?          @relation(fields: [docente_id], references: [usuario_id], onUpdate: NoAction)
+  libro           libro?            @relation(fields: [libro_id], references: [libro_id], onUpdate: NoAction)
   foro            foro[]
+  voto_cafe       voto_cafe[]
 
   @@index([libro_id])
   @@index([docente_id])
 }
 
 model asistencia_cafe {
-  asistencia_id  Int             @id @default(autoincrement())
+  asistencia_id  Int            @id @default(autoincrement())
   cafe_id        Int
   usuario_id     Int
-  estado         String?         @default("confirmado") @db.VarChar(50)
-  fecha_registro DateTime?       @default(now()) @db.Timestamptz(6)
-  cafe_literario cafe_literario  @relation(fields: [cafe_id], references: [cafe_id], onDelete: Cascade, onUpdate: NoAction)
-  usuario        usuario         @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
+  estado         String?        @default("confirmado") @db.VarChar(50)
+  fecha_registro DateTime?      @default(now()) @db.Timestamptz(6)
+  cafe_literario cafe_literario @relation(fields: [cafe_id], references: [cafe_id], onDelete: Cascade, onUpdate: NoAction)
+  usuario        usuario        @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([cafe_id, usuario_id])
   @@index([usuario_id])
 }
 
 model voto_cafe {
-  voto_id        Int             @id @default(autoincrement())
+  voto_id        Int            @id @default(autoincrement())
   cafe_id        Int
   usuario_id     Int
   voto           Boolean
-  fecha_voto     DateTime?       @default(now()) @db.Timestamptz(6)
-  cafe_literario cafe_literario  @relation(fields: [cafe_id], references: [cafe_id], onDelete: Cascade, onUpdate: NoAction)
-  usuario        usuario         @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
+  fecha_voto     DateTime?      @default(now()) @db.Timestamptz(6)
+  cafe_literario cafe_literario @relation(fields: [cafe_id], references: [cafe_id], onDelete: Cascade, onUpdate: NoAction)
+  usuario        usuario        @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([cafe_id, usuario_id])
   @@index([usuario_id])
 }
-
-// ------------------------------------------------------
-// TRIVIA
-// ------------------------------------------------------
 
 model trivia_pregunta {
   pregunta_id    Int                @id @default(autoincrement())
@@ -351,15 +287,15 @@ model trivia_pregunta {
   docente_id     Int?
   modo           String             @default("trivia") @db.VarChar(20)
   formato        String             @default("multiple") @db.VarChar(20)
-  consigna       String             @db.Text
+  consigna       String
   fecha_limite   DateTime?          @db.Date
   fecha_creacion DateTime           @default(now()) @db.Timestamptz(6)
-  libro          libro              @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
-  evaluacion     trivia_evaluacion? @relation(fields: [evaluacion_id], references: [evaluacion_id], onDelete: Cascade, onUpdate: NoAction)
-  curso          curso?             @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
-  docente        usuario?           @relation("trivia_pregunta_docente", fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
   opciones       trivia_opcion[]
   pares          trivia_par[]
+  curso          curso?             @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  docente        usuario?           @relation("trivia_pregunta_docente", fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+  evaluacion     trivia_evaluacion? @relation(fields: [evaluacion_id], references: [evaluacion_id], onDelete: Cascade, onUpdate: NoAction)
+  libro          libro              @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
   respuestas     trivia_respuesta[]
 
   @@index([libro_id])
@@ -370,19 +306,18 @@ model trivia_pregunta {
 }
 
 model trivia_evaluacion {
-  evaluacion_id  Int               @id @default(autoincrement())
-  libro_id       Int
-  curso_id       Int?
-  docente_id     Int?
-  fecha_limite   DateTime?         @db.Date
-  descripcion    String?           @db.Text
-  habilitada     Boolean           @default(false)
-  fecha_creacion DateTime          @default(now()) @db.Timestamptz(6)
-  libro          libro             @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
-  curso          curso?            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
-  docente        usuario?          @relation("trivia_evaluacion_docente", fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
-  trivia_pregunta  trivia_pregunta[]
-  triviaAttempt    triviaAttempt[]
+  evaluacion_id   Int               @id @default(autoincrement())
+  libro_id        Int
+  curso_id        Int?
+  docente_id      Int?
+  fecha_limite    DateTime?         @db.Date
+  descripcion     String?
+  fecha_creacion  DateTime          @default(now()) @db.Timestamptz(6)
+  curso           curso?            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  docente         usuario?          @relation("trivia_evaluacion_docente", fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+  libro           libro             @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
+  triviaAttempt   triviaAttempt[]
+  trivia_pregunta trivia_pregunta[]
 
   @@index([libro_id])
   @@index([curso_id])
@@ -397,7 +332,7 @@ model triviaAttempt {
   totalQuestions Int               @map("total_preguntas")
   score          Int               @map("puntaje")
   answersJson    Json              @map("respuestas_json") @db.Json
-  submittedAt    DateTime          @map("fecha_entrega") @default(now()) @db.Timestamptz(6)
+  submittedAt    DateTime          @default(now()) @map("fecha_entrega") @db.Timestamptz(6)
   evaluation     trivia_evaluacion @relation(fields: [evaluationId], references: [evaluacion_id], onDelete: Cascade, onUpdate: NoAction)
   user           usuario           @relation(fields: [userId], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -410,7 +345,7 @@ model triviaAttempt {
 model trivia_opcion {
   opcion_id   Int             @id @default(autoincrement())
   pregunta_id Int
-  texto       String          @db.Text
+  texto       String
   es_correcta Boolean?
   pregunta    trivia_pregunta @relation(fields: [pregunta_id], references: [pregunta_id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -421,8 +356,8 @@ model trivia_par {
   par_id      Int             @id @default(autoincrement())
   pregunta_id Int
   orden       Int
-  izquierda   String          @db.Text
-  derecha     String          @db.Text
+  izquierda   String
+  derecha     String
   pregunta    trivia_pregunta @relation(fields: [pregunta_id], references: [pregunta_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([pregunta_id])
@@ -432,33 +367,29 @@ model trivia_respuesta {
   respuesta_id Int             @id @default(autoincrement())
   pregunta_id  Int
   orden        Int
-  texto        String          @db.Text
+  texto        String
   pregunta     trivia_pregunta @relation(fields: [pregunta_id], references: [pregunta_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([pregunta_id])
 }
-// ------------------------------------------------------
-// META DE LECTURA
-// ------------------------------------------------------
 
 model meta_lectura {
   meta_id         Int       @id @default(autoincrement())
   usuario_id      Int
-  periodo_nombre  String    @db.VarChar(100) // Ej: "1º Cuatrimestre 2026", "Meta Anual 2026"
+  periodo_nombre  String    @db.VarChar(100)
   cantidad_libros Int
   fecha_inicio    DateTime  @db.Date
   fecha_fin       DateTime  @db.Date
   fecha_creacion  DateTime? @default(now()) @db.Timestamptz(6)
-
-  usuario usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
+  usuario         usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([usuario_id])
 }
 
 model configuracion_sistema {
   clave       String   @id @db.VarChar(100)
-  valor       String   @db.Text
-  descripcion String?  @db.Text
+  valor       String
+  descripcion String?
   actualizado DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 }
 
@@ -466,22 +397,18 @@ model incidencia_moderacion {
   incidencia_id       Int       @id @default(autoincrement())
   usuario_id          Int?
   contexto            String    @db.VarChar(50)
-  contenido_bloqueado String    @db.Text
-  motivo              String    @db.Text
+  contenido_bloqueado String
+  motivo              String
   categoria           String?   @db.VarChar(100)
   estado              String    @default("pendiente") @db.VarChar(20)
   revisado_por        Int?
   fecha_revision      DateTime? @db.Timestamptz(6)
   fecha               DateTime  @default(now()) @db.Timestamptz(6)
-  usuario             usuario?  @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+  usuario             usuario?  @relation(fields: [usuario_id], references: [usuario_id], onUpdate: NoAction)
 
   @@index([usuario_id])
   @@index([fecha])
 }
-
-// ------------------------------------------------------
-// SAB 031 CURSOS, MATERIAS Y ASIGNACIONES 
-// ------------------------------------------------------
 
 model materia {
   materia_id Int     @id @default(autoincrement())
@@ -490,18 +417,17 @@ model materia {
 }
 
 model curso {
-  curso_id      Int             @id @default(autoincrement())
-  anio          Int
-  division      String          @db.VarChar(5)
-  anio_lectivo  Int
-  materia_id    Int
-  materia       materia         @relation(fields: [materia_id], references: [materia_id], onDelete: NoAction, onUpdate: NoAction)
-  curso_docente curso_docente[]
-  curso_libro   curso_libro[]
-  inscripcion   inscripcion[]
-  trivia_pregunta   trivia_pregunta[]
+  curso_id          Int                 @id @default(autoincrement())
+  anio              Int
+  division          String              @db.VarChar(5)
+  anio_lectivo      Int
+  materia_id        Int
+  materia           materia             @relation(fields: [materia_id], references: [materia_id], onDelete: NoAction, onUpdate: NoAction)
+  curso_docente     curso_docente[]
+  curso_libro       curso_libro[]
+  inscripcion       inscripcion[]
   trivia_evaluacion trivia_evaluacion[]
-  historial_asignacion historial_asignacion[]
+  trivia_pregunta   trivia_pregunta[]
 
   @@unique([anio, division, anio_lectivo])
   @@index([materia_id])
@@ -534,39 +460,25 @@ model inscripcion {
   curso_id          Int
   anio_lectivo      Int
   fecha_inscripcion DateTime @default(now()) @db.Timestamptz(6)
-  usuario           usuario  @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
   curso             curso    @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario           usuario  @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([usuario_id, anio_lectivo])
   @@index([curso_id])
   @@index([usuario_id])
 }
 
-// ------------------------------------------------------
-//HISTORIAL DE ASIGNACIONES DE LIBROS
-// ------------------------------------------------------
-
-enum AccionAsignacion {
-  ASIGNADO
-  PUNTAJE_ACTUALIZADO
-  QUITADO
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model rol {
+  rol_id     Int       @id @default(autoincrement())
+  nombre_rol String    @unique @db.VarChar(50)
+  usuario    usuario[]
 }
 
-model historial_asignacion {
-  historial_id Int              @id @default(autoincrement())
-  curso_id     Int
-  libro_id     Int
-  usuario_id   Int?
-  anio_lectivo Int
-  accion       AccionAsignacion
-  puntaje      Int?
-  fecha        DateTime         @default(now()) @db.Timestamptz(6)
-  curso        curso            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
-  libro        libro            @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
-  usuario      usuario?         @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
-
-  @@index([anio_lectivo])
-  @@index([curso_id])
-  @@index([libro_id])
-  @@index([usuario_id])
+enum TipoActividad {
+  NUEVO_LIBRO
+  RADIO_EPISODIO
+  FORO_APL
+  NUEVA_OPINION
+  AVISO
 }

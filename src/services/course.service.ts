@@ -22,7 +22,6 @@ import {
   obtenerProgresoAlumnoDB,
   obtenerAsignacionesAnterioresDB,
 } from '../models/course.model';
-import { TipoRol } from '@prisma/client';
 
 // Error con código HTTP para reglas de negocio que no vienen de Prisma
 export class ErrorNegocio extends Error {
@@ -61,7 +60,8 @@ class CourseService {
     if (!usuario) {
       throw new ErrorNegocio(404, 'Usuario no encontrado.');
     }
-    if (usuario.rol !== TipoRol.DOCENTE) {
+    const nombreRol = usuario.rol?.nombre_rol?.toUpperCase();
+    if (nombreRol !== 'DOCENTE') {
       throw new ErrorNegocio(400, 'El usuario indicado no tiene rol docente.');
     }
     return await asignarDocenteDB(curso_id, usuario_id);
@@ -79,9 +79,11 @@ class CourseService {
     }
 
     const usuario = await obtenerRolUsuarioDB(usuario_id);
-    if (usuario?.rol === TipoRol.ADMINISTRADOR) return;
+    const nombreRol = usuario?.rol?.nombre_rol?.toUpperCase();
 
-    if (usuario?.rol === TipoRol.DOCENTE && (await esDocenteDelCursoDB(curso_id, usuario_id))) {
+    if (nombreRol === 'ADMINISTRADOR') return;
+
+    if (nombreRol === 'DOCENTE' && (await esDocenteDelCursoDB(curso_id, usuario_id))) {
       return;
     }
 
@@ -99,14 +101,16 @@ class CourseService {
     }
 
     const usuario = await obtenerRolUsuarioDB(usuario_id);
-    if (usuario?.rol !== TipoRol.ADMINISTRADOR && usuario?.rol !== TipoRol.DOCENTE) {
+    const nombreRol = usuario?.rol?.nombre_rol?.toUpperCase();
+
+    if (nombreRol !== 'ADMINISTRADOR' && nombreRol !== 'DOCENTE') {
       throw new ErrorNegocio(
         403,
         'Acceso denegado. Solo administradores y docentes pueden ver el historial de asignaciones.'
       );
     }
 
-    if (usuario?.rol === TipoRol.DOCENTE) {
+    if (nombreRol === 'DOCENTE') {
       return await obtenerHistorialDB({ ...filtros, docente_id: usuario_id });
     }
 

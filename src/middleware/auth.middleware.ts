@@ -2,17 +2,16 @@
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db/connect/db';
-import { TipoRol } from '@prisma/client';
 
 export interface AuthRequest extends Request {
   userId?: number;
-  userRole?: TipoRol;
+  userRole?: string;
 }
 
 interface TokenPayload extends JwtPayload {
   usuario_id?: number;
   id?: number;
-  rol?: TipoRol;
+  rol?: string;
 }
 
 export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -31,7 +30,7 @@ export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction)
     const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as TokenPayload;
 
     req.userId = decoded.usuario_id ?? decoded.id;
-    req.userRole = decoded.rol ?? TipoRol.ALUMNO;
+    req.userRole = decoded.rol ?? 'ALUMNO';
 
     next();
   } catch (error) {
@@ -55,7 +54,7 @@ export const optionalAuth = (req: AuthRequest, res: Response, next: NextFunction
     const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as TokenPayload;
 
     req.userId = decoded.usuario_id ?? decoded.id;
-    req.userRole = decoded.rol ?? TipoRol.ALUMNO;
+    req.userRole = decoded.rol ?? 'ALUMNO';
   } catch {
     req.userId = undefined;
     req.userRole = undefined;
@@ -64,7 +63,7 @@ export const optionalAuth = (req: AuthRequest, res: Response, next: NextFunction
   next();
 };
 
-export const requireRole = (...allowedRoles: TipoRol[]) => {
+export const requireRole = (...allowedRoles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.userRole || !allowedRoles.includes(req.userRole)) {
       return res.status(403).json({ error: 'Acceso denegado. Permisos insuficientes.' });
@@ -85,10 +84,12 @@ export const requireAdmin = async (
   try {
     const user = await prisma.usuario.findUnique({
       where: { usuario_id: req.userId },
-      select: { rol: true },
+      include: { rol: { select: { nombre_rol: true } } },
     });
 
-    if (user?.rol !== TipoRol.ADMINISTRADOR) {
+    const rolNombre = user?.rol?.nombre_rol;
+
+    if (rolNombre !== 'ADMINISTRADOR' && rolNombre !== 'admin') {
       return res.status(403).json({ error: 'Acceso denegado. Se requiere rol administrador.' });
     }
 

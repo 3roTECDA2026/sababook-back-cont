@@ -1,14 +1,13 @@
 import { prisma } from '../db/connect/db';
 import bcrypt from 'bcrypt';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
-import { TipoRol } from '@prisma/client';
 
 export interface User {
   usuario_id: number;
   nombre: string;
   email: string;
   contrasena: string;
-  rol: TipoRol;
+  rol: string;
   fecha_registro: Date;
   perfil_completo: boolean;
   avatar_url: string | null;
@@ -19,7 +18,7 @@ interface UserConRol {
   usuario_id: number;
   nombre: string;
   email: string;
-  rol: TipoRol;
+  rol: string;
   fecha_registro: Date;
   perfil_completo: boolean;
   avatar_url: string | null;
@@ -30,7 +29,7 @@ interface CreateUserData {
   nombre: string;
   email: string;
   contrasena: string;
-  rol?: TipoRol;
+  rol_id?: number;
   perfil_completo?: boolean;
   avatar_url?: string | null;
   nivel_educativo?: string | null;
@@ -41,7 +40,7 @@ interface NewUserResult {
   nombre: string;
   email: string;
   fecha_registro: Date;
-  rol: TipoRol;
+  rol_id: number | null;
 }
 
 type UpdateUserData = Partial<Omit<User, 'usuario_id'>>;
@@ -50,6 +49,7 @@ class UserModel {
   async getAllUsers(): Promise<UserConRol[]> {
     try {
       const users = await prisma.usuario.findMany({
+        include: { rol: { select: { nombre_rol: true } } },
         orderBy: {
           usuario_id: 'asc',
         },
@@ -59,7 +59,7 @@ class UserModel {
         usuario_id: u.usuario_id,
         nombre: u.nombre,
         email: u.email,
-        rol: u.rol,
+        rol: u.rol?.nombre_rol ?? '',
         fecha_registro: u.fecha_registro ?? new Date(),
         perfil_completo: u.perfil_completo ?? false,
         avatar_url: u.avatar_url,
@@ -77,7 +77,7 @@ class UserModel {
       nombre,
       email,
       contrasena,
-      rol = TipoRol.ALUMNO,
+      rol_id = 2, // Asume un ID por defecto para alumno si no viene especificado
       perfil_completo = false,
       avatar_url = null,
       nivel_educativo = null,
@@ -93,7 +93,7 @@ class UserModel {
           nombre,
           email,
           contrasena: hashedPassword,
-          rol,
+          rol_id,
           fecha_registro,
           perfil_completo,
           avatar_url,
@@ -104,7 +104,7 @@ class UserModel {
           nombre: true,
           email: true,
           fecha_registro: true,
-          rol: true,
+          rol_id: true,
         },
       });
 
@@ -118,11 +118,11 @@ class UserModel {
     }
   }
 
-  async updateUser(userId: number, userData: UpdateUserData): Promise<User> {
+  async updateUser(userId: number, userData: UpdateUserData): Promise<UserConRol> {
     const dataToUpdate: Record<string, any> = {};
     Object.keys(userData).forEach((key) => {
       const val = (userData as any)[key];
-      if (val !== undefined) {
+      if (val !== undefined && key !== 'rol') {
         dataToUpdate[key] = val;
       }
     });
@@ -135,14 +135,14 @@ class UserModel {
       const updatedUser = await prisma.usuario.update({
         where: { usuario_id: userId },
         data: dataToUpdate,
+        include: { rol: { select: { nombre_rol: true } } },
       });
 
       return {
         usuario_id: updatedUser.usuario_id,
         nombre: updatedUser.nombre,
         email: updatedUser.email,
-        contrasena: updatedUser.contrasena,
-        rol: updatedUser.rol,
+        rol: updatedUser.rol?.nombre_rol ?? '',
         fecha_registro: updatedUser.fecha_registro ?? new Date(),
         perfil_completo: updatedUser.perfil_completo ?? false,
         avatar_url: updatedUser.avatar_url,
@@ -162,6 +162,7 @@ class UserModel {
     try {
       const user = await prisma.usuario.findUnique({
         where: { usuario_id: userId },
+        include: { rol: { select: { nombre_rol: true } } },
       });
 
       if (!user) return null;
@@ -170,7 +171,7 @@ class UserModel {
         usuario_id: user.usuario_id,
         nombre: user.nombre,
         email: user.email,
-        rol: user.rol,
+        rol: user.rol?.nombre_rol ?? '',
         fecha_registro: user.fecha_registro ?? new Date(),
         perfil_completo: user.perfil_completo ?? false,
         avatar_url: user.avatar_url,
@@ -200,11 +201,10 @@ class UserModel {
     }
   }
 
-async getUsersPaginated(pagination: PaginationParams & { search?: string; filter?: string }): Promise<Paginated<UserConRol>> {
+  async getUsersPaginated(pagination: PaginationParams & { search?: string; filter?: string }): Promise<Paginated<UserConRol>> {
     try {
       const { skip, limit, search, filter } = pagination;
 
-      // Construimos dinámicamente las condiciones de búsqueda
       const whereClause: any = {};
 
       if (search) {
