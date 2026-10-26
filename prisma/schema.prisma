@@ -40,7 +40,6 @@ model usuario {
 
   @@index([rol_id])
 }
-
 model actividad_feed {
   actividad_id Int           @id @default(autoincrement())
   usuario_id   Int?
