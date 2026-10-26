@@ -1,6 +1,7 @@
 import 'dotenv/config'; // <-- Mantiene la carga del .env
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import path from 'path';
 
 // Importación de rutas sin extensión .js
 import authRoutes from './src/routes/auth.routes';
@@ -51,7 +52,11 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+// Archivos estáticos subidos (PDFs y material de lectura)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Endpoints traducidos a inglés (/api/v1/...)
 app.use('/api/v1/auth', authRoutes);

@@ -1,6 +1,8 @@
 // src/controllers/book.controller.ts
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
+import fs from 'fs';
+import path from 'path';
 import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
 
@@ -114,6 +116,94 @@ class BookController {
     } catch (error) {
       console.error('Error al marcar como inactivo:', error);
       res.status(500).json({ mensaje: 'Error al marcar libro como inactivo' });
+    }
+  }
+
+  /**
+   * Cargar archivo PDF de lectura para libros (SAB-67)
+   * Admite carga mediante archivo en base64 o URL directa.
+   */
+  async cargarPdf(req: Request, res: Response) {
+    try {
+      const { nombreArchivo, base64, url } = req.body;
+
+      if (url && typeof url === 'string' && url.trim().length > 0) {
+        return res.status(200).json({
+          url: url.trim(),
+          mensaje: 'URL de material PDF validada correctamente',
+        });
+      }
+
+      if (!base64 || typeof base64 !== 'string') {
+        return res.status(400).json({
+          mensaje: 'Se requiere el contenido del archivo en base64 o una URL válida',
+        });
+      }
+
+      const matches = base64.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+      const rawBase64 = matches ? matches[2] : base64;
+      const buffer = Buffer.from(rawBase64, 'base64');
+
+      // Límite de 25MB para PDFs
+      const MAX_SIZE = 25 * 1024 * 1024;
+      if (buffer.length > MAX_SIZE) {
+        return res.status(400).json({
+          mensaje: 'El archivo excede el tamaño máximo permitido (25MB)',
+        });
+      }
+
+      const uploadDir = path.join(process.cwd(), 'uploads', 'pdfs');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      const safeName = (nombreArchivo || 'material_lectura')
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .replace(/\.pdf$/i, '');
+      const filename = `${Date.now()}-${safeName}.pdf`;
+      const filePath = path.join(uploadDir, filename);
+
+      fs.writeFileSync(filePath, buffer);
+
+      const fileUrl = `/uploads/pdfs/${filename}`;
+      return res.status(201).json({
+        url: fileUrl,
+        mensaje: 'Archivo PDF cargado correctamente',
+      });
+    } catch (error) {
+      console.error('Error al procesar archivo PDF:', error);
+      return res.status(500).json({ mensaje: 'Error al procesar el archivo PDF' });
+    }
+  }
+
+  /**
+   * Adjuntar material de lectura PDF a un libro existente (SAB-67)
+   */
+  async adjuntarPdf(req: Request, res: Response) {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id) || id <= 0) {
+      return res.status(400).json({ mensaje: 'ID de libro no válido' });
+    }
+
+    try {
+      const { archivo_url, pdf_url, url } = req.body;
+      const finalUrl = archivo_url || pdf_url || url;
+
+      if (!finalUrl || typeof finalUrl !== 'string') {
+        return res.status(400).json({ mensaje: 'Se requiere la URL o ruta del archivo PDF' });
+      }
+
+      const libroActualizado = await bookService.actualizarLibro(id, {
+        archivo_url: finalUrl.trim(),
+      });
+
+      return res.status(200).json({
+        mensaje: 'Material de lectura PDF adjuntado correctamente al libro',
+        libro: libroActualizado,
+      });
+    } catch (error) {
+      console.error('Error al adjuntar PDF:', error);
+      return res.status(500).json({ mensaje: 'Error al adjuntar material PDF al libro' });
     }
   }
 }

@@ -97,6 +97,7 @@ model libro {
   genero                String? @db.VarChar(100)
   descripcion           String?
   portada_url           String?
+  archivo_url           String?
   nivel_educativo       String? @db.VarChar(50)
   calificacion_promedio Float?
 activo                Boolean @default(true)

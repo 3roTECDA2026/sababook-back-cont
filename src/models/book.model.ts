@@ -10,6 +10,10 @@ export interface CrearLibroData {
   descripcion?: string;
   portadaUrl?: string;     // Recibe camelCase desde el controller/frontend
   portada_url?: string;    // O recibe snake_case
+  archivoUrl?: string;     // Soporte para PDF de lectura (camelCase)
+  archivo_url?: string;    // Soporte para PDF de lectura (snake_case)
+  pdfUrl?: string;         // Alias
+  pdf_url?: string;        // Alias
   nivelEducativo?: string;
   nivel_educativo?: string;
   activo?: boolean;
@@ -22,6 +26,10 @@ export interface ActualizarLibroData {
   descripcion?: string;
   portadaUrl?: string;
   portada_url?: string;
+  archivoUrl?: string;
+  archivo_url?: string;
+  pdfUrl?: string;
+  pdf_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
   activo?: boolean;
@@ -36,6 +44,9 @@ interface BuscarLibrosFiltros {
 // Crear libro transformando camelCase a snake_case para Prisma
 export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
   try {
+    const archivo =
+      datos.archivoUrl || datos.archivo_url || datos.pdfUrl || datos.pdf_url || null;
+
     return await prisma.libro.create({
       data: {
         titulo: datos.titulo,
@@ -44,6 +55,7 @@ export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
         descripcion: datos.descripcion,
         // Asigna portadaUrl o portada_url al campo correcto en Prisma (portada_url)
         portada_url: datos.portadaUrl || datos.portada_url || null,
+        archivo_url: archivo,
         nivel_educativo: datos.nivelEducativo || datos.nivel_educativo || null,
         activo: datos.activo ?? true,
       },
@@ -90,6 +102,14 @@ export const buscarLibros = async (filtros: BuscarLibrosFiltros): Promise<Libro[
 export const actualizarLibro = async (id: number, datos: ActualizarLibroData): Promise<Libro> => {
   try {
     const portada = datos.portadaUrl !== undefined ? datos.portadaUrl : datos.portada_url;
+    const archivo =
+      datos.archivoUrl !== undefined
+        ? datos.archivoUrl
+        : datos.archivo_url !== undefined
+        ? datos.archivo_url
+        : datos.pdfUrl !== undefined
+        ? datos.pdfUrl
+        : datos.pdf_url;
     const nivel = datos.nivelEducativo !== undefined ? datos.nivelEducativo : datos.nivel_educativo;
 
     return await prisma.libro.update({
@@ -100,6 +120,7 @@ export const actualizarLibro = async (id: number, datos: ActualizarLibroData): P
         ...(datos.genero !== undefined && { genero: datos.genero }),
         ...(datos.descripcion !== undefined && { descripcion: datos.descripcion }),
         ...(portada !== undefined && { portada_url: portada }),
+        ...(archivo !== undefined && { archivo_url: archivo }),
         ...(nivel !== undefined && { nivel_educativo: nivel }),
         ...(datos.activo !== undefined && { activo: datos.activo }),
       },
