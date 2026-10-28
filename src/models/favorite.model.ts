@@ -26,32 +26,40 @@ interface FavoriteBook {
   fecha_estado: Date;
 }
 
+// Una fila de favorito representa un libro en la biblioteca del alumno: puede estar
+// ahí por ser favorito (es_favorito = true) y/o por tener un estado de lectura
+// distinto de 'general'. Ambas cosas son independientes (SAB-087).
+const ESTADO_GENERAL: ReadingStatus = 'general';
+
 export const favoriteModel = {
+  // Marca el libro como favorito (corazón). Si ya existe la fila porque el alumno
+  // le había puesto un estado de lectura, solo se activa el flag sin tocar el estado.
   async createFavorite({ usuario_id, libro_id }: Favorite): Promise<Favorite> {
-    const nuevoFavorito = await prisma.favorito.create({
-      data: {
-        usuario_id,
-        libro_id,
-      },
+    const favorito = await prisma.favorito.upsert({
+      where: { usuario_id_libro_id: { usuario_id, libro_id } },
+      update: { es_favorito: true },
+      create: { usuario_id, libro_id, es_favorito: true },
     });
 
     return {
-      usuario_id: nuevoFavorito.usuario_id,
-      libro_id: nuevoFavorito.libro_id,
+      usuario_id: favorito.usuario_id,
+      libro_id: favorito.libro_id,
     };
   },
 
   async getAllFavorites(): Promise<Favorite[]> {
-    const favoritos = await prisma.favorito.findMany();
+    const favoritos = await prisma.favorito.findMany({ where: { es_favorito: true } });
     return favoritos.map((f) => ({
       usuario_id: f.usuario_id,
       libro_id: f.libro_id,
     }));
   },
 
+  // Solo los libros marcados con el corazón. El estado de lectura sigue viajando
+  // para que el front pueda mostrarlo, pero no define la pertenencia a favoritos.
   async getFavoritesByUser(usuario_id: number): Promise<FavoriteBook[]> {
     const favoritos = await prisma.favorito.findMany({
-      where: { usuario_id },
+      where: { usuario_id, es_favorito: true },
       include: {
         libro: true,
       },
@@ -87,6 +95,12 @@ export const favoriteModel = {
     }));
   },
 
+  // Cambia el estado de lectura sin tocar es_favorito.
+  // - Poner un estado real (quiero-leer/leyendo/leido) en un libro que no estaba:
+  //   crea la fila con es_favorito = false (marcar como leído NO lo hace favorito).
+  // - Volver a 'general' un libro que no es favorito: lo saca de la biblioteca
+  //   (se borra la fila, porque ya no hay nada que recordar).
+  // - Volver a 'general' un libro favorito: conserva la fila (sigue siendo favorito).
   async updateReadingStatus(
     usuario_id: number,
     libro_id: number,
@@ -94,14 +108,19 @@ export const favoriteModel = {
   ): Promise<ReadingStatusRecord> {
     const actual = await prisma.favorito.findUnique({
       where: { usuario_id_libro_id: { usuario_id, libro_id } },
-      select: { estado_lectura: true, fecha_estado: true },
+      select: { estado_lectura: true, fecha_estado: true, es_favorito: true },
     });
 
-    // Si el libro todavía no está en la biblioteca del alumno, se agrega con ese estado
-    // (por ejemplo, para poder marcar como leído cualquier libro)
+    // El libro todavía no está en la biblioteca del alumno.
     if (!actual) {
+      // Poner 'general' en un libro que no estaba no crea nada.
+      if (estado_lectura === ESTADO_GENERAL) {
+        return { libro_id, estado_lectura: ESTADO_GENERAL, fecha_estado: new Date() };
+      }
+
+      // Se agrega con ese estado, pero no como favorito.
       const creado = await prisma.favorito.create({
-        data: { usuario_id, libro_id, estado_lectura },
+        data: { usuario_id, libro_id, estado_lectura, es_favorito: false },
         select: { libro_id: true, estado_lectura: true, fecha_estado: true },
       });
 
@@ -110,6 +129,14 @@ export const favoriteModel = {
         estado_lectura: creado.estado_lectura as ReadingStatus,
         fecha_estado: creado.fecha_estado,
       };
+    }
+
+    // "Desmarcar" (volver a 'general') un libro que no es favorito: se quita de la biblioteca.
+    if (estado_lectura === ESTADO_GENERAL && !actual.es_favorito) {
+      await prisma.favorito.delete({
+        where: { usuario_id_libro_id: { usuario_id, libro_id } },
+      });
+      return { libro_id, estado_lectura: ESTADO_GENERAL, fecha_estado: actual.fecha_estado };
     }
 
     // Si el estado no cambia, no se toca fecha_estado: volver a marcar
@@ -131,19 +158,29 @@ export const favoriteModel = {
     };
   },
 
+  // Quita el corazón. Si el libro tiene un estado de lectura, conserva la fila
+  // (sigue en la biblioteca con su estado); si no, la elimina.
   async deleteFavorite(usuario_id: number, libro_id: number): Promise<boolean> {
-    try {
-      const result = await prisma.favorito.deleteMany({
-        where: {
-          usuario_id,
-          libro_id,
-        },
-      });
+    const actual = await prisma.favorito.findUnique({
+      where: { usuario_id_libro_id: { usuario_id, libro_id } },
+      select: { estado_lectura: true },
+    });
 
-      return result.count > 0;
-    } catch (error) {
-      console.error('Error al eliminar favorito:', error);
+    if (!actual) {
       return false;
     }
+
+    if (actual.estado_lectura === ESTADO_GENERAL) {
+      await prisma.favorito.delete({
+        where: { usuario_id_libro_id: { usuario_id, libro_id } },
+      });
+      return true;
+    }
+
+    await prisma.favorito.update({
+      where: { usuario_id_libro_id: { usuario_id, libro_id } },
+      data: { es_favorito: false },
+    });
+    return true;
   },
 };

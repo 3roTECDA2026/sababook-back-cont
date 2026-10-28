@@ -119,6 +119,7 @@ model favorito {
   usuario_id Int
   libro_id   Int
   estado_lectura String @default("general") @db.VarChar(20)  
+  es_favorito    Boolean @default(false)
   fecha_estado   DateTime @default(now()) @db.Timestamptz(6)
   libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
   usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")

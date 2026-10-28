@@ -65,11 +65,15 @@ INSERT INTO opinion (opinion_id, usuario_id, libro_id, calificacion, comentario,
   (6, 4, 5, 4, 'Me encantó la trama, pero me hubiera gustado un final diferente.',          '2026-08-27T22:20:19.605Z');
 
 -- Tabla: favorito
-INSERT INTO favorito (usuario_id, libro_id, estado_lectura) VALUES
-  (1, 1, 'leyendo'),
-  (1, 5, 'quiero-leer'),
-  (2, 2, 'leido'),
-  (3, 3, 'general');
+-- es_favorito = corazón del alumno; estado_lectura = progreso de lectura. Son
+-- independientes: un libro puede tener estado sin ser favorito y viceversa.
+INSERT INTO favorito (usuario_id, libro_id, estado_lectura, es_favorito) VALUES
+  (1, 1, 'leyendo',     true),   -- favorito + leyendo
+  (1, 5, 'quiero-leer', false),  -- estado de lectura sin corazón (no es favorito)
+  (2, 2, 'leido',       false),  -- leído sin corazón: no cuenta como favorito ni en el ranking
+  (2, 3, 'general',     true),   -- favorito puro (solo corazón)
+  (3, 3, 'general',     true),   -- favorito puro
+  (4, 1, 'leido',       true);   -- favorito + leído
 
 -- Tabla: cafe_literario
 INSERT INTO cafe_literario (cafe_id, titulo, descripcion, libro_id, docente_id, fecha_evento, lugar, estado, fecha_creacion) VALUES
