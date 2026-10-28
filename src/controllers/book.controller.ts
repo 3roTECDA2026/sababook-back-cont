@@ -128,8 +128,16 @@ class BookController {
       const { nombreArchivo, base64, url } = req.body;
 
       if (url && typeof url === 'string' && url.trim().length > 0) {
+        const trimmedUrl = url.trim();
+        const isValidUrl =
+          trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('/uploads/pdfs/');
+        if (!isValidUrl) {
+          return res.status(400).json({
+            mensaje: 'La URL debe ser https:// o una ruta /uploads/pdfs/',
+          });
+        }
         return res.status(200).json({
-          url: url.trim(),
+          url: trimmedUrl,
           mensaje: 'URL de material PDF validada correctamente',
         });
       }
@@ -143,6 +151,13 @@ class BookController {
       const matches = base64.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
       const rawBase64 = matches ? matches[2] : base64;
       const buffer = Buffer.from(rawBase64, 'base64');
+
+      // Validar magic bytes de PDF
+      if (buffer.toString('utf8', 0, 5) !== '%PDF-') {
+        return res.status(400).json({
+          mensaje: 'El archivo no es un PDF válido',
+        });
+      }
 
       // Límite de 25MB para PDFs
       const MAX_SIZE = 25 * 1024 * 1024;
@@ -166,8 +181,10 @@ class BookController {
       fs.writeFileSync(filePath, buffer);
 
       const fileUrl = `/uploads/pdfs/${filename}`;
+      const baseUrl = (process.env.API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const absoluteUrl = `${baseUrl}${fileUrl}`;
       return res.status(201).json({
-        url: fileUrl,
+        url: absoluteUrl,
         mensaje: 'Archivo PDF cargado correctamente',
       });
     } catch (error) {
@@ -193,8 +210,17 @@ class BookController {
         return res.status(400).json({ mensaje: 'Se requiere la URL o ruta del archivo PDF' });
       }
 
+      const trimmed = finalUrl.trim();
+      const isValid =
+        trimmed.startsWith('https://') || trimmed.startsWith('/uploads/pdfs/');
+      if (!isValid) {
+        return res.status(400).json({
+          mensaje: 'La URL debe ser https:// o una ruta /uploads/pdfs/',
+        });
+      }
+
       const libroActualizado = await bookService.actualizarLibro(id, {
-        archivo_url: finalUrl.trim(),
+        archivo_url: trimmed,
       });
 
       return res.status(200).json({
