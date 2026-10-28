@@ -71,10 +71,13 @@ class TeacherPanelService {
     ]);
     const librosAsignados = new Set(asignados);
     const ahora = Date.now();
-
+    // "Elegidos" = libros marcados con el corazón (es_favorito). Marcar un libro como
+    // leído ya no cuenta como favorito ni infla el ranking (SAB-087). Los "abandonados",
+    // en cambio, se miden por estado de lectura, sin importar si es favorito.
+    const elegidos = favoritos.filter((f) => f.es_favorito);
     // Libros más elegidos: cuántos alumnos lo tienen en favoritos y en qué estado
     const porLibro = new Map<number, LibroElegido>();
-    for (const f of favoritos) {
+    for (const f of elegidos) {
       const libro = porLibro.get(f.libro_id) ?? {
         libro_id: f.libro_id,
         titulo: f.titulo,
@@ -93,7 +96,7 @@ class TeacherPanelService {
 
     // Géneros más elegidos
     const porGenero = new Map<string, number>();
-    for (const f of favoritos) {
+    for (const f of elegidos) {
       const genero = f.genero?.trim() || 'Sin género';
       porGenero.set(genero, (porGenero.get(genero) ?? 0) + 1);
     }
@@ -120,7 +123,7 @@ class TeacherPanelService {
       cursos,
       resumen: {
         cantidad_alumnos,
-        cantidad_favoritos: favoritos.length,
+        cantidad_favoritos: elegidos.length,
         cantidad_abandonados: abandonados.length,
         dias_abandono: dias,
       },

@@ -52,30 +52,50 @@ export class ReadingProgressError extends Error {
   }
 }
 
+const ESTADO_GENERAL: ReadingStatus = 'general';
+
 export const favoriteModel = {
   // ==========================================
-  // FAVORITOS
+  // SAB-87: AGREGAR FAVORITO
   // ==========================================
 
   async createFavorite({
     usuario_id,
     libro_id,
   }: Favorite): Promise<Favorite> {
-    const nuevoFavorito = await prisma.favorito.create({
-      data: {
+    const favorito = await prisma.favorito.upsert({
+      where: {
+        usuario_id_libro_id: {
+          usuario_id,
+          libro_id,
+        },
+      },
+      update: {
+        es_favorito: true,
+      },
+      create: {
         usuario_id,
         libro_id,
+        es_favorito: true,
       },
     });
 
     return {
-      usuario_id: nuevoFavorito.usuario_id,
-      libro_id: nuevoFavorito.libro_id,
+      usuario_id: favorito.usuario_id,
+      libro_id: favorito.libro_id,
     };
   },
 
+  // ==========================================
+  // SAB-87: CONSULTAR FAVORITOS
+  // ==========================================
+
   async getAllFavorites(): Promise<Favorite[]> {
-    const favoritos = await prisma.favorito.findMany();
+    const favoritos = await prisma.favorito.findMany({
+      where: {
+        es_favorito: true,
+      },
+    });
 
     return favoritos.map((f) => ({
       usuario_id: f.usuario_id,
@@ -87,7 +107,10 @@ export const favoriteModel = {
     usuario_id: number
   ): Promise<FavoriteBook[]> {
     const favoritos = await prisma.favorito.findMany({
-      where: { usuario_id },
+      where: {
+        usuario_id,
+        es_favorito: true,
+      },
       include: {
         libro: true,
       },
@@ -110,14 +133,16 @@ export const favoriteModel = {
   },
 
   // ==========================================
-  // ESTADOS DE LECTURA - SAB-059
+  // SAB-87: CONSULTAR ESTADOS DE LECTURA
   // ==========================================
 
   async getReadingStatusesByUser(
     usuario_id: number
   ): Promise<ReadingStatusRecord[]> {
-    const favoritos = await prisma.favorito.findMany({
-      where: { usuario_id },
+    const registros = await prisma.favorito.findMany({
+      where: {
+        usuario_id,
+      },
       select: {
         libro_id: true,
         estado_lectura: true,
@@ -125,37 +150,57 @@ export const favoriteModel = {
       },
     });
 
-    return favoritos.map((favorito) => ({
-      libro_id: favorito.libro_id,
-      estado_lectura: favorito.estado_lectura as ReadingStatus,
-      fecha_estado: favorito.fecha_estado,
+    return registros.map((registro) => ({
+      libro_id: registro.libro_id,
+      estado_lectura:
+        registro.estado_lectura as ReadingStatus,
+      fecha_estado: registro.fecha_estado,
     }));
   },
+
+  // ==========================================
+  // SAB-87 + SAB-91: ACTUALIZAR ESTADO
+  // ==========================================
 
   async updateReadingStatus(
     usuario_id: number,
     libro_id: number,
     estado_lectura: ReadingStatus
   ): Promise<ReadingStatusRecord> {
-    const actual = await prisma.favorito.findUnique({
-      where: {
-        usuario_id_libro_id: {
-          usuario_id,
-          libro_id,
-        },
+    const where = {
+      usuario_id_libro_id: {
+        usuario_id,
+        libro_id,
       },
+    };
+
+    const actual = await prisma.favorito.findUnique({
+      where,
       select: {
         estado_lectura: true,
         fecha_estado: true,
+        es_favorito: true,
+        current_page: true,
       },
     });
 
+    // Si no existe, general no crea un registro.
     if (!actual) {
+      if (estado_lectura === ESTADO_GENERAL) {
+        return {
+          libro_id,
+          estado_lectura: ESTADO_GENERAL,
+          fecha_estado: new Date(),
+        };
+      }
+
+      // El estado de lectura no marca favorito.
       const creado = await prisma.favorito.create({
         data: {
           usuario_id,
           libro_id,
           estado_lectura,
+          es_favorito: false,
         },
         select: {
           libro_id: true,
@@ -166,12 +211,33 @@ export const favoriteModel = {
 
       return {
         libro_id: creado.libro_id,
-        estado_lectura: creado.estado_lectura as ReadingStatus,
+        estado_lectura:
+          creado.estado_lectura as ReadingStatus,
         fecha_estado: creado.fecha_estado,
       };
     }
 
-    // Si el estado no cambia, conservar la fecha.
+    // Solo se elimina si:
+    // - vuelve a general
+    // - no es favorito
+    // - no tiene progreso guardado
+    if (
+      estado_lectura === ESTADO_GENERAL &&
+      !actual.es_favorito &&
+      actual.current_page === 0
+    ) {
+      await prisma.favorito.delete({
+        where,
+      });
+
+      return {
+        libro_id,
+        estado_lectura: ESTADO_GENERAL,
+        fecha_estado: actual.fecha_estado,
+      };
+    }
+
+    // Si el estado no cambia, conservar fecha.
     if (actual.estado_lectura === estado_lectura) {
       return {
         libro_id,
@@ -180,13 +246,9 @@ export const favoriteModel = {
       };
     }
 
+    // Cambiar estado sin tocar favorito ni progreso.
     const actualizado = await prisma.favorito.update({
-      where: {
-        usuario_id_libro_id: {
-          usuario_id,
-          libro_id,
-        },
-      },
+      where,
       data: {
         estado_lectura,
         fecha_estado: new Date(),
@@ -200,13 +262,14 @@ export const favoriteModel = {
 
     return {
       libro_id: actualizado.libro_id,
-      estado_lectura: actualizado.estado_lectura as ReadingStatus,
+      estado_lectura:
+        actualizado.estado_lectura as ReadingStatus,
       fecha_estado: actualizado.fecha_estado,
     };
   },
 
   // ==========================================
-  // CONTADOR DE LIBROS LEÍDOS
+  // SAB-91: CONTADOR DE LIBROS LEÍDOS
   // ==========================================
 
   async countReadBooks(
@@ -225,7 +288,7 @@ export const favoriteModel = {
   },
 
   // ==========================================
-  // SAB-91: CONSULTAR PROGRESO INDIVIDUAL
+  // SAB-91: CONSULTAR PROGRESO
   // ==========================================
 
   async getReadingProgress(
@@ -233,7 +296,9 @@ export const favoriteModel = {
     libro_id: number
   ): Promise<ReadingProgressRecord> {
     const libro = await prisma.libro.findUnique({
-      where: { libro_id },
+      where: {
+        libro_id,
+      },
       select: {
         libro_id: true,
         paginas_totales: true,
@@ -247,7 +312,7 @@ export const favoriteModel = {
       );
     }
 
-    const favorito = await prisma.favorito.findUnique({
+    const registro = await prisma.favorito.findUnique({
       where: {
         usuario_id_libro_id: {
           usuario_id,
@@ -259,7 +324,7 @@ export const favoriteModel = {
       },
     });
 
-    const pagina_actual = favorito?.current_page ?? 0;
+    const pagina_actual = registro?.current_page ?? 0;
     const paginas_totales = libro.paginas_totales ?? 0;
 
     const porcentaje =
@@ -278,7 +343,7 @@ export const favoriteModel = {
   },
 
   // ==========================================
-  // SAB-91: ACTUALIZAR PROGRESO INDIVIDUAL
+  // SAB-91: ACTUALIZAR PROGRESO
   // ==========================================
 
   async updateReadingProgress(
@@ -297,7 +362,9 @@ export const favoriteModel = {
     }
 
     const libro = await prisma.libro.findUnique({
-      where: { libro_id },
+      where: {
+        libro_id,
+      },
       select: {
         libro_id: true,
         paginas_totales: true,
@@ -330,9 +397,10 @@ export const favoriteModel = {
       );
     }
 
-    // Actualiza el progreso individual.
-    // No modifica el estado de lectura ni su fecha.
-    const favorito = await prisma.favorito.upsert({
+    // Upsert: permite guardar progreso aunque
+    // el libro no esté marcado como favorito.
+    // No modifica estado_lectura ni fecha_estado.
+    const registro = await prisma.favorito.upsert({
       where: {
         usuario_id_libro_id: {
           usuario_id,
@@ -345,6 +413,7 @@ export const favoriteModel = {
       create: {
         usuario_id,
         libro_id,
+        es_favorito: false,
         current_page: pagina_actual,
       },
       select: {
@@ -353,37 +422,66 @@ export const favoriteModel = {
     });
 
     const porcentaje = Math.round(
-      (favorito.current_page / paginas_totales) * 100
+      (registro.current_page / paginas_totales) * 100
     );
 
     return {
       libro_id,
-      pagina_actual: favorito.current_page,
+      pagina_actual: registro.current_page,
       paginas_totales,
       porcentaje,
     };
   },
 
   // ==========================================
-  // ELIMINAR FAVORITO
+  // SAB-87 + SAB-91: ELIMINAR FAVORITO
   // ==========================================
 
   async deleteFavorite(
     usuario_id: number,
     libro_id: number
   ): Promise<boolean> {
-    try {
-      const result = await prisma.favorito.deleteMany({
-        where: {
-          usuario_id,
-          libro_id,
-        },
-      });
+    const where = {
+      usuario_id_libro_id: {
+        usuario_id,
+        libro_id,
+      },
+    };
 
-      return result.count > 0;
-    } catch (error) {
-      console.error('Error al eliminar favorito:', error);
+    const actual = await prisma.favorito.findUnique({
+      where,
+      select: {
+        estado_lectura: true,
+        es_favorito: true,
+        current_page: true,
+      },
+    });
+
+    if (!actual || !actual.es_favorito) {
       return false;
     }
+
+    // Eliminar la fila únicamente si no
+    // tiene estado ni progreso guardado.
+    if (
+      actual.estado_lectura === ESTADO_GENERAL &&
+      actual.current_page === 0
+    ) {
+      await prisma.favorito.delete({
+        where,
+      });
+
+      return true;
+    }
+
+    // Quitar el corazón conservando estado y páginas.
+    await prisma.favorito.update({
+      where,
+      data: {
+        es_favorito: false,
+      },
+    });
+
+    return true;
   },
 };
