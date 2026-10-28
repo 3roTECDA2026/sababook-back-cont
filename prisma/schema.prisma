@@ -59,13 +59,13 @@ model usuario {
   incidencia_moderacion incidencia_moderacion[]
   curso_docente         curso_docente[]
   inscripcion           inscripcion[]
-  trivia_pregunta_docente  trivia_pregunta[]       @relation("trivia_pregunta_docente")
-  trivia_evaluacion_docente trivia_evaluacion[]   @relation("trivia_evaluacion_docente")
-  historial_asignacion historial_asignacion[]
-
-  @@index([rol])
+  trivia_pregunta_docente  trivia_pregunta[] @relation("trivia_pregunta_docente")
+  trivia_evaluacion_docente trivia_evaluacion[] @relation("trivia_evaluacion_docente")
+  historial_asignacion  historial_asignacion[]
 
   listas_creadas lista[] @relation("CreadorLista")
+
+  @@index([rol])
 }
 
 // ------------------------------------------------------
@@ -78,7 +78,7 @@ model actividad_feed {
   tipo         TipoActividad
   titulo       String        @db.VarChar(255)
   descripcion  String?       @db.Text
-  entidad_id   Int? // ID referencial opcional (libro_id, foro_id, episodio_id)
+  entidad_id   Int?
   fecha        DateTime      @default(now()) @db.Timestamptz(6)
 
   usuario usuario? @relation(fields: [usuario_id], references: [usuario_id], onDelete: SetNull)
@@ -99,33 +99,52 @@ model libro {
   portada_url           String?
   nivel_educativo       String? @db.VarChar(50)
   calificacion_promedio Float?
-activo                Boolean @default(true)
+  activo                Boolean @default(true)
+
+  // Se conserva por compatibilidad, pero no se utilizará
+  // para guardar el progreso individual de lectura.
   pagina_actual         Int?    @default(0)
+
+  // Total de páginas del libro, compartido por todos.
   paginas_totales       Int?    @default(100)
 
-  //Relaciones
-  favorito          favorito[]
-  lista_libro       lista_libro[]
-  opinion           opinion[]
-  recurso_educativo recurso_educativo[]
-  cafe_literario    cafe_literario[]
-  trivia_evaluacion trivia_evaluacion[]
-  trivia_pregunta   trivia_pregunta[]
-  curso_libro       curso_libro[]
-  historial_asignacion historial_asignacion[]
+  favorito              favorito[]
+  lista_libro           lista_libro[]
+  opinion               opinion[]
+  recurso_educativo     recurso_educativo[]
+  cafe_literario        cafe_literario[]
+  trivia_evaluacion     trivia_evaluacion[]
+  trivia_pregunta       trivia_pregunta[]
+  curso_libro           curso_libro[]
+  historial_asignacion  historial_asignacion[]
 }
+
+// ------------------------------------------------------
+// FAVORITOS Y PROGRESO INDIVIDUAL - SAB-91
+// ------------------------------------------------------
+
+
 
 model favorito {
   usuario_id Int
   libro_id   Int
-  estado_lectura String @default("general") @db.VarChar(20)  
+
+  // SAB-87: favoritos independientes del estado de lectura
+  estado_lectura String  @default("general") @db.VarChar(20)
   es_favorito    Boolean @default(false)
-  fecha_estado   DateTime @default(now()) @db.Timestamptz(6)
-  libro      libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
-  usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
+
+  // SAB-91: progreso individual de lectura
+  current_page Int @default(0)
+
+  fecha_estado DateTime @default(now()) @db.Timestamptz(6)
+
+  libro   libro   @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_libro")
+  usuario usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_usuario")
 
   @@id([usuario_id, libro_id])
 }
+
+
 
 model opinion {
   opinion_id   Int       @id @default(autoincrement())
@@ -164,8 +183,8 @@ model lista {
   fecha_creacion DateTime        @default(now()) @db.Timestamptz(6)
   lista_lectura  lista_lectura[]
   lista_libro    lista_libro[]
-  creador_id Int?
-  creador usuario? @relation("CreadorLista", fields: [creador_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
+  creador_id     Int?
+  creador        usuario?        @relation("CreadorLista", fields: [creador_id], references: [usuario_id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([creador_id])
 }
@@ -214,7 +233,7 @@ model foro {
   descripcion    String?
   creador_id     Int?
   cafe_id        Int?
-  episodio_id    Int? // Vinculación opcional con Radio Sábato
+  episodio_id    Int?
   es_apl         Boolean   @default(false)
   fecha_creacion DateTime? @default(now()) @db.Timestamptz(6)
 
@@ -278,7 +297,7 @@ model usuario_medalla {
   medalla_id     Int
   fecha_obtenida DateTime? @default(now()) @db.Timestamptz(6)
   medalla        medalla   @relation(fields: [medalla_id], references: [medalla_id], onDelete: NoAction, onUpdate: NoAction)
-  usuario        usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
+  usuario       usuario   @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([usuario_id, medalla_id])
 }
@@ -385,8 +404,8 @@ model trivia_evaluacion {
   libro          libro             @relation(fields: [libro_id], references: [libro_id], onDelete: Cascade, onUpdate: NoAction)
   curso          curso?            @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
   docente        usuario?          @relation("trivia_evaluacion_docente", fields: [docente_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
-  trivia_pregunta  trivia_pregunta[]
-  triviaAttempt    triviaAttempt[]
+  trivia_pregunta trivia_pregunta[]
+  triviaAttempt   triviaAttempt[]
 
   @@index([libro_id])
   @@index([curso_id])
@@ -441,6 +460,7 @@ model trivia_respuesta {
 
   @@index([pregunta_id])
 }
+
 // ------------------------------------------------------
 // META DE LECTURA
 // ------------------------------------------------------
@@ -448,7 +468,7 @@ model trivia_respuesta {
 model meta_lectura {
   meta_id         Int       @id @default(autoincrement())
   usuario_id      Int
-  periodo_nombre  String    @db.VarChar(100) // Ej: "1º Cuatrimestre 2026", "Meta Anual 2026"
+  periodo_nombre  String    @db.VarChar(100)
   cantidad_libros Int
   fecha_inicio    DateTime  @db.Date
   fecha_fin       DateTime  @db.Date
@@ -462,7 +482,7 @@ model meta_lectura {
 model configuracion_sistema {
   clave       String   @id @db.VarChar(100)
   valor       String   @db.Text
-  descripcion String?  @db.Text
+  descripcion String?   @db.Text
   actualizado DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 }
 
@@ -484,7 +504,7 @@ model incidencia_moderacion {
 }
 
 // ------------------------------------------------------
-// SAB 031 CURSOS, MATERIAS Y ASIGNACIONES 
+// SAB-031: CURSOS, MATERIAS Y ASIGNACIONES
 // ------------------------------------------------------
 
 model materia {
@@ -503,7 +523,7 @@ model curso {
   curso_docente curso_docente[]
   curso_libro   curso_libro[]
   inscripcion   inscripcion[]
-  trivia_pregunta   trivia_pregunta[]
+  trivia_pregunta trivia_pregunta[]
   trivia_evaluacion trivia_evaluacion[]
   historial_asignacion historial_asignacion[]
 
@@ -547,7 +567,7 @@ model inscripcion {
 }
 
 // ------------------------------------------------------
-//HISTORIAL DE ASIGNACIONES DE LIBROS
+// HISTORIAL DE ASIGNACIONES DE LIBROS
 // ------------------------------------------------------
 
 enum AccionAsignacion {
