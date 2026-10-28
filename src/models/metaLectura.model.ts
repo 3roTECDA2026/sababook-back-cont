@@ -36,11 +36,12 @@ export const obtenerMetasPorUsuario = async (usuarioId: number): Promise<MetaCon
     metas.map(async (meta) => {
       const { fechaInicio, fechaFin } = normalizarRangoFechas(meta.fecha_inicio, meta.fecha_fin);
 
-      // Contamos las opiniones dentro del rango exacto
-      const librosLeidos = await prisma.opinion.count({
+      // Contamos los libros marcados como leídos dentro del rango exacto
+      const librosLeidos = await prisma.favorito.count({
         where: {
           usuario_id: usuarioId,
-          fecha: {
+          estado_lectura: 'leido',
+          fecha_estado: {
             gte: fechaInicio,
             lte: fechaFin,
           },
@@ -83,10 +84,11 @@ export const obtenerTodasLasMetas = async (): Promise<MetaConProgreso[]> => {
     metas.map(async (meta) => {
       const { fechaInicio, fechaFin } = normalizarRangoFechas(meta.fecha_inicio, meta.fecha_fin);
 
-      const librosLeidos = await prisma.opinion.count({
+      const librosLeidos = await prisma.favorito.count({
         where: {
           usuario_id: meta.usuario_id,
-          fecha: {
+          estado_lectura: 'leido',
+          fecha_estado: {
             gte: fechaInicio,
             lte: fechaFin,
           },
