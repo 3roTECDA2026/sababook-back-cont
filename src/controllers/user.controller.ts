@@ -1,6 +1,6 @@
 // src/controllers/user.controller.ts
 import { Request, Response } from 'express';
-import { TipoRol } from '@prisma/client';
+import { Prisma, TipoRol } from '@prisma/client';
 import { userService } from '../services/user.service';
 import { parsePagination } from '../utils/pagination';
 
@@ -35,6 +35,9 @@ class UserController {
       });
       res.status(201).json(result);
     } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return res.status(409).json({ error: 'El email ya está registrado' });
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error creating user:', message);
       res.status(500).json({ error: 'Database connection not established' });
