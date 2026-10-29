@@ -185,7 +185,7 @@ export const actualizarCafeDB = async (
   if (titulo !== undefined && titulo !== null) data.titulo = titulo;
   if (descripcion !== undefined && descripcion !== null) data.descripcion = descripcion;
   if (libro_id !== undefined && libro_id !== null) data.libro_id = libro_id;
-  if (fecha_evento !== undefined && fecha_evento !== null) data.fecha_evento = fecha_evento;
+  if (fecha_evento !== undefined && fecha_evento !== null) data.fecha_evento = new Date(fecha_evento);
   if (lugar !== undefined && lugar !== null) data.lugar = lugar;
   if (estado !== undefined && estado !== null) data.estado = estado;
 
