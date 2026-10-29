@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
 
+const MAX_SEARCH_LENGTH = 100;
+
 class BookController {
   async crear(req: Request, res: Response) {
     try {
@@ -44,12 +46,20 @@ class BookController {
 
   async buscar(req: Request, res: Response) {
     try {
-      const { query, genero, nivel_educativo } = req.query as {
+      const { query, titulo, autor, genero, nivel_educativo } = req.query as {
         query?: string;
+        titulo?: string;
+        autor?: string;
         genero?: string;
         nivel_educativo?: string;
       };
-      const filtros = { query, genero, nivel_educativo };
+      const filtros = { query, titulo, autor, genero, nivel_educativo };
+
+      if ([query, titulo, autor].some((text) => text && text.length > MAX_SEARCH_LENGTH)) {
+        return res
+          .status(400)
+          .json({ mensaje: `La búsqueda no puede superar los ${MAX_SEARCH_LENGTH} caracteres.` });
+      }
 
       const pagination = parsePagination(req.query);
       if (pagination) {
