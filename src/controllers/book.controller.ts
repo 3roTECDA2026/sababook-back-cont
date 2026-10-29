@@ -14,13 +14,18 @@ const validarPaginas = (valor: unknown): boolean =>
 class BookController {
   async crear(req: Request, res: Response) {
     try {
-      if (!validarPaginas(req.body?.paginas_totales)) {
+      const paginas = req.body?.paginas_totales ?? req.body?.paginasTotales;
+
+      if (!validarPaginas(paginas)) {
         return res.status(400).json({
           mensaje: 'El número de páginas es obligatorio y debe ser un entero mayor que cero',
         });
       }
 
-      const nuevoLibro = await bookService.crearLibro(req.body);
+      const nuevoLibro = await bookService.crearLibro({
+        ...req.body,
+        paginas_totales: paginas,
+      });
 
       return res.status(201).json({
         mensaje: 'Libro creado correctamente',
@@ -102,16 +107,22 @@ class BookController {
     try {
       // Si se envía el campo, debe contener un valor válido.
       // Las actualizaciones de otros campos siguen permitidas.
-      if (
-        Object.prototype.hasOwnProperty.call(req.body ?? {}, 'paginas_totales') &&
-        !validarPaginas(req.body.paginas_totales)
-      ) {
+      const tienePaginas =
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, 'paginas_totales') ||
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, 'paginasTotales');
+
+      const paginas = req.body?.paginas_totales ?? req.body?.paginasTotales;
+
+      if (tienePaginas && !validarPaginas(paginas)) {
         return res.status(400).json({
           mensaje: 'El número de páginas debe ser un entero mayor que cero',
         });
       }
 
-      await bookService.actualizarLibro(id, req.body);
+      await bookService.actualizarLibro(id, {
+        ...req.body,
+        ...(tienePaginas ? { paginas_totales: paginas } : {}),
+      });
 
       return res.json({
         mensaje: 'Libro actualizado correctamente',
