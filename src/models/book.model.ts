@@ -27,8 +27,10 @@ export interface ActualizarLibroData {
   activo?: boolean;
 }
 
-interface BuscarLibrosFiltros {
+export interface BuscarLibrosFiltros {
   query?: string;
+  titulo?: string;
+  autor?: string;
   genero?: string;
   nivel_educativo?: string;
 }
@@ -79,7 +81,7 @@ export const obtenerPorId = async (id: number): Promise<Libro | null> => {
 // Buscar libros con filtros
 export const buscarLibros = async (filtros: BuscarLibrosFiltros): Promise<Libro[]> => {
   try {
-    return await prisma.libro.findMany({ where: construirWhere(filtros) });
+    return await prisma.libro.findMany({ where: await construirWhere(filtros) });
   } catch (error) {
     console.error('Error al buscar libros:', error);
     throw error;
@@ -144,18 +146,51 @@ export const eliminacionLogica = async (id: number): Promise<Libro> => {
   }
 };
 
-const construirWhere = ({ query, genero, nivel_educativo }: BuscarLibrosFiltros) => {
-  const where: Prisma.libroWhereInput = {};
 
-  if (query && query.trim() !== '') {
-    const cleanQuery = query.trim();
-    where.OR = [
-      { titulo: { contains: cleanQuery, mode: 'insensitive' } },
-      { autor: { contains: cleanQuery, mode: 'insensitive' } },
-    ];
+type TextSearchColumn = 'titulo' | 'autor';
+
+// Escapa los comodines de LIKE para que el texto del usuario se busque literal
+const escapeLikePattern = (text: string): string => text.replace(/[\\%_]/g, '\\$&');
+
+// Ids de los libros cuyo título/autor contiene el texto, ignorando tildes y mayúsculas
+const findBookIdsByText = async (
+  text: string,
+  columns: TextSearchColumn[]
+): Promise<number[]> => {
+  const pattern = `%${escapeLikePattern(text.trim())}%`;
+
+  const conditions = columns.map(
+    (column) =>
+      Prisma.sql`lower(public.f_unaccent(${Prisma.raw(column)})) LIKE lower(public.f_unaccent(${pattern}))`
+  );
+
+  const rows = await prisma.$queryRaw<{ libro_id: number }[]>`
+    SELECT libro_id FROM libro WHERE ${Prisma.join(conditions, ' OR ')}
+  `;
+
+  return rows.map((row) => row.libro_id);
+};
+
+
+const construirWhere = async ({
+  query,
+  titulo,
+  autor,
+  genero,
+  nivel_educativo,
+}: BuscarLibrosFiltros): Promise<Prisma.libroWhereInput> => {
+  const where: Prisma.libroWhereInput = {};
+  const idFilters: number[][] = [];
+
+  if (query?.trim()) idFilters.push(await findBookIdsByText(query, ['titulo', 'autor']));
+  if (titulo?.trim()) idFilters.push(await findBookIdsByText(titulo, ['titulo']));
+  if (autor?.trim()) idFilters.push(await findBookIdsByText(autor, ['autor']));
+
+  if (idFilters.length > 0) {
+    where.AND = idFilters.map((ids) => ({ libro_id: { in: ids } }));
   }
-  if (genero) where.genero = genero;
-  if (nivel_educativo) where.nivel_educativo = nivel_educativo;
+  if (genero) where.genero = { equals: genero, mode: 'insensitive' };
+  if (nivel_educativo) where.nivel_educativo = { equals: nivel_educativo, mode: 'insensitive' };
 
   return where;
 };
@@ -165,7 +200,7 @@ export const buscarLibrosPaginado = async (
   pagination: PaginationParams
 ): Promise<Paginated<Libro>> => {
   try {
-    const where = construirWhere(filtros);
+    const where = await construirWhere(filtros);
 
     const [data, total] = await prisma.$transaction([
       prisma.libro.findMany({
@@ -183,3 +218,4 @@ export const buscarLibrosPaginado = async (
     throw error;
   }
 };
+
