@@ -1,4 +1,5 @@
-// src/models/book.model.ts
+
+ // src/models/book.model.ts
 import { Prisma, libro as Libro } from '@prisma/client';
 import { prisma } from '../db/connect/db';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
@@ -8,10 +9,11 @@ export interface CrearLibroData {
   autor: string;
   genero?: string;
   descripcion?: string;
-  portadaUrl?: string;     // Recibe camelCase desde el controller/frontend
-  portada_url?: string;    // O recibe snake_case
+  portadaUrl?: string;
+  portada_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
+  paginas_totales: number;
   activo?: boolean;
 }
 
@@ -24,6 +26,7 @@ export interface ActualizarLibroData {
   portada_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
+  paginas_totales?: number;
   activo?: boolean;
 }
 
@@ -35,18 +38,37 @@ export interface BuscarLibrosFiltros {
   nivel_educativo?: string;
 }
 
-// Crear libro transformando camelCase a snake_case para Prisma
+// SAB-91: validar que el total de páginas sea un entero positivo.
+const validarPaginasTotales = (valor: unknown): number => {
+  if (
+    typeof valor !== 'number' ||
+    !Number.isSafeInteger(valor) ||
+    valor <= 0 ||
+    valor > 2147483647
+  ) {
+    throw new Error(
+      'El número de páginas es obligatorio y debe ser un número entero mayor que cero'
+    );
+  }
+
+  return valor;
+};
+
+// Crear libro
 export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
   try {
+    const paginasTotales = validarPaginasTotales(datos.paginas_totales);
+
     return await prisma.libro.create({
       data: {
         titulo: datos.titulo,
         autor: datos.autor,
         genero: datos.genero,
         descripcion: datos.descripcion,
-        // Asigna portadaUrl o portada_url al campo correcto en Prisma (portada_url)
         portada_url: datos.portadaUrl || datos.portada_url || null,
-        nivel_educativo: datos.nivelEducativo || datos.nivel_educativo || null,
+        nivel_educativo:
+          datos.nivelEducativo || datos.nivel_educativo || null,
+        paginas_totales: paginasTotales,
         activo: datos.activo ?? true,
       },
     });
@@ -79,9 +101,15 @@ export const obtenerPorId = async (id: number): Promise<Libro | null> => {
 };
 
 // Buscar libros con filtros
-export const buscarLibros = async (filtros: BuscarLibrosFiltros): Promise<Libro[]> => {
+export const buscarLibros = async (
+  filtros: BuscarLibrosFiltros
+): Promise<Libro[]> => {
   try {
-    return await prisma.libro.findMany({ where: await construirWhere(filtros) });
+    const where = await construirWhere(filtros);
+
+    return await prisma.libro.findMany({
+      where,
+    });
   } catch (error) {
     console.error('Error al buscar libros:', error);
     throw error;
@@ -89,10 +117,25 @@ export const buscarLibros = async (filtros: BuscarLibrosFiltros): Promise<Libro[
 };
 
 // Actualizar libro
-export const actualizarLibro = async (id: number, datos: ActualizarLibroData): Promise<Libro> => {
+export const actualizarLibro = async (
+  id: number,
+  datos: ActualizarLibroData
+): Promise<Libro> => {
   try {
-    const portada = datos.portadaUrl !== undefined ? datos.portadaUrl : datos.portada_url;
-    const nivel = datos.nivelEducativo !== undefined ? datos.nivelEducativo : datos.nivel_educativo;
+    const portada =
+      datos.portadaUrl !== undefined
+        ? datos.portadaUrl
+        : datos.portada_url;
+
+    const nivel =
+      datos.nivelEducativo !== undefined
+        ? datos.nivelEducativo
+        : datos.nivel_educativo;
+
+    const paginasTotales =
+      datos.paginas_totales !== undefined
+        ? validarPaginasTotales(datos.paginas_totales)
+        : undefined;
 
     return await prisma.libro.update({
       where: { libro_id: id },
@@ -100,9 +143,14 @@ export const actualizarLibro = async (id: number, datos: ActualizarLibroData): P
         ...(datos.titulo && { titulo: datos.titulo }),
         ...(datos.autor && { autor: datos.autor }),
         ...(datos.genero !== undefined && { genero: datos.genero }),
-        ...(datos.descripcion !== undefined && { descripcion: datos.descripcion }),
+        ...(datos.descripcion !== undefined && {
+          descripcion: datos.descripcion,
+        }),
         ...(portada !== undefined && { portada_url: portada }),
         ...(nivel !== undefined && { nivel_educativo: nivel }),
+        ...(paginasTotales !== undefined && {
+          paginas_totales: paginasTotales,
+        }),
         ...(datos.activo !== undefined && { activo: datos.activo }),
       },
     });
@@ -146,13 +194,14 @@ export const eliminacionLogica = async (id: number): Promise<Libro> => {
   }
 };
 
-
+// SAB-092: búsqueda sin distinguir tildes ni mayúsculas.
 type TextSearchColumn = 'titulo' | 'autor';
 
-// Escapa los comodines de LIKE para que el texto del usuario se busque literal
-const escapeLikePattern = (text: string): string => text.replace(/[\\%_]/g, '\\$&');
+// Escapa los comodines de LIKE para buscar el texto literalmente.
+const escapeLikePattern = (text: string): string =>
+  text.replace(/[\\%_]/g, '\\$&');
 
-// Ids de los libros cuyo título/autor contiene el texto, ignorando tildes y mayúsculas
+// Busca los IDs de libros por título o autor.
 const findBookIdsByText = async (
   text: string,
   columns: TextSearchColumn[]
@@ -161,17 +210,22 @@ const findBookIdsByText = async (
 
   const conditions = columns.map(
     (column) =>
-      Prisma.sql`lower(public.f_unaccent(${Prisma.raw(column)})) LIKE lower(public.f_unaccent(${pattern}))`
+      Prisma.sql`
+        lower(public.f_unaccent(${Prisma.raw(column)}))
+        LIKE lower(public.f_unaccent(${pattern}))
+      `
   );
 
   const rows = await prisma.$queryRaw<{ libro_id: number }[]>`
-    SELECT libro_id FROM libro WHERE ${Prisma.join(conditions, ' OR ')}
+    SELECT libro_id
+    FROM libro
+    WHERE ${Prisma.join(conditions, ' OR ')}
   `;
 
   return rows.map((row) => row.libro_id);
 };
 
-
+// Construir filtros combinados.
 const construirWhere = async ({
   query,
   titulo,
@@ -182,19 +236,53 @@ const construirWhere = async ({
   const where: Prisma.libroWhereInput = {};
   const idFilters: number[][] = [];
 
-  if (query?.trim()) idFilters.push(await findBookIdsByText(query, ['titulo', 'autor']));
-  if (titulo?.trim()) idFilters.push(await findBookIdsByText(titulo, ['titulo']));
-  if (autor?.trim()) idFilters.push(await findBookIdsByText(autor, ['autor']));
-
-  if (idFilters.length > 0) {
-    where.AND = idFilters.map((ids) => ({ libro_id: { in: ids } }));
+  // Búsqueda general por título o autor.
+  if (query?.trim()) {
+    idFilters.push(
+      await findBookIdsByText(query, ['titulo', 'autor'])
+    );
   }
-  if (genero) where.genero = { equals: genero, mode: 'insensitive' };
-  if (nivel_educativo) where.nivel_educativo = { equals: nivel_educativo, mode: 'insensitive' };
+
+  // Búsqueda específica por título.
+  if (titulo?.trim()) {
+    idFilters.push(
+      await findBookIdsByText(titulo, ['titulo'])
+    );
+  }
+
+  // Búsqueda específica por autor.
+  if (autor?.trim()) {
+    idFilters.push(
+      await findBookIdsByText(autor, ['autor'])
+    );
+  }
+
+  // Combinar los filtros de búsqueda.
+  if (idFilters.length > 0) {
+    where.AND = idFilters.map((ids) => ({
+      libro_id: { in: ids },
+    }));
+  }
+
+  // Filtros adicionales sin distinguir mayúsculas.
+  if (genero) {
+    where.genero = {
+      equals: genero,
+      mode: 'insensitive',
+    };
+  }
+
+  if (nivel_educativo) {
+    where.nivel_educativo = {
+      equals: nivel_educativo,
+      mode: 'insensitive',
+    };
+  }
 
   return where;
 };
 
+// Búsqueda paginada.
 export const buscarLibrosPaginado = async (
   filtros: BuscarLibrosFiltros,
   pagination: PaginationParams
@@ -205,7 +293,7 @@ export const buscarLibrosPaginado = async (
     const [data, total] = await prisma.$transaction([
       prisma.libro.findMany({
         where,
-        orderBy: { libro_id: 'asc' }, // orden estable: evita repetidos/saltos
+        orderBy: { libro_id: 'asc' },
         skip: pagination.skip,
         take: pagination.limit,
       }),
@@ -218,4 +306,3 @@ export const buscarLibrosPaginado = async (
     throw error;
   }
 };
-

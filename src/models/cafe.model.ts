@@ -49,7 +49,7 @@ export const crearCafeDB = async (
         descripcion,
         libro_id,
         docente_id,
-        fecha_evento,
+        fecha_evento: new Date(fecha_evento),
         lugar: lugar ?? null,
       },
       select: {
