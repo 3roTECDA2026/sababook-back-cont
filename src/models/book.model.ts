@@ -1,3 +1,4 @@
+
 // src/models/book.model.ts
 import { Prisma, libro as Libro } from '@prisma/client';
 import { prisma } from '../db/connect/db';
@@ -8,10 +9,11 @@ export interface CrearLibroData {
   autor: string;
   genero?: string;
   descripcion?: string;
-  portadaUrl?: string;     // Recibe camelCase desde el controller/frontend
-  portada_url?: string;    // O recibe snake_case
+  portadaUrl?: string;
+  portada_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
+  paginas_totales: number;
   activo?: boolean;
 }
 
@@ -24,6 +26,7 @@ export interface ActualizarLibroData {
   portada_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
+  paginas_totales?: number;
   activo?: boolean;
 }
 
@@ -33,18 +36,31 @@ interface BuscarLibrosFiltros {
   nivel_educativo?: string;
 }
 
-// Crear libro transformando camelCase a snake_case para Prisma
+// SAB-91: validar que el total de páginas sea un entero positivo.
+const validarPaginasTotales = (valor: unknown): number => {
+  if (typeof valor !== 'number' || !Number.isSafeInteger(valor) || valor <= 0 || valor > 2147483647) {
+    throw new Error(
+      'El número de páginas es obligatorio y debe ser un número entero mayor que cero'
+    );
+  }
+
+  return valor;
+};
+
+// Crear libro
 export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
   try {
+    const paginasTotales = validarPaginasTotales(datos.paginas_totales);
+
     return await prisma.libro.create({
       data: {
         titulo: datos.titulo,
         autor: datos.autor,
         genero: datos.genero,
         descripcion: datos.descripcion,
-        // Asigna portadaUrl o portada_url al campo correcto en Prisma (portada_url)
         portada_url: datos.portadaUrl || datos.portada_url || null,
         nivel_educativo: datos.nivelEducativo || datos.nivel_educativo || null,
+        paginas_totales: paginasTotales,
         activo: datos.activo ?? true,
       },
     });
@@ -77,9 +93,13 @@ export const obtenerPorId = async (id: number): Promise<Libro | null> => {
 };
 
 // Buscar libros con filtros
-export const buscarLibros = async (filtros: BuscarLibrosFiltros): Promise<Libro[]> => {
+export const buscarLibros = async (
+  filtros: BuscarLibrosFiltros
+): Promise<Libro[]> => {
   try {
-    return await prisma.libro.findMany({ where: construirWhere(filtros) });
+    return await prisma.libro.findMany({
+      where: construirWhere(filtros),
+    });
   } catch (error) {
     console.error('Error al buscar libros:', error);
     throw error;
@@ -87,10 +107,25 @@ export const buscarLibros = async (filtros: BuscarLibrosFiltros): Promise<Libro[
 };
 
 // Actualizar libro
-export const actualizarLibro = async (id: number, datos: ActualizarLibroData): Promise<Libro> => {
+export const actualizarLibro = async (
+  id: number,
+  datos: ActualizarLibroData
+): Promise<Libro> => {
   try {
-    const portada = datos.portadaUrl !== undefined ? datos.portadaUrl : datos.portada_url;
-    const nivel = datos.nivelEducativo !== undefined ? datos.nivelEducativo : datos.nivel_educativo;
+    const portada =
+      datos.portadaUrl !== undefined
+        ? datos.portadaUrl
+        : datos.portada_url;
+
+    const nivel =
+      datos.nivelEducativo !== undefined
+        ? datos.nivelEducativo
+        : datos.nivel_educativo;
+
+    const paginasTotales =
+      datos.paginas_totales !== undefined
+        ? validarPaginasTotales(datos.paginas_totales)
+        : undefined;
 
     return await prisma.libro.update({
       where: { libro_id: id },
@@ -98,9 +133,14 @@ export const actualizarLibro = async (id: number, datos: ActualizarLibroData): P
         ...(datos.titulo && { titulo: datos.titulo }),
         ...(datos.autor && { autor: datos.autor }),
         ...(datos.genero !== undefined && { genero: datos.genero }),
-        ...(datos.descripcion !== undefined && { descripcion: datos.descripcion }),
+        ...(datos.descripcion !== undefined && {
+          descripcion: datos.descripcion,
+        }),
         ...(portada !== undefined && { portada_url: portada }),
         ...(nivel !== undefined && { nivel_educativo: nivel }),
+        ...(paginasTotales !== undefined && {
+          paginas_totales: paginasTotales,
+        }),
         ...(datos.activo !== undefined && { activo: datos.activo }),
       },
     });
@@ -144,16 +184,22 @@ export const eliminacionLogica = async (id: number): Promise<Libro> => {
   }
 };
 
-const construirWhere = ({ query, genero, nivel_educativo }: BuscarLibrosFiltros) => {
+const construirWhere = ({
+  query,
+  genero,
+  nivel_educativo,
+}: BuscarLibrosFiltros) => {
   const where: Prisma.libroWhereInput = {};
 
   if (query && query.trim() !== '') {
     const cleanQuery = query.trim();
+
     where.OR = [
       { titulo: { contains: cleanQuery, mode: 'insensitive' } },
       { autor: { contains: cleanQuery, mode: 'insensitive' } },
     ];
   }
+
   if (genero) where.genero = genero;
   if (nivel_educativo) where.nivel_educativo = nivel_educativo;
 
@@ -170,7 +216,7 @@ export const buscarLibrosPaginado = async (
     const [data, total] = await prisma.$transaction([
       prisma.libro.findMany({
         where,
-        orderBy: { libro_id: 'asc' }, // orden estable: evita repetidos/saltos
+        orderBy: { libro_id: 'asc' },
         skip: pagination.skip,
         take: pagination.limit,
       }),

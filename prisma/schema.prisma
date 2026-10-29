@@ -105,8 +105,8 @@ model libro {
   // para guardar el progreso individual de lectura.
   pagina_actual         Int?    @default(0)
 
-  // Total de páginas del libro, compartido por todos.
-  paginas_totales       Int?    @default(100)
+ //  número de páginas obligatorio, sin valor predeterminado.
+paginas_totales Int
 
   favorito              favorito[]
   lista_libro           lista_libro[]
