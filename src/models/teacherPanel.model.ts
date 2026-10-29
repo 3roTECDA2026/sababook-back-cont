@@ -19,6 +19,7 @@ export interface FavoritoAlumno {
   genero: string | null;
   portada_url: string | null;
   estado_lectura: string;
+  es_favorito: boolean;
   fecha_estado: Date;
 }
 
@@ -59,6 +60,7 @@ export const obtenerFavoritosDeAlumnosDB = async (
           favorito: {
             select: {
               estado_lectura: true,
+              es_favorito: true,
               fecha_estado: true,
               libro: {
                 select: { libro_id: true, titulo: true, autor: true, genero: true, portada_url: true },
@@ -86,6 +88,7 @@ export const obtenerFavoritosDeAlumnosDB = async (
         curso_id,
         ...f.libro,
         estado_lectura: f.estado_lectura,
+        es_favorito: f.es_favorito,
         fecha_estado: f.fecha_estado,
       });
     }

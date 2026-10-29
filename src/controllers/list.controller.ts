@@ -72,7 +72,7 @@ class ListaController {
       const {
         nombre,
         descripcion,
-        tipo,
+        tipo: tipoRaw,
         libroId,
         bookId,
         books,
@@ -92,13 +92,16 @@ class ListaController {
       if (
         typeof nombre !== 'string' ||
         !nombre.trim() ||
-        typeof tipo !== 'string' ||
-        !tipo.trim()
+        typeof tipoRaw !== 'string' ||
+        !tipoRaw.trim()
       ) {
         return res.status(400).json({
           error: 'Faltan campos obligatorios (nombre, tipo).',
         });
       }
+
+      // Normalizamos el tipo a mayúsculas para que no dependa de cómo se escriba
+      const tipo = tipoRaw.trim().toUpperCase();
 
       if (
         descripcion !== undefined &&
