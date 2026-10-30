@@ -243,10 +243,12 @@ class BookController {
       if (url && typeof url === 'string' && url.trim().length > 0) {
         const trimmedUrl = url.trim();
         const isValidUrl =
-          trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('/uploads/pdfs/');
+          trimmedUrl.startsWith('http://') ||
+          trimmedUrl.startsWith('https://') ||
+          trimmedUrl.startsWith('/uploads/pdfs/');
         if (!isValidUrl) {
           return res.status(400).json({
-            mensaje: 'La URL debe ser https:// o una ruta /uploads/pdfs/',
+            mensaje: 'La URL debe ser http(s):// o una ruta /uploads/pdfs/',
           });
         }
         return res.status(200).json({
@@ -325,10 +327,12 @@ class BookController {
 
       const trimmed = finalUrl.trim();
       const isValid =
-        trimmed.startsWith('https://') || trimmed.startsWith('/uploads/pdfs/');
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('/uploads/pdfs/');
       if (!isValid) {
         return res.status(400).json({
-          mensaje: 'La URL debe ser https:// o una ruta /uploads/pdfs/',
+          mensaje: 'La URL debe ser http(s):// o una ruta /uploads/pdfs/',
         });
       }
 
