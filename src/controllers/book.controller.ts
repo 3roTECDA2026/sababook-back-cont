@@ -7,6 +7,8 @@ import { parsePagination } from '../utils/pagination';
 
 const MAX_SEARCH_LENGTH = 100;
 
+const SEARCH_PARAMS = ['query', 'titulo', 'autor', 'genero', 'nivel_educativo'] as const;
+
 const validarPaginas = (valor: unknown): boolean =>
   typeof valor === 'number' &&
   Number.isSafeInteger(valor) &&
@@ -76,6 +78,16 @@ class BookController {
 
   async buscar(req: Request, res: Response) {
     try {
+      // Express entrega un array si el parámetro se repite (?query=a&query=b)
+      const hasInvalidParam = SEARCH_PARAMS.some(
+        (key) => req.query[key] !== undefined && typeof req.query[key] !== 'string'
+      );
+      if (hasInvalidParam) {
+        return res
+          .status(400)
+          .json({ mensaje: 'Cada parámetro de búsqueda debe enviarse una sola vez.' });
+      }
+
       const { query, titulo, autor, genero, nivel_educativo } = req.query as {
         query?: string;
         titulo?: string;
