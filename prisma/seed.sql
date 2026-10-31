@@ -26,12 +26,13 @@ INSERT INTO usuario (usuario_id, nombre, email, contrasena, rol, fecha_registro,
   (5, 'Sofía Torres',    'sofia.torres@email.com',    '$2b$10$BXEjZBmCxfNN4lCaY.A/eOfhagqFtZjbSCpE2vkn3GeOVzcOENrmS', 'DOCENTE',       '2026-08-27T22:20:19.605Z', true,  'https://ejemplo.com/avatars/sofia.jpg', 'Secundario');
 
 -- Tabla: libro
-INSERT INTO libro (libro_id, titulo, autor, genero, descripcion, portada_url, nivel_educativo, calificacion_promedio, activo) VALUES
-  (1, 'Cien años de soledad',  'Gabriel García Márquez',  'Realismo mágico',  'La saga de los Buendía a lo largo de siete generaciones.',                       NULL,                                            'Secundario',  4.8, true),
-  (2, 'El principito',        'Antoine de Saint-Exupéry', 'Fábula',           'Un aviador stranded en el desierto conoce a un niño de otro planeta.',                 NULL,                                            'Primario',    4.9, true),
-  (3, '1984',                 'George Orwell',            'Distopía',        'Una sociedad donde todo es vigilado y la verdad está prohibida.',                     NULL,                                            'Secundario',  4.7, true),
-  (4, 'Don Quijote de la Mancha', 'Miguel de Cervantes',   'Novela',          'Una de las obras más destacadas de la literatura española.',                        'https://ejemplo.com/portadas/quijote.jpg',    'Universitario', 4.6, true),
-  (5, 'Fahrenheit 451',        'Ray Bradbury',             'Ciencia ficción', 'Una sociedad donde los libros están prohibidos.',                                    'https://ejemplo.com/portadas/fahrenheit.jpg', 'Secundario',  4.5, true);
+-- Páginas de ejemplo para desarrollo; verificar según edición real.
+INSERT INTO libro (libro_id, titulo, autor, genero, descripcion, portada_url, nivel_educativo, calificacion_promedio, activo, paginas_totales) VALUES
+  (1, 'Cien años de soledad', 'Gabriel García Márquez', 'Realismo mágico', 'La saga de los Buendía a lo largo de siete generaciones.', NULL, 'Secundario', 4.8, true, 400),
+  (2, 'El principito', 'Antoine de Saint-Exupéry', 'Fábula', 'Un aviador stranded en el desierto conoce a un niño de otro planeta.', NULL, 'Primario', 4.9, true, 96),
+  (3, '1984', 'George Orwell', 'Distopía', 'Una sociedad donde todo es vigilado y la verdad está prohibida.', NULL, 'Secundario', 4.7, true, 328),
+  (4, 'Don Quijote de la Mancha', 'Miguel de Cervantes', 'Novela', 'Una de las obras más destacadas de la literatura española.', 'https://ejemplo.com/portadas/quijote.jpg', 'Universitario', 4.6, true, 900),
+  (5, 'Fahrenheit 451', 'Ray Bradbury', 'Ciencia ficción', 'Una sociedad donde los libros están prohibidos.', 'https://ejemplo.com/portadas/fahrenheit.jpg', 'Secundario', 4.5, true, 256);
 
 -- Tabla: recurso_educativo
 INSERT INTO recurso_educativo (recurso_id, libro_id, tipo, url, descripcion) VALUES
