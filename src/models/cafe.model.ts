@@ -301,6 +301,15 @@ export const obtenerVotoUsuarioDB = async (cafe_id: number, usuario_id: number) 
   });
 };
 
+// Obtener solo la fecha del evento (para validar asistencia y voto)
+export const obtenerFechaEventoDB = async (cafe_id: number): Promise<Date | null> => {
+  const cafe = await prisma.cafe_literario.findUnique({
+    where: { cafe_id },
+    select: { fecha_evento: true },
+  });
+  return cafe?.fecha_evento ?? null;
+};
+
 // ----------------- FORMATO COMÚN -----------------
 
 interface CafeRow {
