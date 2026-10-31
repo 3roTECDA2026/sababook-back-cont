@@ -1,6 +1,7 @@
 // src/models/foro.model.ts
 import { prisma } from '../db/connect/db';
 import { TipoActividad } from '@prisma/client';
+import { unaccentContains } from '../utils/search';
 
 interface Foro {
   foro_id: number;
@@ -79,8 +80,17 @@ export const crearForoDB = async (
 };
 
 // Obtener todos los foros
-export const obtenerTodosForosDB = async (): Promise<ForoConCreador[]> => {
+// IDs de foros cuyo título o descripción contiene el texto, sin distinguir tildes ni mayúsculas (SAB-122)
+const findForumIdsByText = async (text: string): Promise<number[]> => {
+  const rows = await prisma.$queryRaw<{ foro_id: number }[]>`
+    SELECT foro_id FROM foro WHERE ${unaccentContains(['titulo', 'descripcion'], text)}
+  `;
+  return rows.map((row) => row.foro_id);
+};
+
+export const obtenerTodosForosDB = async (q?: string): Promise<ForoConCreador[]> => {
   const foros = await prisma.foro.findMany({
+    where: q ? { foro_id: { in: await findForumIdsByText(q) } } : undefined,
     include: {
       usuario: {
         select: {
