@@ -16,7 +16,14 @@ class UserController {
         .status(400)
         .json({ error: `La búsqueda no puede superar los ${MAX_SEARCH_LENGTH} caracteres.` });
     }
-    const filters = { q };
+
+    // SAB-119: filtro por rol (en el servidor, para que la paginación cuente bien)
+    const rol = getStringParam(req.query, 'rol')?.toUpperCase();
+    if (rol && !Object.values(TipoRol).includes(rol as TipoRol)) {
+      return res.status(400).json({ error: 'El rol no es válido.' });
+    }
+
+    const filters = { q, rol: rol as TipoRol | undefined };
 
     const pagination = parsePagination(req.query, 5);
     if (pagination) {

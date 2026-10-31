@@ -7,6 +7,7 @@ import { Prisma, TipoRol } from '@prisma/client';
 // SAB-122: filtros del listado de usuarios
 export interface UserFilters {
   q?: string;
+  rol?: TipoRol; // SAB-119
 }
 
 // IDs de usuarios cuyo nombre o email contiene el texto, sin distinguir tildes ni mayúsculas
@@ -17,10 +18,11 @@ const findUserIdsByText = async (text: string): Promise<number[]> => {
   return rows.map((row) => row.usuario_id);
 };
 
-const buildUserWhere = async (filters: UserFilters): Promise<Prisma.usuarioWhereInput> => {
-  if (!filters.q) return {};
-  return { usuario_id: { in: await findUserIdsByText(filters.q) } };
-};
+// Los filtros se combinan entre sí (AND)
+const buildUserWhere = async (filters: UserFilters): Promise<Prisma.usuarioWhereInput> => ({
+  ...(filters.q ? { usuario_id: { in: await findUserIdsByText(filters.q) } } : {}),
+  ...(filters.rol ? { rol: filters.rol } : {}),
+});
 
 export interface User {
   usuario_id: number;
