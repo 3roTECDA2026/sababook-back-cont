@@ -5,8 +5,8 @@ class ListService {
     return await listaModel.crearLista(nombre, descripcion, tipo);
   }
 
-  async obtenerTodas() {
-    return await listaModel.obtenerTodas();
+  async obtenerTodas(tipo?: string) {
+    return await listaModel.obtenerTodas(tipo);
   }
 
   async obtenerPorId(id: number) {

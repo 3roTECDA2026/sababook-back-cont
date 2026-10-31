@@ -101,12 +101,14 @@ class ListaModel {
   // OBTENER TODAS LAS LISTAS
   // ====================================================
 
-  async obtenerTodas(): Promise<Lista[]> {
+  async obtenerTodas(tipo?: string): Promise<Lista[]> {
     try {
+      const whereClause = tipo ? { tipo: { equals: tipo, mode: 'insensitive' as const } } : {};
 
       // Obtener listas ordenadas de la más reciente
       // a la más antigua
       const listas = await prisma.lista.findMany({
+        where: whereClause,
         orderBy: {
           lista_id: "desc",
         },
