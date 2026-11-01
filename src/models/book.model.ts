@@ -11,6 +11,10 @@ export interface CrearLibroData {
   descripcion?: string;
   portadaUrl?: string;
   portada_url?: string;
+  archivoUrl?: string;
+  archivo_url?: string;
+  pdfUrl?: string;
+  pdf_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
   paginas_totales: number;
@@ -24,6 +28,10 @@ export interface ActualizarLibroData {
   descripcion?: string;
   portadaUrl?: string;
   portada_url?: string;
+  archivoUrl?: string;
+  archivo_url?: string;
+  pdfUrl?: string;
+  pdf_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
   paginas_totales?: number;
@@ -57,6 +65,8 @@ const validarPaginasTotales = (valor: unknown): number => {
 // Crear libro
 export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
   try {
+    const archivo =
+      datos.archivoUrl || datos.archivo_url || datos.pdfUrl || datos.pdf_url || null;
     const paginasTotales = validarPaginasTotales(datos.paginas_totales);
 
     return await prisma.libro.create({
@@ -66,8 +76,8 @@ export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
         genero: datos.genero,
         descripcion: datos.descripcion,
         portada_url: datos.portadaUrl || datos.portada_url || null,
-        nivel_educativo:
-          datos.nivelEducativo || datos.nivel_educativo || null,
+        archivo_url: archivo,
+        nivel_educativo: datos.nivelEducativo || datos.nivel_educativo || null,
         paginas_totales: paginasTotales,
         activo: datos.activo ?? true,
       },
@@ -122,15 +132,16 @@ export const actualizarLibro = async (
   datos: ActualizarLibroData
 ): Promise<Libro> => {
   try {
-    const portada =
-      datos.portadaUrl !== undefined
-        ? datos.portadaUrl
-        : datos.portada_url;
-
-    const nivel =
-      datos.nivelEducativo !== undefined
-        ? datos.nivelEducativo
-        : datos.nivel_educativo;
+    const portada = datos.portadaUrl !== undefined ? datos.portadaUrl : datos.portada_url;
+    const archivo =
+      datos.archivoUrl !== undefined
+        ? datos.archivoUrl
+        : datos.archivo_url !== undefined
+        ? datos.archivo_url
+        : datos.pdfUrl !== undefined
+        ? datos.pdfUrl
+        : datos.pdf_url;
+    const nivel = datos.nivelEducativo !== undefined ? datos.nivelEducativo : datos.nivel_educativo;
 
     const paginasTotales =
       datos.paginas_totales !== undefined
@@ -147,6 +158,7 @@ export const actualizarLibro = async (
           descripcion: datos.descripcion,
         }),
         ...(portada !== undefined && { portada_url: portada }),
+        ...(archivo !== undefined && { archivo_url: archivo }),
         ...(nivel !== undefined && { nivel_educativo: nivel }),
         ...(paginasTotales !== undefined && {
           paginas_totales: paginasTotales,
