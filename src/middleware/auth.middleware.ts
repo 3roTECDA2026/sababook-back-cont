@@ -1,4 +1,4 @@
-
+// src/middleware/auth.middleware.ts
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db/connect/db';
@@ -52,6 +52,8 @@ export const verifyToken = (
     if (error instanceof jwt.TokenExpiredError) {
       return res.status(401).json({
         error: 'La sesión expiró. Volvé a iniciar sesión.',
+        message: 'La sesión expiró. Volvé a iniciar sesión.',
+        code: 'TOKEN_EXPIRED',
       });
     }
 

@@ -1,9 +1,19 @@
-
 // src/services/auth.service.ts
 import authModel from '../models/auth.model';
 import { userModel } from '../models/user.model';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+
+// SAB-121: validar la duración del JWT al cargar el servicio.
+const rawJwtExpiresIn = process.env.JWT_EXPIRES_IN ?? '1d';
+
+if (!/^[1-9]\d*(s|m|h|d|w)$/.test(rawJwtExpiresIn)) {
+  throw new Error(
+    'JWT_EXPIRES_IN inválido. Usá valores como 30s, 15m, 1h, 1d o 1w.'
+  );
+}
+
+const JWT_EXPIRES_IN = rawJwtExpiresIn as jwt.SignOptions['expiresIn'];
 
 class AuthService {
   async login(email: string, contrasena: string) {
@@ -33,7 +43,7 @@ class AuthService {
 
     // SAB-121: duración configurable mediante JWT_EXPIRES_IN.
     // Si no está configurada, el token dura 1 día.
-    const expiresIn = (process.env.JWT_EXPIRES_IN || '1d') as jwt.SignOptions['expiresIn'];
+    const expiresIn = JWT_EXPIRES_IN;
 
     const token = jwt.sign(payload, secret, {
       expiresIn,
