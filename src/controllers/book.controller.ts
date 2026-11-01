@@ -5,6 +5,10 @@ import { Prisma } from '@prisma/client';
 import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
 
+const MAX_SEARCH_LENGTH = 100;
+
+const SEARCH_PARAMS = ['query', 'titulo', 'autor', 'genero', 'nivel_educativo'] as const;
+
 const validarPaginas = (valor: unknown): boolean =>
   typeof valor === 'number' &&
   Number.isSafeInteger(valor) &&
@@ -74,13 +78,42 @@ class BookController {
 
   async buscar(req: Request, res: Response) {
     try {
-      const { query, genero, nivel_educativo } = req.query as {
+      // Express entrega un array si el parámetro se repite (?query=a&query=b)
+      const hasInvalidParam = SEARCH_PARAMS.some(
+        (key) => req.query[key] !== undefined && typeof req.query[key] !== 'string'
+      );
+      if (hasInvalidParam) {
+        return res
+          .status(400)
+          .json({ mensaje: 'Cada parámetro de búsqueda debe enviarse una sola vez.' });
+      }
+
+      const { query, titulo, autor, genero, nivel_educativo } = req.query as {
         query?: string;
+        titulo?: string;
+        autor?: string;
         genero?: string;
         nivel_educativo?: string;
       };
 
-      const filtros = { query, genero, nivel_educativo };
+      const filtros = {
+        query,
+        titulo,
+        autor,
+        genero,
+        nivel_educativo,
+      };
+
+      if (
+        [query, titulo, autor].some(
+          (text) => text && text.length > MAX_SEARCH_LENGTH
+        )
+      ) {
+        return res.status(400).json({
+          mensaje: `La búsqueda no puede superar los ${MAX_SEARCH_LENGTH} caracteres.`,
+        });
+      }
+
       const pagination = parsePagination(req.query);
 
       if (pagination) {
@@ -88,10 +121,12 @@ class BookController {
           filtros,
           pagination
         );
+
         return res.json(resultado);
       }
 
       const libros = await bookService.buscarLibros(filtros);
+
       return res.json(libros);
     } catch (error) {
       console.error('Error al buscar libros:', error);
@@ -108,10 +143,17 @@ class BookController {
       // Si se envía el campo, debe contener un valor válido.
       // Las actualizaciones de otros campos siguen permitidas.
       const tienePaginas =
-        Object.prototype.hasOwnProperty.call(req.body ?? {}, 'paginas_totales') ||
-        Object.prototype.hasOwnProperty.call(req.body ?? {}, 'paginasTotales');
+        Object.prototype.hasOwnProperty.call(
+          req.body ?? {},
+          'paginas_totales'
+        ) ||
+        Object.prototype.hasOwnProperty.call(
+          req.body ?? {},
+          'paginasTotales'
+        );
 
-      const paginas = req.body?.paginas_totales ?? req.body?.paginasTotales;
+      const paginas =
+        req.body?.paginas_totales ?? req.body?.paginasTotales;
 
       if (tienePaginas && !validarPaginas(paginas)) {
         return res.status(400).json({
@@ -138,6 +180,7 @@ class BookController {
       }
 
       console.error('Error al actualizar:', error);
+
       return res.status(500).json({
         mensaje: 'Error al actualizar libro',
       });
@@ -174,6 +217,7 @@ class BookController {
       }
 
       console.error('Error al eliminar:', error);
+
       return res.status(500).json({
         mensaje: 'Error al eliminar libro y sus dependencias',
       });
@@ -191,6 +235,7 @@ class BookController {
       });
     } catch (error) {
       console.error('Error al marcar como inactivo:', error);
+
       return res.status(500).json({
         mensaje: 'Error al marcar libro como inactivo',
       });

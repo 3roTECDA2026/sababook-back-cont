@@ -185,7 +185,7 @@ export const actualizarCafeDB = async (
   if (titulo !== undefined && titulo !== null) data.titulo = titulo;
   if (descripcion !== undefined && descripcion !== null) data.descripcion = descripcion;
   if (libro_id !== undefined && libro_id !== null) data.libro_id = libro_id;
-  if (fecha_evento !== undefined && fecha_evento !== null) data.fecha_evento = fecha_evento;
+  if (fecha_evento !== undefined && fecha_evento !== null) data.fecha_evento = new Date(fecha_evento);
   if (lugar !== undefined && lugar !== null) data.lugar = lugar;
   if (estado !== undefined && estado !== null) data.estado = estado;
 
@@ -299,6 +299,15 @@ export const obtenerVotoUsuarioDB = async (cafe_id: number, usuario_id: number) 
   return await prisma.voto_cafe.findFirst({
     where: { cafe_id, usuario_id },
   });
+};
+
+// Obtener solo la fecha del evento (para validar asistencia y voto)
+export const obtenerFechaEventoDB = async (cafe_id: number): Promise<Date | null> => {
+  const cafe = await prisma.cafe_literario.findUnique({
+    where: { cafe_id },
+    select: { fecha_evento: true },
+  });
+  return cafe?.fecha_evento ?? null;
 };
 
 // ----------------- FORMATO COMÚN -----------------
