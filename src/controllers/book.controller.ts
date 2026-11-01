@@ -20,20 +20,34 @@ const validarPaginas = (valor: unknown): boolean =>
   valor > 0 &&
   valor <= 2147483647;
 
+// SAB-123: páginas opcionales; si se informan deben ser enteras positivas.
+const validarPaginasOpcionales = (valor: unknown): boolean =>
+  valor === null || validarPaginas(valor);
+
+const tienePropiedad = (
+  objeto: Record<string, unknown>,
+  propiedad: string
+): boolean => Object.prototype.hasOwnProperty.call(objeto, propiedad);
+
 class BookController {
   async crear(req: Request, res: Response) {
     try {
-      const paginas = req.body?.paginas_totales ?? req.body?.paginasTotales;
+      const body = req.body ?? {};
+      const paginas = tienePropiedad(body, 'paginas_totales')
+        ? body.paginas_totales
+        : body.paginasTotales;
 
-      if (!validarPaginas(paginas)) {
+      const paginasNormalizadas = paginas === undefined ? null : paginas;
+
+      if (!validarPaginasOpcionales(paginasNormalizadas)) {
         return res.status(400).json({
-          mensaje: 'El número de páginas es obligatorio y debe ser un entero mayor que cero',
+          mensaje: 'El número de páginas debe ser un entero mayor que cero, o dejarse vacío.',
         });
       }
 
       const nuevoLibro = await bookService.crearLibro({
-        ...req.body,
-        paginas_totales: paginas,
+        ...body,
+        paginas_totales: paginasNormalizadas,
       });
 
       return res.status(201).json({
@@ -150,27 +164,25 @@ class BookController {
     try {
       // Si se envía el campo, debe contener un valor válido.
       // Las actualizaciones de otros campos siguen permitidas.
+      const body = req.body ?? {};
+
+      // SAB-123: campo ausente = conservar; null = quitar; número = actualizar.
       const tienePaginas =
-        Object.prototype.hasOwnProperty.call(
-          req.body ?? {},
-          'paginas_totales'
-        ) ||
-        Object.prototype.hasOwnProperty.call(
-          req.body ?? {},
-          'paginasTotales'
-        );
+        tienePropiedad(body, 'paginas_totales') ||
+        tienePropiedad(body, 'paginasTotales');
 
-      const paginas =
-        req.body?.paginas_totales ?? req.body?.paginasTotales;
+      const paginas = tienePropiedad(body, 'paginas_totales')
+        ? body.paginas_totales
+        : body.paginasTotales;
 
-      if (tienePaginas && !validarPaginas(paginas)) {
+      if (tienePaginas && !validarPaginasOpcionales(paginas)) {
         return res.status(400).json({
-          mensaje: 'El número de páginas debe ser un entero mayor que cero',
+          mensaje: 'El número de páginas debe ser un entero mayor que cero, o dejarse vacío.',
         });
       }
 
       await bookService.actualizarLibro(id, {
-        ...req.body,
+        ...body,
         ...(tienePaginas ? { paginas_totales: paginas } : {}),
       });
 

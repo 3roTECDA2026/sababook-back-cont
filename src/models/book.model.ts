@@ -1,11 +1,11 @@
-
- // src/models/book.model.ts
+// src/models/book.model.ts
 import { Prisma, libro as Libro } from '@prisma/client';
 import { prisma } from '../db/connect/db';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
 import { escapeLikePattern } from '../utils/search';
 import type { ReadingStatus } from './favorite.model';
 
+// SAB-123: la cantidad de páginas es opcional.
 export interface CrearLibroData {
   titulo: string;
   autor: string;
@@ -15,7 +15,7 @@ export interface CrearLibroData {
   portada_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
-  paginas_totales: number;
+  paginas_totales?: number | null;
   activo?: boolean;
 }
 
@@ -28,7 +28,7 @@ export interface ActualizarLibroData {
   portada_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
-  paginas_totales?: number;
+  paginas_totales?: number | null;
   activo?: boolean;
 }
 
@@ -46,7 +46,11 @@ export interface BuscarLibrosFiltros {
 }
 
 // SAB-91: validar que el total de páginas sea un entero positivo.
-const validarPaginasTotales = (valor: unknown): number => {
+const validarPaginasTotales = (valor: unknown): number | null => {
+  if (valor === null || valor === undefined) {
+    return null;
+  }
+
   if (
     typeof valor !== 'number' ||
     !Number.isSafeInteger(valor) ||
@@ -54,7 +58,7 @@ const validarPaginasTotales = (valor: unknown): number => {
     valor > 2147483647
   ) {
     throw new Error(
-      'El número de páginas es obligatorio y debe ser un número entero mayor que cero'
+      'El número de páginas debe ser un entero mayor que cero, o dejarse vacío.'
     );
   }
 
@@ -139,6 +143,10 @@ export const actualizarLibro = async (
         ? datos.nivelEducativo
         : datos.nivel_educativo;
 
+    // SAB-123:
+    // undefined = conservar páginas existentes.
+    // null = quitar cantidad de páginas.
+    // número positivo = actualizar cantidad de páginas.
     const paginasTotales =
       datos.paginas_totales !== undefined
         ? validarPaginasTotales(datos.paginas_totales)
