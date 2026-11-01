@@ -379,7 +379,8 @@ class ListaController {
 
   async obtenerTodas(req: Request, res: Response) {
     try {
-      const listas = await listService.obtenerTodas();
+      const tipo = typeof req.query.tipo === 'string' ? req.query.tipo : undefined;
+      const listas = await listService.obtenerTodas(tipo);
 
       return res.status(200).json(listas);
 
