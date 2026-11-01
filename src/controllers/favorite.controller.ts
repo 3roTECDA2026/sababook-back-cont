@@ -8,14 +8,8 @@ import { favoriteService } from '../services/favorite.service';
 import {
   ReadingStatus,
   ReadingProgressError,
+  READING_STATUSES,
 } from '../models/favorite.model';
-
-const READING_STATUSES: ReadingStatus[] = [
-  'general',
-  'quiero-leer',
-  'leyendo',
-  'leido',
-];
 
 class FavoriteController {
   // ==========================================
