@@ -105,8 +105,9 @@ model libro {
   // para guardar el progreso individual de lectura.
   pagina_actual         Int?    @default(0)
 
-   // Número de páginas obligatorio, sin valor predeterminado.
-  paginas_totales       Int
+  // Cantidad de páginas opcional.
+  // NULL significa que no se informó la cantidad de páginas.
+  paginas_totales       Int?
 
   favorito              favorito[]
   lista_libro           lista_libro[]
@@ -538,6 +539,8 @@ model curso_docente {
   usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([curso_id, usuario_id])
+  // SAB-117: un solo docente por curso
+  @@unique([curso_id])
   @@index([usuario_id])
 }
 

@@ -3,19 +3,40 @@ import { Request, Response } from 'express';
 import { TipoRol, Prisma } from '@prisma/client';
 import { userService } from '../services/user.service';
 import { parsePagination } from '../utils/pagination';
+import { getStringParam, QueryParamError } from '../utils/queryParams';
+import { MAX_SEARCH_LENGTH } from '../utils/search';
 
 class UserController {
   async getAllUsers(req: Request, res: Response) {
   try {
+    // SAB-122: búsqueda por nombre o email
+    const q = getStringParam(req.query, 'q');
+    if (q && q.length > MAX_SEARCH_LENGTH) {
+      return res
+        .status(400)
+        .json({ error: `La búsqueda no puede superar los ${MAX_SEARCH_LENGTH} caracteres.` });
+    }
+
+    // SAB-119: filtro por rol (en el servidor, para que la paginación cuente bien)
+    const rol = getStringParam(req.query, 'rol')?.toUpperCase();
+    if (rol && !Object.values(TipoRol).includes(rol as TipoRol)) {
+      return res.status(400).json({ error: 'El rol no es válido.' });
+    }
+
+    const filters = { q, rol: rol as TipoRol | undefined };
+
     const pagination = parsePagination(req.query, 5);
     if (pagination) {
-      const result = await userService.getUsersPaginated(pagination);
+      const result = await userService.getUsersPaginated(pagination, filters);
       return res.status(200).json(result);
     }
 
-    const users = await userService.getAllUsers();
+    const users = await userService.getAllUsers(filters);
     res.status(200).json(users);
   } catch (error) {
+    if (error instanceof QueryParamError) {
+      return res.status(400).json({ error: error.message });
+    }
     const message = error instanceof Error ? error.message : String(error);
     console.error('Error getting users:', message);
     res.status(500).json({ error: 'Database connection not established' });

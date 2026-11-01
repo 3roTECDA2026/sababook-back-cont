@@ -1,7 +1,28 @@
 import { prisma } from '../db/connect/db';
 import bcrypt from 'bcrypt';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
-import { TipoRol } from '@prisma/client';
+import { unaccentContains } from '../utils/search';
+import { Prisma, TipoRol } from '@prisma/client';
+
+// SAB-122: filtros del listado de usuarios
+export interface UserFilters {
+  q?: string;
+  rol?: TipoRol; // SAB-119
+}
+
+// IDs de usuarios cuyo nombre o email contiene el texto, sin distinguir tildes ni mayúsculas
+const findUserIdsByText = async (text: string): Promise<number[]> => {
+  const rows = await prisma.$queryRaw<{ usuario_id: number }[]>`
+    SELECT usuario_id FROM usuario WHERE ${unaccentContains(['nombre', 'email'], text)}
+  `;
+  return rows.map((row) => row.usuario_id);
+};
+
+// Los filtros se combinan entre sí (AND)
+const buildUserWhere = async (filters: UserFilters): Promise<Prisma.usuarioWhereInput> => ({
+  ...(filters.q ? { usuario_id: { in: await findUserIdsByText(filters.q) } } : {}),
+  ...(filters.rol ? { rol: filters.rol } : {}),
+});
 
 export interface User {
   usuario_id: number;
@@ -47,9 +68,10 @@ interface NewUserResult {
 type UpdateUserData = Partial<Omit<User, 'usuario_id'>>;
 
 class UserModel {
-  async getAllUsers(): Promise<UserConRol[]> {
+  async getAllUsers(filters: UserFilters = {}): Promise<UserConRol[]> {
     try {
       const users = await prisma.usuario.findMany({
+        where: await buildUserWhere(filters),
         orderBy: {
           usuario_id: 'asc',
         },
@@ -200,15 +222,21 @@ class UserModel {
     }
   }
 
-  async getUsersPaginated(pagination: PaginationParams): Promise<Paginated<UserConRol>> {
+  async getUsersPaginated(
+    pagination: PaginationParams,
+    filters: UserFilters = {}
+  ): Promise<Paginated<UserConRol>> {
     try {
+      // El mismo where en findMany y count, para que total y totalPages sean del resultado
+      const where = await buildUserWhere(filters);
       const [users, total] = await prisma.$transaction([
         prisma.usuario.findMany({
+          where,
           orderBy: { usuario_id: 'asc' },
           skip: pagination.skip,
           take: pagination.limit,
         }),
-        prisma.usuario.count(),
+        prisma.usuario.count({ where }),
       ]);
 
       const data = users.map((u) => ({
