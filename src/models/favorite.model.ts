@@ -6,11 +6,10 @@ interface Favorite {
   libro_id: number;
 }
 
-export type ReadingStatus =
-  | 'general'
-  | 'quiero-leer'
-  | 'leyendo'
-  | 'leido';
+// Estados de lectura válidos: una sola lista para validar en todo el back (SAB-060)
+export const READING_STATUSES = ['general', 'quiero-leer', 'leyendo', 'leido'] as const;
+
+export type ReadingStatus = (typeof READING_STATUSES)[number];
 
 export interface ReadingStatusRecord {
   libro_id: number;
