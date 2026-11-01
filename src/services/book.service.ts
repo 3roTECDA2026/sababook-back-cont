@@ -8,6 +8,7 @@ import {
   crearLibro,
   eliminacionLogica as eliminacionLogicaModel,
   buscarLibrosPaginado,
+  BuscarLibrosFiltros,
 } from '../models/book.model';
 import { PaginationParams } from '../utils/pagination';
 class BookService {
@@ -23,7 +24,7 @@ class BookService {
     return await obtenerPorId(id);
   }
 
-  async buscarLibros(filters: { query?: string; genero?: string; nivel_educativo?: string }) {
+  async buscarLibros(filters: BuscarLibrosFiltros) {
     return await buscarLibros(filters);
   }
 
@@ -39,12 +40,9 @@ class BookService {
     return await eliminacionLogicaModel(id);
   }
 
-  async buscarLibrosPaginado(
-  filters: { query?: string; genero?: string; nivel_educativo?: string },
-  pagination: PaginationParams
-) {
-  return await buscarLibrosPaginado(filters, pagination);
-}
+  async buscarLibrosPaginado(filters: BuscarLibrosFiltros, pagination: PaginationParams) {
+    return await buscarLibrosPaginado(filters, pagination);
+  }
 }
 
 export const bookService = new BookService();

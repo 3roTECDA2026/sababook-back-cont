@@ -5,6 +5,17 @@ import { Prisma } from '@prisma/client';
 import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
 
+// Validaciones de búsqueda incorporadas en develop.
+const MAX_SEARCH_LENGTH = 100;
+
+const SEARCH_PARAMS = [
+  'query',
+  'titulo',
+  'autor',
+  'genero',
+  'nivel_educativo',
+] as const;
+
 // SAB-123: las páginas son opcionales.
 // Si se informa una cantidad, debe ser un entero positivo.
 const validarPaginas = (valor: unknown): boolean =>
@@ -17,6 +28,8 @@ const validarPaginas = (valor: unknown): boolean =>
 const validarPaginasOpcionales = (valor: unknown): boolean =>
   valor === null || validarPaginas(valor);
 
+// Permite distinguir entre un campo ausente
+// y un campo enviado explícitamente como NULL.
 const tienePropiedad = (
   objeto: Record<string, unknown>,
   propiedad: string
@@ -32,7 +45,7 @@ class BookController {
         ? body.paginas_totales
         : body.paginasTotales;
 
-      // Si no se informan páginas, guardar NULL.
+      // SAB-123: si no se informan páginas, guardar NULL.
       const paginasNormalizadas =
         paginas === undefined ? null : paginas;
 
@@ -54,6 +67,7 @@ class BookController {
       });
     } catch (error) {
       console.error('Error al crear libro:', error);
+
       return res.status(500).json({
         mensaje: 'Error al crear libro',
       });
@@ -63,9 +77,11 @@ class BookController {
   async obtenerCatalogo(req: Request, res: Response) {
     try {
       const libros = await bookService.obtenerTodos();
+
       return res.json(libros);
     } catch (error) {
       console.error('Error al obtener catálogo:', error);
+
       return res.status(500).json({
         mensaje: 'Error al obtener libros',
       });
@@ -87,6 +103,7 @@ class BookController {
       return res.json(libro);
     } catch (error) {
       console.error('Error al obtener detalle:', error);
+
       return res.status(500).json({
         mensaje: 'Error al obtener detalle del libro',
       });
@@ -95,27 +112,73 @@ class BookController {
 
   async buscar(req: Request, res: Response) {
     try {
-      const { query, genero, nivel_educativo } = req.query as {
+      // Express entrega un array si el parámetro se repite.
+      // Ejemplo: ?query=a&query=b
+      const hasInvalidParam = SEARCH_PARAMS.some(
+        (key) =>
+          req.query[key] !== undefined &&
+          typeof req.query[key] !== 'string'
+      );
+
+      if (hasInvalidParam) {
+        return res.status(400).json({
+          mensaje:
+            'Cada parámetro de búsqueda debe enviarse una sola vez.',
+        });
+      }
+
+      const {
+        query,
+        titulo,
+        autor,
+        genero,
+        nivel_educativo,
+      } = req.query as {
         query?: string;
+        titulo?: string;
+        autor?: string;
         genero?: string;
         nivel_educativo?: string;
       };
 
-      const filtros = { query, genero, nivel_educativo };
+      const filtros = {
+        query,
+        titulo,
+        autor,
+        genero,
+        nivel_educativo,
+      };
+
+      if (
+        [query, titulo, autor].some(
+          (text) =>
+            text && text.length > MAX_SEARCH_LENGTH
+        )
+      ) {
+        return res.status(400).json({
+          mensaje:
+            `La búsqueda no puede superar los ${MAX_SEARCH_LENGTH} caracteres.`,
+        });
+      }
+
       const pagination = parsePagination(req.query);
 
       if (pagination) {
-        const resultado = await bookService.buscarLibrosPaginado(
-          filtros,
-          pagination
-        );
+        const resultado =
+          await bookService.buscarLibrosPaginado(
+            filtros,
+            pagination
+          );
+
         return res.json(resultado);
       }
 
       const libros = await bookService.buscarLibros(filtros);
+
       return res.json(libros);
     } catch (error) {
       console.error('Error al buscar libros:', error);
+
       return res.status(500).json({
         mensaje: 'Error al buscar libros',
       });
@@ -128,18 +191,28 @@ class BookController {
     try {
       const body = req.body ?? {};
 
-      // SAB-123: permitir actualizar otros campos sin enviar páginas.
+      // SAB-123: permitir actualizar otros campos
+      // sin enviar la cantidad de páginas.
       const tienePaginas =
         tienePropiedad(body, 'paginas_totales') ||
         tienePropiedad(body, 'paginasTotales');
 
-      const paginas = tienePropiedad(body, 'paginas_totales')
+      // No usar ?? porque necesitamos conservar NULL
+      // cuando se envía explícitamente.
+      const paginas = tienePropiedad(
+        body,
+        'paginas_totales'
+      )
         ? body.paginas_totales
         : body.paginasTotales;
 
-      // Si se envían páginas, aceptar NULL o entero positivo.
+      // Si se envían páginas, aceptar NULL
+      // o un número entero positivo.
       // Si no se envían, conservar el valor existente.
-      if (tienePaginas && !validarPaginasOpcionales(paginas)) {
+      if (
+        tienePaginas &&
+        !validarPaginasOpcionales(paginas)
+      ) {
         return res.status(400).json({
           mensaje:
             'El número de páginas debe ser un entero mayor que cero o NULL',
@@ -148,7 +221,9 @@ class BookController {
 
       await bookService.actualizarLibro(id, {
         ...body,
-        ...(tienePaginas ? { paginas_totales: paginas } : {}),
+        ...(tienePaginas
+          ? { paginas_totales: paginas }
+          : {}),
       });
 
       return res.json({
@@ -165,6 +240,7 @@ class BookController {
       }
 
       console.error('Error al actualizar:', error);
+
       return res.status(500).json({
         mensaje: 'Error al actualizar libro',
       });
@@ -201,6 +277,7 @@ class BookController {
       }
 
       console.error('Error al eliminar:', error);
+
       return res.status(500).json({
         mensaje: 'Error al eliminar libro y sus dependencias',
       });
@@ -217,7 +294,11 @@ class BookController {
         mensaje: 'Libro marcado como inactivo',
       });
     } catch (error) {
-      console.error('Error al marcar como inactivo:', error);
+      console.error(
+        'Error al marcar como inactivo:',
+        error
+      );
+
       return res.status(500).json({
         mensaje: 'Error al marcar libro como inactivo',
       });

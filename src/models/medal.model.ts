@@ -16,8 +16,6 @@ class MedalModel {
         where: { usuario_id },
       });
 
-      console.log('cantidadOpiniones', cantidadOpiniones);
-
       if (cantidadOpiniones >= 1) {
         await this.asignarMedallaSiNoTiene(usuario_id, 6); // medalla_id para 'Opinador' de libros
       }
@@ -54,8 +52,6 @@ class MedalModel {
         },
       });
 
-      console.log('yaTiene', yaTiene, usuario_id, medalla_id);
-
       if (!yaTiene) {
         await prisma.usuario_medalla.create({
           data: {
@@ -64,7 +60,6 @@ class MedalModel {
           },
         });
 
-        console.log(`✅ Medalla id ${medalla_id} asignada al usuario ${usuario_id}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

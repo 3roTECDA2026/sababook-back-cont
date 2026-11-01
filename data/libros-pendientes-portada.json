@@ -1,0 +1,159 @@
+{
+  "resumen": {
+    "total_sin_portada_inicial": 129,
+    "encontradas_primera_ronda": 28,
+    "encontradas_segunda_ronda": 103,
+    "pendientes": 28,
+    "tasa_exito": "79%",
+    "fecha": "2026-09-21"
+  },
+  "libros_pendientes": [
+    {
+      "titulo": "Antígona furiosa",
+      "autor": "G. Gambaro",
+      "fuente": "Posiblemente publicación independiente/pequeña editorial"
+    },
+    {
+      "titulo": "Adiós Rapa Nui",
+      "autor": "Gil López",
+      "fuente": "Posiblemente publicación independiente/pequeña editorial"
+    },
+    {
+      "titulo": "Caballero negro/Puertas adentro",
+      "autor": "L. Lardone",
+      "fuente": "Posiblemente publicación independiente/pequeña editorial"
+    },
+    {
+      "titulo": "Miedos de invierno",
+      "autor": "Pérez Díaz",
+      "fuente": "Posiblemente publicación independiente/pequeña editorial"
+    },
+    {
+      "titulo": "Cabecita negra y otros cuentos",
+      "autor": "G. Rozenmarcher",
+      "fuente": "Posiblemente publicación independiente/pequeña editorial"
+    },
+    {
+      "titulo": "Dos años, ocho meses y dieciocho noches",
+      "autor": "S. Rusdhie",
+      "nota": "Typo en el autor (Rushdie)"
+    },
+    {
+      "titulo": "Carta al Sargento Kirk",
+      "autor": "Juan Sasturain",
+      "fuente": "Cuento corto, posible antología"
+    },
+    {
+      "titulo": "La valija de Benavídez, Perdiendo velocidad",
+      "autor": "S. Schweblin",
+      "fuente": "Posiblemente cuento corto"
+    },
+    {
+      "titulo": "El gigante de Balvanera y otras levendas urbanas",
+      "autor": "S. Silvestre",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "Anna Karernina",
+      "autor": "L. Tolstoi",
+      "nota": "Typo en el título (Karenina)"
+    },
+    {
+      "titulo": "Es tan difícil volver a Ítaca",
+      "autor": "E. Valentino",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "Inventario y otros poemas",
+      "autor": "Mario Benedetti",
+      "fuente": "Posiblemente antología/selección"
+    },
+    {
+      "titulo": "Asesinato en el Expreso Oriente",
+      "autor": "Agatha Christie",
+      "nota": "Typo en el título (Murder on the Orient Express)"
+    },
+    {
+      "titulo": "Las venas abiertas de América Lat",
+      "autor": "Eduardo Galeano",
+      "nota": "Título incompleto"
+    },
+    {
+      "titulo": "Y el fútbol contó un cuento…",
+      "autor": "Eduardo Sacheri",
+      "fuente": "Cuento corto/selección"
+    },
+    {
+      "titulo": "Teatro abierto 81",
+      "autor": "AA.VV.",
+      "fuente": "Antología de teatro"
+    },
+    {
+      "titulo": "Nosotras en Libertad",
+      "autor": "AA.VV.",
+      "fuente": "Antología"
+    },
+    {
+      "titulo": "Tributo del mundo",
+      "autor": "Diana Bellesi",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "Los teresos",
+      "autor": "Fabián Casas",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "Los perros:1956",
+      "autor": "M. Faust",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "El tormento más purto",
+      "autor": "Fernanda García Lao",
+      "nota": "Typo en el título (puro?)"
+    },
+    {
+      "titulo": "El niño proletario",
+      "autor": "O. Lamborghini",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "Bolonqui",
+      "autor": "L. Oyola",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "Tengo una novia bisexual",
+      "autor": "Guillermo Sacomanno",
+      "fuente": "Posiblemente cuento corto"
+    },
+    {
+      "titulo": "La arena en los zapatos",
+      "autor": "J. Sasturain",
+      "fuente": "Cuento corto"
+    },
+    {
+      "titulo": "Cuidado que hay trampa",
+      "autor": "A. Shúa",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "Prontuario",
+      "autor": "D. Viñas",
+      "fuente": "Posiblemente publicación independiente"
+    },
+    {
+      "titulo": "Un dios cotidiano",
+      "autor": "D. Viñas",
+      "fuente": "Posiblemente publicación independiente"
+    }
+  ],
+  "recomendaciones": [
+    "Algunos títulos tienen typos (Tolstoi/Rushdie) que podrían corregirse",
+    "Antologías y cuentos cortos generalmente no tienen portadas propias",
+    "Considerar usar una imagen por defecto para estos casos",
+    "Para editoriales independientes, contactar directamente con los autores/editoriales",
+    "Buscar ISBNs correctos para mejorar las búsquedas"
+  ]
+}

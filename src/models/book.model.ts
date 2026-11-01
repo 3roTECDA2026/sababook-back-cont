@@ -1,5 +1,4 @@
 
- // src/models/book.model.ts
 import { Prisma, libro as Libro } from '@prisma/client';
 import { prisma } from '../db/connect/db';
 import {
@@ -35,8 +34,10 @@ export interface ActualizarLibroData {
   activo?: boolean;
 }
 
-interface BuscarLibrosFiltros {
+export interface BuscarLibrosFiltros {
   query?: string;
+  titulo?: string;
+  autor?: string;
   genero?: string;
   nivel_educativo?: string;
 }
@@ -125,8 +126,10 @@ export const buscarLibros = async (
   filtros: BuscarLibrosFiltros
 ): Promise<Libro[]> => {
   try {
+    const where = await construirWhere(filtros);
+
     return await prisma.libro.findMany({
-      where: construirWhere(filtros),
+      where,
     });
   } catch (error) {
     console.error('Error al buscar libros:', error);
@@ -162,8 +165,12 @@ export const actualizarLibro = async (
     return await prisma.libro.update({
       where: { libro_id: id },
       data: {
-        ...(datos.titulo && { titulo: datos.titulo }),
-        ...(datos.autor && { autor: datos.autor }),
+        ...(datos.titulo && {
+          titulo: datos.titulo,
+        }),
+        ...(datos.autor && {
+          autor: datos.autor,
+        }),
         ...(datos.genero !== undefined && {
           genero: datos.genero,
         }),
@@ -245,51 +252,106 @@ export const eliminacionLogica = async (
   }
 };
 
-// Construir filtros de búsqueda
-const construirWhere = ({
+// =====================================================
+// SAB-092: BÚSQUEDA SIN DISTINGUIR TILDES NI MAYÚSCULAS
+// =====================================================
+
+type TextSearchColumn = 'titulo' | 'autor';
+
+// Escapa los comodines de LIKE para buscar literalmente.
+const escapeLikePattern = (text: string): string =>
+  text.replace(/[\\%_]/g, '\\$&');
+
+// Busca los IDs de libros por título o autor.
+const findBookIdsByText = async (
+  text: string,
+  columns: TextSearchColumn[]
+): Promise<number[]> => {
+  const pattern = `%${escapeLikePattern(text.trim())}%`;
+
+  const conditions = columns.map(
+    (column) =>
+      Prisma.sql`
+        lower(public.f_unaccent(${Prisma.raw(column)}))
+        LIKE lower(public.f_unaccent(${pattern}))
+      `
+  );
+
+  const rows = await prisma.$queryRaw<
+    { libro_id: number }[]
+  >`
+    SELECT libro_id
+    FROM libro
+    WHERE ${Prisma.join(conditions, ' OR ')}
+  `;
+
+  return rows.map((row) => row.libro_id);
+};
+
+// Construir filtros combinados.
+const construirWhere = async ({
   query,
+  titulo,
+  autor,
   genero,
   nivel_educativo,
-}: BuscarLibrosFiltros) => {
+}: BuscarLibrosFiltros): Promise<Prisma.libroWhereInput> => {
   const where: Prisma.libroWhereInput = {};
+  const idFilters: number[][] = [];
 
-  if (query && query.trim() !== '') {
-    const cleanQuery = query.trim();
-
-    where.OR = [
-      {
-        titulo: {
-          contains: cleanQuery,
-          mode: 'insensitive',
-        },
-      },
-      {
-        autor: {
-          contains: cleanQuery,
-          mode: 'insensitive',
-        },
-      },
-    ];
+  // Búsqueda general por título o autor.
+  if (query?.trim()) {
+    idFilters.push(
+      await findBookIdsByText(query, ['titulo', 'autor'])
+    );
   }
 
+  // Búsqueda específica por título.
+  if (titulo?.trim()) {
+    idFilters.push(
+      await findBookIdsByText(titulo, ['titulo'])
+    );
+  }
+
+  // Búsqueda específica por autor.
+  if (autor?.trim()) {
+    idFilters.push(
+      await findBookIdsByText(autor, ['autor'])
+    );
+  }
+
+  // Combinar los filtros de búsqueda.
+  if (idFilters.length > 0) {
+    where.AND = idFilters.map((ids) => ({
+      libro_id: { in: ids },
+    }));
+  }
+
+  // Filtros adicionales sin distinguir mayúsculas.
   if (genero) {
-    where.genero = genero;
+    where.genero = {
+      equals: genero,
+      mode: 'insensitive',
+    };
   }
 
   if (nivel_educativo) {
-    where.nivel_educativo = nivel_educativo;
+    where.nivel_educativo = {
+      equals: nivel_educativo,
+      mode: 'insensitive',
+    };
   }
 
   return where;
 };
 
-// Buscar libros con paginación
+// Búsqueda paginada
 export const buscarLibrosPaginado = async (
   filtros: BuscarLibrosFiltros,
   pagination: PaginationParams
 ): Promise<Paginated<Libro>> => {
   try {
-    const where = construirWhere(filtros);
+    const where = await construirWhere(filtros);
 
     const [data, total] = await prisma.$transaction([
       prisma.libro.findMany({
