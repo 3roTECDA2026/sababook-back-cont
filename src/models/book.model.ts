@@ -1,9 +1,14 @@
 
-// src/models/book.model.ts
+ // src/models/book.model.ts
 import { Prisma, libro as Libro } from '@prisma/client';
 import { prisma } from '../db/connect/db';
-import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
+import {
+  PaginationParams,
+  Paginated,
+  buildPaginated,
+} from '../utils/pagination';
 
+// SAB-123: la cantidad de páginas es opcional.
 export interface CrearLibroData {
   titulo: string;
   autor: string;
@@ -13,7 +18,7 @@ export interface CrearLibroData {
   portada_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
-  paginas_totales: number;
+  paginas_totales?: number | null;
   activo?: boolean;
 }
 
@@ -26,7 +31,7 @@ export interface ActualizarLibroData {
   portada_url?: string;
   nivelEducativo?: string;
   nivel_educativo?: string;
-  paginas_totales?: number;
+  paginas_totales?: number | null;
   activo?: boolean;
 }
 
@@ -36,11 +41,24 @@ interface BuscarLibrosFiltros {
   nivel_educativo?: string;
 }
 
-// SAB-91: validar que el total de páginas sea un entero positivo.
-const validarPaginasTotales = (valor: unknown): number => {
-  if (typeof valor !== 'number' || !Number.isSafeInteger(valor) || valor <= 0 || valor > 2147483647) {
+// SAB-123:
+// NULL significa que no se informó la cantidad de páginas.
+// Si se informa un número, debe ser entero y positivo.
+const validarPaginasTotales = (
+  valor: unknown
+): number | null => {
+  if (valor === null || valor === undefined) {
+    return null;
+  }
+
+  if (
+    typeof valor !== 'number' ||
+    !Number.isSafeInteger(valor) ||
+    valor <= 0 ||
+    valor > 2147483647
+  ) {
     throw new Error(
-      'El número de páginas es obligatorio y debe ser un número entero mayor que cero'
+      'El número de páginas debe ser un entero mayor que cero'
     );
   }
 
@@ -48,9 +66,13 @@ const validarPaginasTotales = (valor: unknown): number => {
 };
 
 // Crear libro
-export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
+export const crearLibro = async (
+  datos: CrearLibroData
+): Promise<Libro> => {
   try {
-    const paginasTotales = validarPaginasTotales(datos.paginas_totales);
+    const paginasTotales = validarPaginasTotales(
+      datos.paginas_totales
+    );
 
     return await prisma.libro.create({
       data: {
@@ -58,8 +80,12 @@ export const crearLibro = async (datos: CrearLibroData): Promise<Libro> => {
         autor: datos.autor,
         genero: datos.genero,
         descripcion: datos.descripcion,
-        portada_url: datos.portadaUrl || datos.portada_url || null,
-        nivel_educativo: datos.nivelEducativo || datos.nivel_educativo || null,
+        portada_url:
+          datos.portadaUrl || datos.portada_url || null,
+        nivel_educativo:
+          datos.nivelEducativo ||
+          datos.nivel_educativo ||
+          null,
         paginas_totales: paginasTotales,
         activo: datos.activo ?? true,
       },
@@ -81,7 +107,9 @@ export const obtenerTodos = async (): Promise<Libro[]> => {
 };
 
 // Obtener libro por ID
-export const obtenerPorId = async (id: number): Promise<Libro | null> => {
+export const obtenerPorId = async (
+  id: number
+): Promise<Libro | null> => {
   try {
     return await prisma.libro.findUnique({
       where: { libro_id: id },
@@ -122,6 +150,10 @@ export const actualizarLibro = async (
         ? datos.nivelEducativo
         : datos.nivel_educativo;
 
+    // SAB-123:
+    // undefined = conservar páginas existentes.
+    // null = quitar cantidad de páginas.
+    // número positivo = actualizar cantidad de páginas.
     const paginasTotales =
       datos.paginas_totales !== undefined
         ? validarPaginasTotales(datos.paginas_totales)
@@ -132,16 +164,24 @@ export const actualizarLibro = async (
       data: {
         ...(datos.titulo && { titulo: datos.titulo }),
         ...(datos.autor && { autor: datos.autor }),
-        ...(datos.genero !== undefined && { genero: datos.genero }),
+        ...(datos.genero !== undefined && {
+          genero: datos.genero,
+        }),
         ...(datos.descripcion !== undefined && {
           descripcion: datos.descripcion,
         }),
-        ...(portada !== undefined && { portada_url: portada }),
-        ...(nivel !== undefined && { nivel_educativo: nivel }),
+        ...(portada !== undefined && {
+          portada_url: portada,
+        }),
+        ...(nivel !== undefined && {
+          nivel_educativo: nivel,
+        }),
         ...(paginasTotales !== undefined && {
           paginas_totales: paginasTotales,
         }),
-        ...(datos.activo !== undefined && { activo: datos.activo }),
+        ...(datos.activo !== undefined && {
+          activo: datos.activo,
+        }),
       },
     });
   } catch (error) {
@@ -151,13 +191,26 @@ export const actualizarLibro = async (
 };
 
 // Eliminar libro físicamente
-export const eliminarLibro = async (id: number): Promise<boolean> => {
+export const eliminarLibro = async (
+  id: number
+): Promise<boolean> => {
   try {
     const result = await prisma.$transaction(async (tx) => {
-      await tx.opinion.deleteMany({ where: { libro_id: id } });
-      await tx.favorito.deleteMany({ where: { libro_id: id } });
-      await tx.lista_libro.deleteMany({ where: { libro_id: id } });
-      await tx.recurso_educativo.deleteMany({ where: { libro_id: id } });
+      await tx.opinion.deleteMany({
+        where: { libro_id: id },
+      });
+
+      await tx.favorito.deleteMany({
+        where: { libro_id: id },
+      });
+
+      await tx.lista_libro.deleteMany({
+        where: { libro_id: id },
+      });
+
+      await tx.recurso_educativo.deleteMany({
+        where: { libro_id: id },
+      });
 
       return await tx.libro.delete({
         where: { libro_id: id },
@@ -166,24 +219,33 @@ export const eliminarLibro = async (id: number): Promise<boolean> => {
 
     return !!result;
   } catch (error) {
-    console.error('Error al eliminar libro y sus dependencias:', error);
+    console.error(
+      'Error al eliminar libro y sus dependencias:',
+      error
+    );
     throw error;
   }
 };
 
 // Eliminación lógica
-export const eliminacionLogica = async (id: number): Promise<Libro> => {
+export const eliminacionLogica = async (
+  id: number
+): Promise<Libro> => {
   try {
     return await prisma.libro.update({
       where: { libro_id: id },
       data: { activo: false },
     });
   } catch (error) {
-    console.error(`Error en eliminación lógica del libro ${id}:`, error);
+    console.error(
+      `Error en eliminación lógica del libro ${id}:`,
+      error
+    );
     throw error;
   }
 };
 
+// Construir filtros de búsqueda
 const construirWhere = ({
   query,
   genero,
@@ -195,17 +257,33 @@ const construirWhere = ({
     const cleanQuery = query.trim();
 
     where.OR = [
-      { titulo: { contains: cleanQuery, mode: 'insensitive' } },
-      { autor: { contains: cleanQuery, mode: 'insensitive' } },
+      {
+        titulo: {
+          contains: cleanQuery,
+          mode: 'insensitive',
+        },
+      },
+      {
+        autor: {
+          contains: cleanQuery,
+          mode: 'insensitive',
+        },
+      },
     ];
   }
 
-  if (genero) where.genero = genero;
-  if (nivel_educativo) where.nivel_educativo = nivel_educativo;
+  if (genero) {
+    where.genero = genero;
+  }
+
+  if (nivel_educativo) {
+    where.nivel_educativo = nivel_educativo;
+  }
 
   return where;
 };
 
+// Buscar libros con paginación
 export const buscarLibrosPaginado = async (
   filtros: BuscarLibrosFiltros,
   pagination: PaginationParams
@@ -225,7 +303,10 @@ export const buscarLibrosPaginado = async (
 
     return buildPaginated(data, total, pagination);
   } catch (error) {
-    console.error('Error al buscar libros paginados:', error);
+    console.error(
+      'Error al buscar libros paginados:',
+      error
+    );
     throw error;
   }
 };
