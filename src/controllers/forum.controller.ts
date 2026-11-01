@@ -3,6 +3,8 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { forumService } from '../services/forum.service';
 import { TipoRol } from '@prisma/client';
+import { getStringParam, QueryParamError } from '../utils/queryParams';
+import { MAX_SEARCH_LENGTH } from '../utils/search';
 
 // Crear un foro (soporta foros estándar, debates APL y vinculación con Radio Sábato)
 export const crearForo = async (req: AuthRequest, res: Response) => {
@@ -35,11 +37,22 @@ export const crearForo = async (req: AuthRequest, res: Response) => {
 };
 
 // Obtener todos los foros
-export const obtenerForos = async (_req: AuthRequest, res: Response) => {
+export const obtenerForos = async (req: AuthRequest, res: Response) => {
   try {
-    const foros = await forumService.obtenerTodosForos();
+    // SAB-122: búsqueda por título o descripción
+    const q = getStringParam(req.query, 'q');
+    if (q && q.length > MAX_SEARCH_LENGTH) {
+      return res
+        .status(400)
+        .json({ mensaje: `La búsqueda no puede superar los ${MAX_SEARCH_LENGTH} caracteres.` });
+    }
+
+    const foros = await forumService.obtenerTodosForos(q);
     res.json(foros);
   } catch (error) {
+    if (error instanceof QueryParamError) {
+      return res.status(400).json({ mensaje: error.message });
+    }
     console.error('❌ Error al obtener foros:', error);
     res.status(500).json({ mensaje: 'Error al obtener los foros' });
   }

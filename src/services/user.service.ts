@@ -1,4 +1,4 @@
-import { userModel } from '../models/user.model';
+import { userModel, UserFilters } from '../models/user.model';
 import { PaginationParams } from '../utils/pagination';
 import { TipoRol } from '@prisma/client';
 
@@ -15,8 +15,8 @@ export interface UpdateUserDTO {
 }
 
 class UserService {
-  async getAllUsers() {
-    return await userModel.getAllUsers();
+  async getAllUsers(filters: UserFilters = {}) {
+    return await userModel.getAllUsers(filters);
   }
 
   async getUserById(id: number) {
@@ -35,9 +35,9 @@ class UserService {
     return await userModel.deleteUser(id);
   }
 
-  async getUsersPaginated(pagination: PaginationParams) {
-  return await userModel.getUsersPaginated(pagination);
-}
+  async getUsersPaginated(pagination: PaginationParams, filters: UserFilters = {}) {
+    return await userModel.getUsersPaginated(pagination, filters);
+  }
 }
 
 export const userService = new UserService();

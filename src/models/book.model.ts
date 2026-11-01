@@ -3,6 +3,7 @@
 import { Prisma, libro as Libro } from '@prisma/client';
 import { prisma } from '../db/connect/db';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
+import { escapeLikePattern } from '../utils/search';
 
 export interface CrearLibroData {
   titulo: string;
@@ -196,10 +197,6 @@ export const eliminacionLogica = async (id: number): Promise<Libro> => {
 
 // SAB-092: búsqueda sin distinguir tildes ni mayúsculas.
 type TextSearchColumn = 'titulo' | 'autor';
-
-// Escapa los comodines de LIKE para buscar el texto literalmente.
-const escapeLikePattern = (text: string): string =>
-  text.replace(/[\\%_]/g, '\\$&');
 
 // Busca los IDs de libros por título o autor.
 const findBookIdsByText = async (
