@@ -538,6 +538,8 @@ model curso_docente {
   usuario    usuario @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([curso_id, usuario_id])
+  // SAB-117: un solo docente por curso
+  @@unique([curso_id])
   @@index([usuario_id])
 }
 
