@@ -174,10 +174,9 @@ INSERT INTO materia (materia_id, nombre) VALUES
 INSERT INTO curso (curso_id, anio, division, anio_lectivo, materia_id) VALUES
   (1, 5, 'A', 2026, 1);
 
--- Docentes del curso 1 (Ana García y Sofía Torres)
+-- Docente del curso 1 (Ana García). Cada curso tiene un solo docente (SAB-117).
 INSERT INTO curso_docente (curso_id, usuario_id) VALUES
-  (1, 1),
-  (1, 5);
+  (1, 1);
 
 -- Trivia normal (modo 'trivia') del libro 3 ("1984"), sin curso ni evaluación.
 -- docente_id = 1 (Ana García) para poder ver la edición como autora.

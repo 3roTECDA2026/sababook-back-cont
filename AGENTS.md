@@ -56,6 +56,7 @@ Se cargan desde `.env` (ignorado por git). La plantilla es `.env.example`.
 | `DIRECT_URL` | Conexión directa/sesión (puerto **5432**). Usar para comandos de migración |
 | `SUPABASE_URL`, `SUPABASE_KEY` | Cliente de Supabase |
 | `ADMIN_INITIAL_KEY` | Alta inicial de administrador |
+| `CORS_ORIGINS` | Orígenes extra permitidos por CORS, separados por coma (ej. la URL de Netlify). Se suma a la lista fija de `server.ts`. Se lee al arrancar: tras cambiarla hay que reiniciar |
 
 ## 5. Estructura
 
@@ -225,7 +226,8 @@ Base: `/api/v1`. Recursos principales:
 por compatibilidad con el front. No borrarlos sin verificar que el front no los use.
 Las rutas fijas deben declararse **antes** que las paramétricas (`/history` antes de `/:id`).
 
-CORS: los orígenes permitidos están en `server.ts`. Agregar ahí cualquier dominio nuevo del front.
+CORS: `server.ts` tiene una lista fija de orígenes (producción y desarrollo local). Para habilitar otro dominio del front, como el Netlify de un despliegue propio, **no se edita `server.ts`**: se carga la variable `CORS_ORIGINS` (ver sección 4) y se reinicia el servicio.
+
 
 ## 10. Git y Pull Requests
 

@@ -128,6 +128,24 @@ export const obtenerCursos = async (req: AuthRequest, res: Response): Promise<vo
     filtros.docente_id = req.userId;
   }
 
+  // ?docente_id=X devuelve los cursos de otro docente: solo para el administrador (SAB-117)
+  if (req.query.docente_id !== undefined) {
+    const teacherId = parsearId(req.query.docente_id);
+    if (teacherId === null) {
+      res.status(400).json({ error: 'El filtro docente_id no es válido.' });
+      return;
+    }
+    if (req.query.mine === 'true') {
+      res.status(400).json({ error: 'Usá mine o docente_id, no los dos a la vez.' });
+      return;
+    }
+    if (req.userRole !== TipoRol.ADMINISTRADOR) {
+      res.status(403).json({ error: 'Solo el administrador puede consultar los cursos de otro docente.' });
+      return;
+    }
+    filtros.docente_id = teacherId;
+  }
+
   try {
     const cursos = await courseService.obtenerTodos(filtros);
     res.status(200).json(cursos);
@@ -256,7 +274,8 @@ export const asignarDocente = async (req: AuthRequest, res: Response): Promise<v
   } catch (err) {
     if (
       responderError(res, err, {
-        P2002: { status: 409, mensaje: 'El docente ya está asignado a este curso.' },
+        // Solo llega acá si otra asignación se guardó al mismo tiempo (índice único de SAB-117)
+        P2002: { status: 409, mensaje: 'El curso ya tiene un docente asignado. Actualizá la página.' },
         P2003: CURSO_NO_ENCONTRADO,
       })
     ) {

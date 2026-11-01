@@ -11,6 +11,7 @@ import {
   eliminarCursoDB,
   obtenerRolUsuarioDB,
   asignarDocenteDB,
+  findCourseTeacherDB,
   quitarDocenteDB,
   esDocenteDelCursoDB,
   obtenerHistorialDB,
@@ -64,6 +65,19 @@ class CourseService {
     if (usuario.rol !== TipoRol.DOCENTE) {
       throw new ErrorNegocio(400, 'El usuario indicado no tiene rol docente.');
     }
+
+    // SAB-117: cada curso tiene un solo docente
+    const docenteActual = await findCourseTeacherDB(curso_id);
+    if (docenteActual?.usuario_id === usuario_id) {
+      throw new ErrorNegocio(409, 'El docente ya está asignado a este curso.');
+    }
+    if (docenteActual) {
+      throw new ErrorNegocio(
+        409,
+        `El curso ya tiene asignado a ${docenteActual.nombre}. Quitalo antes de asignar otro docente.`
+      );
+    }
+
     return await asignarDocenteDB(curso_id, usuario_id);
   }
 

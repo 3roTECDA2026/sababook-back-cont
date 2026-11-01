@@ -29,6 +29,13 @@ import { testConnection } from './src/db/connect/db';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Orígenes extra permitidos por CORS, separados por coma (ej. el front de cada deploy).
+// Así un deploy nuevo se habilita desde las variables de entorno, sin tocar código.
+const extraCorsOrigins = (process.env.CORS_ORIGINS ?? '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
 // Middleware
 app.use(
   cors({
@@ -44,6 +51,7 @@ app.use(
       'http://127.0.0.1:5174',
       'https://statuesque-truffle-a9d0a3.netlify.app',
       'https://sababook-back.onrender.com',
+      ...extraCorsOrigins,
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],

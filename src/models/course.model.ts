@@ -29,6 +29,8 @@ export interface CursoResumen {
   materia: MateriaCurso;
   cantidad_docentes: number;
   cantidad_libros: number;
+  // SAB-117: cada curso tiene un solo docente (null si todavía no tiene)
+  docente: DocenteCurso | null;
 }
 
 export interface DocenteCurso {
@@ -86,6 +88,9 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
     },
     include: {
       materia: { select: { materia_id: true, nombre: true } },
+      curso_docente: {
+        include: { usuario: { select: { usuario_id: true, nombre: true, email: true } } },
+      },
       _count: { select: { curso_docente: true, curso_libro: true } },
     },
     orderBy: [{ anio_lectivo: 'desc' }, { anio: 'asc' }, { division: 'asc' }],
@@ -99,6 +104,7 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
     materia: c.materia,
     cantidad_docentes: c._count.curso_docente,
     cantidad_libros: c._count.curso_libro,
+    docente: c.curso_docente[0]?.usuario ?? null,
   }));
 };
 
@@ -167,6 +173,15 @@ export const asignarDocenteDB = async (
   usuario_id: number
 ): Promise<curso_docente> => {
   return await prisma.curso_docente.create({ data: { curso_id, usuario_id } });
+};
+
+// Docente actual del curso (como máximo uno, por el índice único de SAB-117)
+export const findCourseTeacherDB = async (curso_id: number): Promise<DocenteCurso | null> => {
+  const asignacion = await prisma.curso_docente.findUnique({
+    where: { curso_id },
+    include: { usuario: { select: { usuario_id: true, nombre: true, email: true } } },
+  });
+  return asignacion?.usuario ?? null;
 };
 
 export const quitarDocenteDB = async (curso_id: number, usuario_id: number): Promise<void> => {
