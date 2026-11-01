@@ -1,4 +1,4 @@
-
+// src/controllers/radio.controller.ts
 import { Request, Response } from 'express';
 import { sincronizarRadioSabato } from '../services/radioScraper.service.js';
 import * as radioModel from '../models/radio.model.js';
@@ -22,7 +22,7 @@ export const obtenerProgramaActual = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       programa: ultimo?.programa || 'Radio Sábato',
-      locutor: ultimo?.titulo || 'Transmisión General',
+      locutor: null,
       enVivo: false,
     });
   } catch (error) {
@@ -127,6 +127,7 @@ export const sincronizarProgramas = async (req: Request, res: Response) => {
     const episodiosExistentes = await radioModel.obtenerTodosEpisodiosDB();
 
     let agregados = 0;
+
     const urlsExistentes = new Set(
       episodiosExistentes.map((episodio) => episodio.audio_url)
     );
