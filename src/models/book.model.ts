@@ -4,6 +4,7 @@ import { Prisma, libro as Libro } from '@prisma/client';
 import { prisma } from '../db/connect/db';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
 import { escapeLikePattern } from '../utils/search';
+import type { ReadingStatus } from './favorite.model';
 
 export interface CrearLibroData {
   titulo: string;
@@ -37,6 +38,11 @@ export interface BuscarLibrosFiltros {
   autor?: string;
   genero?: string;
   nivel_educativo?: string;
+  // SAB-060
+  anio_lectivo?: number;
+  anio?: number;
+  curso_id?: number;
+  estado_lectura?: ReadingStatus;
 }
 
 // SAB-91: validar que el total de páginas sea un entero positivo.
@@ -229,6 +235,10 @@ const construirWhere = async ({
   autor,
   genero,
   nivel_educativo,
+  anio_lectivo,
+  anio,
+  curso_id,
+  estado_lectura,
 }: BuscarLibrosFiltros): Promise<Prisma.libroWhereInput> => {
   const where: Prisma.libroWhereInput = {};
   const idFilters: number[][] = [];
@@ -273,6 +283,32 @@ const construirWhere = async ({
     where.nivel_educativo = {
       equals: nivel_educativo,
       mode: 'insensitive',
+    };
+  }
+
+  // SAB-060: cursos que cumplen el filtro de año/curso (null si no se filtra por curso)
+  const hasCourseFilter = Boolean(anio || curso_id);
+  const byCourse = {
+    ...(curso_id ? { curso_id } : {}),
+    curso: {
+      ...(anio_lectivo ? { anio_lectivo } : {}),
+      ...(anio ? { anio } : {}),
+    },
+  };
+
+  // SAB-060: libros asignados a esos cursos
+  if (hasCourseFilter) {
+    where.curso_libro = { some: byCourse };
+  }
+
+  // SAB-060: libros que alguien tiene en ese estado de lectura.
+  // Con año o curso, solo cuentan los alumnos inscriptos en esos cursos.
+  if (estado_lectura) {
+    where.favorito = {
+      some: {
+        estado_lectura,
+        ...(hasCourseFilter ? { usuario: { inscripcion: { some: byCourse } } } : {}),
+      },
     };
   }
 

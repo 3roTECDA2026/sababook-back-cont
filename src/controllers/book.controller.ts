@@ -4,10 +4,15 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
-
-const MAX_SEARCH_LENGTH = 100;
-
-const SEARCH_PARAMS = ['query', 'titulo', 'autor', 'genero', 'nivel_educativo'] as const;
+import {
+  getEnumParam,
+  getPositiveIntParam,
+  getStringParam,
+  QueryParamError,
+} from '../utils/queryParams';
+import { MAX_SEARCH_LENGTH } from '../utils/search';
+import { READING_STATUSES } from '../models/favorite.model';
+import type { BuscarLibrosFiltros } from '../models/book.model';
 
 const validarPaginas = (valor: unknown): boolean =>
   typeof valor === 'number' &&
@@ -78,30 +83,30 @@ class BookController {
 
   async buscar(req: Request, res: Response) {
     try {
-      // Express entrega un array si el parámetro se repite (?query=a&query=b)
-      const hasInvalidParam = SEARCH_PARAMS.some(
-        (key) => req.query[key] !== undefined && typeof req.query[key] !== 'string'
-      );
-      if (hasInvalidParam) {
-        return res
-          .status(400)
-          .json({ mensaje: 'Cada parámetro de búsqueda debe enviarse una sola vez.' });
-      }
+      // getStringParam rechaza los parámetros repetidos (?query=a&query=b)
+      const query = getStringParam(req.query, 'query');
+      const titulo = getStringParam(req.query, 'titulo');
+      const autor = getStringParam(req.query, 'autor');
 
-      const { query, titulo, autor, genero, nivel_educativo } = req.query as {
-        query?: string;
-        titulo?: string;
-        autor?: string;
-        genero?: string;
-        nivel_educativo?: string;
-      };
+      // SAB-060: año de cursada, curso y estado de lectura
+      const anio = getPositiveIntParam(req.query, 'anio');
+      const curso_id = getPositiveIntParam(req.query, 'curso_id');
+      // Igual que en GET /users: sin anio_lectivo, el año se interpreta en el actual.
+      // Con curso_id no hace falta: el curso ya pertenece a un año lectivo.
+      const anio_lectivo =
+        getPositiveIntParam(req.query, 'anio_lectivo') ??
+        (anio && !curso_id ? new Date().getFullYear() : undefined);
 
-      const filtros = {
+      const filtros: BuscarLibrosFiltros = {
         query,
         titulo,
         autor,
-        genero,
-        nivel_educativo,
+        genero: getStringParam(req.query, 'genero'),
+        nivel_educativo: getStringParam(req.query, 'nivel_educativo'),
+        anio_lectivo,
+        anio,
+        curso_id,
+        estado_lectura: getEnumParam(req.query, 'estado_lectura', READING_STATUSES),
       };
 
       if (
@@ -129,6 +134,9 @@ class BookController {
 
       return res.json(libros);
     } catch (error) {
+      if (error instanceof QueryParamError) {
+        return res.status(400).json({ mensaje: error.message });
+      }
       console.error('Error al buscar libros:', error);
       return res.status(500).json({
         mensaje: 'Error al buscar libros',
