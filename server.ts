@@ -56,7 +56,7 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Archivos estáticos subidos (PDFs y material de lectura)
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use('/uploads', (req, res, next) => { res.setHeader('X-Content-Type-Options', 'nosniff'); next(); }, express.static(path.join(process.cwd(), 'uploads')));
 
 // Endpoints traducidos a inglés (/api/v1/...)
 app.use('/api/v1/auth', authRoutes);

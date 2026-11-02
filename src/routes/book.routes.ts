@@ -19,7 +19,7 @@ router.post(
 router.post(
   '/:id/pdf',
   verifyToken,
-  requireRole(TipoRol.ADMINISTRADOR, TipoRol.DOCENTE),
+  requireAdmin,
   librosController.adjuntarPdf
 );
 

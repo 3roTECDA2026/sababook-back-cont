@@ -2,7 +2,7 @@
 // src/controllers/book.controller.ts
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
@@ -282,18 +282,19 @@ class BookController {
         });
       }
 
-      const uploadDir = path.join(process.cwd(), 'uploads', 'pdfs');
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
+       const uploadDir = path.join(process.cwd(), 'uploads', 'pdfs');
+       await fs.mkdir(uploadDir, { recursive: true });
 
-      const safeName = (nombreArchivo || 'material_lectura')
-        .replace(/[^a-zA-Z0-9._-]/g, '_')
-        .replace(/\.pdf$/i, '');
-      const filename = `${Date.now()}-${safeName}.pdf`;
-      const filePath = path.join(uploadDir, filename);
+       const safeBase = typeof nombreArchivo === 'string' && nombreArchivo.trim().length > 0
+         ? nombreArchivo
+         : 'material_lectura';
+       const safeName = safeBase
+         .replace(/[^a-zA-Z0-9._-]/g, '_')
+         .replace(/\.pdf$/i, '');
+       const filename = `${Date.now()}-${safeName}.pdf`;
+       const filePath = path.join(uploadDir, filename);
 
-      fs.writeFileSync(filePath, buffer);
+       await fs.writeFile(filePath, buffer);
 
       const fileUrl = `/uploads/pdfs/${filename}`;
       const baseUrl = (process.env.API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -344,10 +345,16 @@ class BookController {
         mensaje: 'Material de lectura PDF adjuntado correctamente al libro',
         libro: libroActualizado,
       });
-    } catch (error) {
-      console.error('Error al adjuntar PDF:', error);
-      return res.status(500).json({ mensaje: 'Error al adjuntar material PDF al libro' });
-    }
+     } catch (error) {
+       if (
+         error instanceof Prisma.PrismaClientKnownRequestError &&
+         error.code === 'P2025'
+       ) {
+         return res.status(404).json({ mensaje: 'Libro no encontrado' });
+       }
+       console.error('Error al adjuntar PDF:', error);
+       return res.status(500).json({ mensaje: 'Error al adjuntar material PDF al libro' });
+     }
   }
 }
 
