@@ -1,12 +1,22 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import librosController from '../controllers/book.controller';
-import { verifyToken, requireAdmin } from '../middleware/auth.middleware';
+import { TipoRol } from '@prisma/client';
+import { verifyToken, requireAdmin, requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
 
+// SAB-060: el filtro por estado de lectura muestra qué leen los alumnos,
+// así que es solo para docentes y administradores. El resto de la búsqueda sigue siendo pública.
+const requireStaffForReadingStatus = (req: Request, res: Response, next: NextFunction) => {
+  if (req.query.estado_lectura === undefined) return next();
+  return verifyToken(req, res, () =>
+    requireRole(TipoRol.DOCENTE, TipoRol.ADMINISTRADOR)(req, res, next)
+  );
+};
+
 // Rutas de lectura pública del catálogo
 router.get('/', librosController.obtenerCatalogo);
-router.get('/buscar', librosController.buscar);
+router.get('/buscar', requireStaffForReadingStatus, librosController.buscar);
 router.get('/:id', librosController.verDetalle);
 
 // Rutas protegidas: mutaciones de libros restringidas exclusivamente a administradores

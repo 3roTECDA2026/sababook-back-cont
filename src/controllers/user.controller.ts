@@ -10,8 +10,9 @@ import {
   QueryParamError,
 } from '../utils/queryParams';
 import { MAX_SEARCH_LENGTH } from '../utils/search';
+import { getCourseFilters } from '../utils/courseFilters';
 import type { UserFilters } from '../models/user.model';
-import { READING_STATUSES } from '../models/favorite.model';
+import { READING_STATUS_FILTERS } from '../models/favorite.model';
 
 class UserController {
   async getAllUsers(req: Request, res: Response) {
@@ -31,22 +32,12 @@ class UserController {
     }
 
     // SAB-060: año de cursada, curso, libro y estado de lectura
-    const anio = getPositiveIntParam(req.query, 'anio');
-    const curso_id = getPositiveIntParam(req.query, 'curso_id');
-    // El año de cursada se interpreta en un año lectivo: si no viene, el actual.
-    // Con curso_id no hace falta: el curso ya pertenece a un año lectivo.
-    const anio_lectivo =
-      getPositiveIntParam(req.query, 'anio_lectivo') ??
-      (anio && !curso_id ? new Date().getFullYear() : undefined);
-
     const filters: UserFilters = {
       q,
       rol: rol as TipoRol | undefined,
-      anio_lectivo,
-      anio,
-      curso_id,
+      ...(await getCourseFilters(req.query)),
       libro_id: getPositiveIntParam(req.query, 'libro_id'),
-      estado_lectura: getEnumParam(req.query, 'estado_lectura', READING_STATUSES),
+      estado_lectura: getEnumParam(req.query, 'estado_lectura', READING_STATUS_FILTERS),
     };
 
     const pagination = parsePagination(req.query, 5);

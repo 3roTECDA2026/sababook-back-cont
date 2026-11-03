@@ -11,6 +11,10 @@ export const READING_STATUSES = ['general', 'quiero-leer', 'leyendo', 'leido'] a
 
 export type ReadingStatus = (typeof READING_STATUSES)[number];
 
+// SAB-060: estados válidos para filtrar. 'general' es el valor por defecto de favorito
+// (lo tiene cualquier libro marcado como favorito), así que no sirve como filtro.
+export const READING_STATUS_FILTERS = ['quiero-leer', 'leyendo', 'leido'] as const;
+
 export interface ReadingStatusRecord {
   libro_id: number;
   estado_lectura: ReadingStatus;
