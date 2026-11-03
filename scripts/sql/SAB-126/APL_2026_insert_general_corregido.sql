@@ -51,7 +51,7 @@ BEGIN
   RAISE NOTICE 'Verificación terminada.';
 END $$;
 
--- Cursos 2026 que ya existen (si alguno existe con otra materia, se reutiliza igual)
+-- Cursos 2026 existentes: se valida la materia antes de asignar libros.
 SELECT c.curso_id, c.anio, c.division, c.anio_lectivo, m.nombre AS materia,
        (SELECT count(*) FROM curso_libro cl WHERE cl.curso_id = c.curso_id) AS libros_asignados
 FROM curso c JOIN materia m USING (materia_id)
@@ -59,13 +59,35 @@ WHERE c.anio_lectivo = 2026
 ORDER BY c.anio, c.division;
 
 -- 01 · Crear materia y cursos 2026 si no existen
-INSERT INTO materia (nombre) VALUES ('Lengua y Literatura') ON CONFLICT (nombre) DO NOTHING;
+INSERT INTO materia (nombre) VALUES
+  ('Prácticas del Lenguaje'), ('Literatura')
+ON CONFLICT (nombre) DO NOTHING;
 INSERT INTO curso (anio, division, anio_lectivo, materia_id)
 SELECT a.anio, d.division, 2026, m.materia_id
 FROM generate_series(1,6) AS a(anio)
 CROSS JOIN (VALUES ('A'), ('B')) AS d(division)
-CROSS JOIN (SELECT materia_id FROM materia WHERE nombre = 'Lengua y Literatura') m
+JOIN materia m ON m.nombre = CASE
+  WHEN a.anio BETWEEN 1 AND 3 THEN 'Prácticas del Lenguaje'
+  ELSE 'Literatura'
+END
 ON CONFLICT (anio, division, anio_lectivo) DO NOTHING;
+
+-- Nunca reasignar silenciosamente una materia a un curso existente.
+DO $$
+DECLARE v_detalle text;
+BEGIN
+  SELECT string_agg(format('%s.º %s: %s (esperada: %s)',
+      c.anio, c.division, m.nombre,
+      CASE WHEN c.anio <= 3 THEN 'Prácticas del Lenguaje' ELSE 'Literatura' END), '; ')
+    INTO v_detalle
+  FROM curso c JOIN materia m ON m.materia_id = c.materia_id
+  WHERE c.anio_lectivo = 2026 AND c.anio BETWEEN 1 AND 6
+    AND c.division IN ('A','B')
+    AND m.nombre <> CASE WHEN c.anio <= 3 THEN 'Prácticas del Lenguaje' ELSE 'Literatura' END;
+  IF v_detalle IS NOT NULL THEN
+    RAISE EXCEPTION 'Cursos con materia incorrecta; revisar manualmente antes de continuar: %', v_detalle;
+  END IF;
+END $$;
 
 -- =====================================================================
 -- APL 2026 · 02 · Libros del catálogo
@@ -490,13 +512,25 @@ INSERT INTO apl_libros (titulo, autor, genero, descripcion, clave) VALUES
   ('Cuentos brutales', 'Walsh, Rodolfo', 'Cuentos', NULL, 'walsh'),
   ('Cuentos para tahúres y otros relatos policiales', 'Walsh, Rodolfo', 'Cuentos', NULL, 'walsh');
 
+-- Evita duplicados exactos de título y autor en el catálogo temporal.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM apl_libros
+    GROUP BY pg_temp.apl_norm(titulo), pg_temp.apl_norm(autor)
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'El catálogo temporal contiene libros duplicados (título y autor).';
+  END IF;
+END $$;
+
 INSERT INTO libro (titulo, autor, genero, descripcion, nivel_educativo, activo, paginas_totales)
 SELECT v.titulo, v.autor, v.genero, v.descripcion, 'Secundario', true, NULL
 FROM apl_libros v
 WHERE NOT EXISTS (
   SELECT 1 FROM libro l
   WHERE pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(v.titulo)
-       AND (v.clave IS NULL OR pg_temp.apl_norm(l.autor) LIKE '%' || v.clave || '%')
+       AND (v.clave IS NULL AND pg_temp.apl_norm(l.autor) = pg_temp.apl_norm(v.autor) OR v.clave IS NOT NULL AND pg_temp.apl_norm(l.autor) LIKE '%' || v.clave || '%')
 );
 
 DO $$
@@ -505,7 +539,7 @@ BEGIN
   SELECT count(*) INTO v_total FROM apl_libros;
   SELECT count(*) INTO v_encontrados FROM apl_libros v
   WHERE EXISTS (SELECT 1 FROM libro l WHERE pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(v.titulo)
-       AND (v.clave IS NULL OR pg_temp.apl_norm(l.autor) LIKE '%' || v.clave || '%'));
+       AND (v.clave IS NULL AND pg_temp.apl_norm(l.autor) = pg_temp.apl_norm(v.autor) OR v.clave IS NOT NULL AND pg_temp.apl_norm(l.autor) LIKE '%' || v.clave || '%'));
   RAISE NOTICE 'Libros del listado: %. Presentes en el catálogo después de la carga: %.', v_total, v_encontrados;
   IF v_encontrados < v_total THEN
     RAISE EXCEPTION 'Faltan % libros después de la carga: se deshace todo.', v_total - v_encontrados;
@@ -1424,5 +1458,55 @@ SELECT DISTINCT l.libro_id, l.titulo, l.autor
 FROM libro l JOIN curso_libro cl ON cl.libro_id = l.libro_id JOIN curso c ON c.curso_id = cl.curso_id
 WHERE c.anio_lectivo = 2026 AND l.paginas_totales IS NULL
 ORDER BY l.titulo;
+
+
+-- VALIDACIÓN BLOQUEANTE: cualquier diferencia revierte TODA la carga.
+-- Se utiliza el mismo criterio de elección de libro que en la asignación.
+DO $$
+DECLARE
+  v_duplicados integer;
+  v_faltantes integer;
+  v_puntajes integer;
+  v_cursos integer;
+BEGIN
+  SELECT count(*) INTO v_duplicados FROM (
+    SELECT anio, pg_temp.apl_norm(titulo), coalesce(clave, '')
+    FROM apl_esperado
+    GROUP BY anio, pg_temp.apl_norm(titulo), coalesce(clave, '')
+    HAVING count(*) > 1
+  ) d;
+  IF v_duplicados > 0 THEN
+    RAISE EXCEPTION 'Hay % asignaciones duplicadas dentro de un mismo año.', v_duplicados;
+  END IF;
+
+  SELECT count(*) INTO v_cursos
+  FROM curso c JOIN materia m ON m.materia_id = c.materia_id
+  WHERE c.anio_lectivo = 2026 AND c.anio BETWEEN 1 AND 6
+    AND c.division IN ('A','B')
+    AND m.nombre = CASE WHEN c.anio <= 3 THEN 'Prácticas del Lenguaje' ELSE 'Literatura' END;
+  IF v_cursos <> 12 THEN
+    RAISE EXCEPTION 'Se esperaban 12 cursos con materias correctas; encontrados: %.', v_cursos;
+  END IF;
+
+  WITH esperadas AS (
+    SELECT c.curso_id, e.anio, e.titulo, e.clave, e.puntaje,
+      (SELECT min(l.libro_id) FROM libro l
+       WHERE pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(e.titulo)
+         AND (e.clave IS NULL OR pg_temp.apl_norm(l.autor) LIKE '%' || e.clave || '%')) AS libro_id
+    FROM apl_esperado e
+    JOIN curso c ON c.anio = e.anio AND c.anio_lectivo = 2026 AND c.division IN ('A','B')
+  )
+  SELECT count(*) FILTER (WHERE cl.libro_id IS NULL),
+         count(*) FILTER (WHERE cl.libro_id IS NOT NULL AND cl.puntaje <> x.puntaje)
+    INTO v_faltantes, v_puntajes
+  FROM esperadas x
+  LEFT JOIN curso_libro cl ON cl.curso_id = x.curso_id AND cl.libro_id = x.libro_id;
+
+  IF v_faltantes > 0 OR v_puntajes > 0 THEN
+    RAISE EXCEPTION 'Carga APL inválida: % asignaciones faltantes y % puntajes incorrectos. ROLLBACK automático.',
+      v_faltantes, v_puntajes;
+  END IF;
+  RAISE NOTICE 'Validación final OK: cursos, asignaciones y puntajes correctos.';
+END $$;
 
 COMMIT;
