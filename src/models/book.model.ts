@@ -311,6 +311,8 @@ const construirWhere = async ({
 
   // SAB-060: libros que alguien tiene en ese estado de lectura.
   // Con año o curso, solo cuentan los alumnos inscriptos en esos cursos.
+  // Con curso_id, libro y lector son del mismo curso. Con solo el año, se cruzan a nivel año:
+  // el libro puede estar asignado a 4.° A y el lector ser de 4.° B (las divisiones comparten la lista).
   if (estado_lectura) {
     where.favorito = {
       some: {

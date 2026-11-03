@@ -6,12 +6,12 @@ import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
 import {
   getEnumParam,
-  getPositiveIntParam,
   getStringParam,
   QueryParamError,
 } from '../utils/queryParams';
 import { MAX_SEARCH_LENGTH } from '../utils/search';
-import { READING_STATUSES } from '../models/favorite.model';
+import { getCourseFilters } from '../utils/courseFilters';
+import { READING_STATUS_FILTERS } from '../models/favorite.model';
 import type { BuscarLibrosFiltros } from '../models/book.model';
 
 const validarPaginas = (valor: unknown): boolean =>
@@ -102,25 +102,15 @@ class BookController {
       const titulo = getStringParam(req.query, 'titulo');
       const autor = getStringParam(req.query, 'autor');
 
-      // SAB-060: año de cursada, curso y estado de lectura
-      const anio = getPositiveIntParam(req.query, 'anio');
-      const curso_id = getPositiveIntParam(req.query, 'curso_id');
-      // Igual que en GET /users: sin anio_lectivo, el año se interpreta en el actual.
-      // Con curso_id no hace falta: el curso ya pertenece a un año lectivo.
-      const anio_lectivo =
-        getPositiveIntParam(req.query, 'anio_lectivo') ??
-        (anio && !curso_id ? new Date().getFullYear() : undefined);
-
       const filtros: BuscarLibrosFiltros = {
         query,
         titulo,
         autor,
         genero: getStringParam(req.query, 'genero'),
         nivel_educativo: getStringParam(req.query, 'nivel_educativo'),
-        anio_lectivo,
-        anio,
-        curso_id,
-        estado_lectura: getEnumParam(req.query, 'estado_lectura', READING_STATUSES),
+        // SAB-060: año de cursada, curso y estado de lectura
+        ...(await getCourseFilters(req.query)),
+        estado_lectura: getEnumParam(req.query, 'estado_lectura', READING_STATUS_FILTERS),
       };
 
       if (
