@@ -101,3 +101,27 @@ npm run dev
 
 El servidor estará disponible en `http://localhost:3001`.
 
+## Seed de datos de prueba
+
+Carga cursos, usuarios, libros del APL 2026, inscripciones, favoritos y configuración.
+**Solo para entornos locales o de prueba. Nunca contra la base de producción ni la compartida del equipo.**
+
+1. Aplicá las migraciones en una base vacía: `npx prisma migrate deploy`
+2. Corré el seed: `npx prisma db seed`
+
+El seed se puede correr varias veces sin duplicar datos.
+
+Protección: aborta si `NODE_ENV=production` o si la base no es local. Para una base de
+prueba remota propia, usá `ALLOW_SEED=true`.
+
+### Usuarios de prueba
+
+Contraseña de todos: `Test1234!`
+
+| Rol | Email |
+|---|---|
+| Administrador | admin@sababook.test |
+| Docente (1° a 6°) | docente1@sababook.test ... docente6@sababook.test |
+| Alumno | alumno.1a.1@sababook.test, alumno.1a.2@sababook.test, ... alumno.6b.2@sababook.test |
+
+Cada docente atiende un año (divisiones A y B). Hay 2 alumnos por curso.
