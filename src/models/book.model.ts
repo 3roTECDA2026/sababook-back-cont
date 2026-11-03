@@ -111,6 +111,21 @@ export const obtenerPorId = async (id: number): Promise<Libro | null> => {
   }
 };
 
+// SAB-67: ruta del PDF del libro. undefined = el libro no existe; null = no tiene PDF.
+export const getBookPdfPath = async (id: number): Promise<string | null | undefined> => {
+  const libro = await prisma.libro.findUnique({
+    where: { libro_id: id },
+    select: { pdf_path: true },
+  });
+  return libro === null ? undefined : libro.pdf_path;
+};
+
+export const updateBookPdfPath = async (id: number, pdfPath: string | null): Promise<Libro> =>
+  prisma.libro.update({
+    where: { libro_id: id },
+    data: { pdf_path: pdfPath },
+  });
+
 // Buscar libros con filtros
 export const buscarLibros = async (
   filtros: BuscarLibrosFiltros

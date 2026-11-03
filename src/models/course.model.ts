@@ -44,6 +44,7 @@ export interface LibroCurso {
   titulo: string;
   autor: string;
   portada_url: string | null;
+  pdf_path: string | null;
   puntaje: number;
 }
 
@@ -118,7 +119,7 @@ export const obtenerCursoPorIdDB = async (curso_id: number): Promise<CursoDetall
       },
       curso_libro: {
         include: {
-          libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true } },
+          libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true, pdf_path: true } },
         },
       },
     },
@@ -264,7 +265,7 @@ export const obtenerLibrosDelCursoDB = async (curso_id: number): Promise<LibroCu
   const filas = await prisma.curso_libro.findMany({
     where: { curso_id },
     include: {
-      libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true } },
+      libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true, pdf_path: true } },
     },
     orderBy: { libro: { titulo: 'asc' } },
   });
