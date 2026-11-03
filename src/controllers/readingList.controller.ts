@@ -12,6 +12,11 @@ function parsePositiveInt(value: unknown): number | null {
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
+// undefined (no vino) o texto no vacío
+function esTextoOpcional(value: unknown): boolean {
+  return value === undefined || (typeof value === 'string' && value.trim() !== '');
+}
+
 // SAB-104: resuelve qué registro de lista_lectura se edita o borra.
 // Quien hace la acción sale del token. El :docente_id de la URL (opcional) solo indica
 // de qué docente es el registro, y tocar el de otro docente es solo para administradores.
@@ -125,8 +130,13 @@ class ListaLecturaController {
       const { listaId: lista_id, docenteId: docente_id } = registro;
       const { descripcion, nivel } = req.body ?? {};
 
-      if (!descripcion && !nivel) {
+      if (descripcion === undefined && nivel === undefined) {
         return res.status(400).json({ error: 'No se proporcionaron datos para actualizar.' });
+      }
+
+      // Igual que en crear: lo que venga tiene que ser texto no vacío
+      if (!esTextoOpcional(descripcion) || !esTextoOpcional(nivel)) {
+        return res.status(400).json({ error: 'La descripción y el nivel deben ser texto no vacío.' });
       }
 
       const actualizada = await readingListService.actualizarListaLectura(
