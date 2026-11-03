@@ -481,11 +481,17 @@ class TriviaModel {
     }
   }
 
-  async getEvaluationsByBook(bookId: number, courseIds?: number[]): Promise<Evaluacion[]> {
+  async getEvaluationsByBook(
+    bookId: number,
+    courseIds?: number[],
+    onlyEnabled: boolean = false,
+  ): Promise<Evaluacion[]> {
     try {
       const where: any = { libro_id: bookId };
       if (courseIds) {
         where.OR = [{ curso_id: { in: courseIds } }, { curso_id: null }];
+        where.habilitada = true;
+      } else if (onlyEnabled) {
         where.habilitada = true;
       }
       const rows = await prisma.trivia_evaluacion.findMany({

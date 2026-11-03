@@ -295,9 +295,11 @@ class TriviaController {
       }
 
       const isStudent = req.userId != null && req.userRole === TipoRol.ALUMNO;
+      const isAdminOrTeacher = req.userId != null && (req.userRole === TipoRol.ADMINISTRADOR || req.userRole === TipoRol.DOCENTE);
       const courseIds = isStudent ? await triviaModel.getStudentCourseIds(req.userId as number) : undefined;
+      const onlyEnabled = !isAdminOrTeacher;
 
-      const evaluations = await triviaModel.getEvaluationsByBook(bookId, courseIds);
+      const evaluations = await triviaModel.getEvaluationsByBook(bookId, courseIds, onlyEnabled);
       return res.status(200).json(evaluations);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
