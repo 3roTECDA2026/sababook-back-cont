@@ -3,12 +3,43 @@ import bcrypt from 'bcrypt';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
 import { unaccentContains } from '../utils/search';
 import { Prisma, TipoRol } from '@prisma/client';
+import type { ReadingStatus } from './favorite.model';
 
 // SAB-122: filtros del listado de usuarios
 export interface UserFilters {
   q?: string;
   rol?: TipoRol; // SAB-119
+  // SAB-060
+  anio_lectivo?: number;
+  anio?: number;
+  curso_id?: number;
+  libro_id?: number;
+  estado_lectura?: ReadingStatus;
 }
+
+// Alumnos inscriptos o docentes asignados a los cursos que cumplen el filtro de año/curso.
+// Los administradores no tienen curso: con este filtro no aparecen.
+const buildCourseWhere = (filters: UserFilters): Prisma.usuarioWhereInput | null => {
+  if (!filters.anio && !filters.curso_id) return null;
+
+  const course: Prisma.cursoWhereInput = {
+    ...(filters.anio_lectivo ? { anio_lectivo: filters.anio_lectivo } : {}),
+    ...(filters.anio ? { anio: filters.anio } : {}),
+  };
+  const byCourseId = filters.curso_id ? { curso_id: filters.curso_id } : {};
+
+  const students: Prisma.usuarioWhereInput = {
+    inscripcion: { some: { ...byCourseId, curso: course } },
+  };
+  const teachers: Prisma.usuarioWhereInput = {
+    curso_docente: { some: { ...byCourseId, curso: course } },
+  };
+
+  if (filters.rol === TipoRol.ALUMNO) return students;
+  if (filters.rol === TipoRol.DOCENTE) return teachers;
+  if (filters.rol === TipoRol.ADMINISTRADOR) return { usuario_id: { in: [] } };
+  return { OR: [students, teachers] };
+};
 
 // IDs de usuarios cuyo nombre o email contiene el texto, sin distinguir tildes ni mayúsculas
 const findUserIdsByText = async (text: string): Promise<number[]> => {
@@ -19,10 +50,30 @@ const findUserIdsByText = async (text: string): Promise<number[]> => {
 };
 
 // Los filtros se combinan entre sí (AND)
-const buildUserWhere = async (filters: UserFilters): Promise<Prisma.usuarioWhereInput> => ({
-  ...(filters.q ? { usuario_id: { in: await findUserIdsByText(filters.q) } } : {}),
-  ...(filters.rol ? { rol: filters.rol } : {}),
-});
+const buildUserWhere = async (filters: UserFilters): Promise<Prisma.usuarioWhereInput> => {
+  const conditions: Prisma.usuarioWhereInput[] = [];
+
+  if (filters.q) conditions.push({ usuario_id: { in: await findUserIdsByText(filters.q) } });
+  if (filters.rol) conditions.push({ rol: filters.rol });
+
+  // SAB-060: año de cursada / curso
+  const courseWhere = buildCourseWhere(filters);
+  if (courseWhere) conditions.push(courseWhere);
+
+  // SAB-060: libro y estado de lectura (con libro: ese libro en ese estado; sin libro: alguno)
+  if (filters.libro_id || filters.estado_lectura) {
+    conditions.push({
+      favorito: {
+        some: {
+          ...(filters.libro_id ? { libro_id: filters.libro_id } : {}),
+          ...(filters.estado_lectura ? { estado_lectura: filters.estado_lectura } : {}),
+        },
+      },
+    });
+  }
+
+  return conditions.length > 0 ? { AND: conditions } : {};
+};
 
 export interface User {
   usuario_id: number;
