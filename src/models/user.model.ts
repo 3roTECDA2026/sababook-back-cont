@@ -318,6 +318,12 @@ class UserModel {
 export const userModel = new UserModel();
 
 
+// SAB-136: rol actual del usuario (null si no existe)
+export const getUserRoleDB = async (usuario_id: number): Promise<TipoRol | null> => {
+  const user = await prisma.usuario.findUnique({ where: { usuario_id }, select: { rol: true } });
+  return user?.rol ?? null;
+};
+
 // SAB-116: inscripciones del usuario en cualquier año lectivo
 export const countEnrollmentsDB = async (usuario_id: number): Promise<number> => {
   return await prisma.inscripcion.count({ where: { usuario_id } });
