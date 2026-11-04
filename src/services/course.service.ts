@@ -27,6 +27,7 @@ import {
   obtenerPuntajeMinimoAnualDB,
   obtenerProgresoAlumnoDB,
   obtenerAsignacionesAnterioresDB,
+  getCourseStudentsDB,
 } from '../models/course.model';
 import { TipoRol } from '@prisma/client';
 
@@ -241,6 +242,33 @@ class CourseService {
   async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number) {
     const minimo = await obtenerPuntajeMinimoAnualDB();
     return await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo, minimo);
+  }
+
+  // Alumnos inscriptos en el curso (SAB-135).
+  // El administrador ve los de cualquier curso; el docente, solo los de su curso.
+  async getStudents(curso_id: number, usuario_id?: number) {
+    if (!usuario_id) {
+      throw new ErrorNegocio(401, 'Autenticación requerida.');
+    }
+
+    const user = await obtenerRolUsuarioDB(usuario_id);
+    const isAdmin = user?.rol === TipoRol.ADMINISTRADOR;
+    const isCourseTeacher =
+      user?.rol === TipoRol.DOCENTE && (await esDocenteDelCursoDB(curso_id, usuario_id));
+
+    if (!isAdmin && !isCourseTeacher) {
+      throw new ErrorNegocio(
+        403,
+        'Acceso denegado. Solo el administrador o el docente del curso pueden ver sus alumnos.'
+      );
+    }
+
+    const students = await getCourseStudentsDB(curso_id);
+    if (students === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    return students;
   }
 }
 
