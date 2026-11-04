@@ -145,6 +145,14 @@ class UserService {
       throw new UserRuleError(400, 'No hay datos para actualizar.');
     }
 
+    // SAB-136: para no quedarse sin administradores, un admin no puede quitarse su propio rol
+    if (id === requesterId && data.rol && data.rol !== TipoRol.ADMINISTRADOR) {
+      throw new UserRuleError(
+        409,
+        'No podés quitarte el rol de administrador. Pedíselo a otro administrador.'
+      );
+    }
+
     // SAB-116: un alumno inscripto en un curso (en cualquier año) no puede dejar de ser alumno
     if (data.rol && data.rol !== TipoRol.ALUMNO && (await countEnrollmentsDB(id)) > 0) {
       throw new UserRuleError(
@@ -156,7 +164,11 @@ class UserService {
     return await userModel.updateUser(id, data);
   }
 
-  async deleteUser(id: number) {
+  // La ruta ya exige admin. SAB-136: no puede eliminar su propia cuenta (no quedarse sin administradores)
+  async deleteUser(id: number, requesterId: number | undefined) {
+    if (id === requesterId) {
+      throw new UserRuleError(409, 'No podés eliminar tu propia cuenta. Pedíselo a otro administrador.');
+    }
     return await userModel.deleteUser(id);
   }
 

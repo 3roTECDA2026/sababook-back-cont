@@ -110,16 +110,22 @@ class UserController {
     }
   }
 
-  async deleteUser(req: Request, res: Response) {
+  async deleteUser(req: AuthRequest, res: Response) {
     try {
-      const userId = parseInt(String(req.params.id), 10);
-      if (!userId) {
+      const userId = Number(req.params.id);
+      if (!Number.isSafeInteger(userId) || userId <= 0) {
         return res.status(400).json({ error: 'Invalid user ID' });
       }
-      await userService.deleteUser(userId);
+      await userService.deleteUser(userId, req.userId);
       return res.status(204).end();
     } catch (error) {
+      if (error instanceof UserRuleError) {
+        return res.status(error.status).json({ error: error.message });
+      }
       const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('not found')) {
+        return res.status(404).json({ error: message });
+      }
       console.error('Error deleting user:', message);
       res.status(500).json({ error: 'Internal server error' });
     }
