@@ -124,6 +124,7 @@ En PowerShell, solo para esa terminal:
 $env:DATABASE_URL="<connection string de tu base de prueba>"
 $env:ALLOW_SEED="true"
 npx prisma db seed
+```
 
 ### Usuarios de prueba
 
