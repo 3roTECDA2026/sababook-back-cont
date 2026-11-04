@@ -67,7 +67,7 @@ server.ts                  # Express: CORS, JSON, montaje de rutas en /api/v1, a
 prisma/
   schema.prisma            # modelo de datos (fuente de verdad del cliente)
   migrations/              # una carpeta por migración, cada una con migration.sql
-  seed.ts                 # datos de desarrollo (¡TRUNCA tablas! solo bases locales)
+  seed.ts                 # carga datos de prueba con upsert (no borra nada).
 src/
   routes/        *.routes.ts       # define endpoints y middlewares
   controllers/   *.controller.ts   # valida entrada, arma la respuesta HTTP
