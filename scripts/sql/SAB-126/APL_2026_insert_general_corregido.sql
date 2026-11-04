@@ -1,0 +1,1512 @@
+-- APL 2026 - CARGA UNIFICADA PARA DESARROLLO
+-- Ejecutar conectado a la BD de desarrollo. Realizar backup previamente.
+-- Todo el proceso se ejecuta en una transaccion: si falla, se revierte.
+BEGIN;
+
+-- =====================================================================
+-- APL 2026 · 00 · Verificación previa (solo lectura)
+-- Fuente: "Listados de Lectura APL 2026 (1ro a 6to Año)" (catálogo oficial).
+-- Generado el 2026-10-31. Se puede correr más de una vez:
+-- no borra ni modifica datos existentes, solo agrega lo que falta.
+-- No escribe nada. Correrlo primero y revisar los avisos.
+-- =====================================================================
+
+DO $$
+DECLARE
+  v_nullable text;
+  v_seq bigint;
+  v_max bigint;
+BEGIN
+  -- 1) Páginas opcionales: los libros nuevos se cargan sin páginas (NULL = sin progreso de lectura)
+  SELECT is_nullable INTO v_nullable
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'libro' AND column_name = 'paginas_totales';
+
+  IF v_nullable IS NULL THEN
+    RAISE EXCEPTION 'No existe la columna libro.paginas_totales.';
+  ELSIF v_nullable = 'NO' THEN
+    RAISE EXCEPTION 'libro.paginas_totales es obligatoria en esta base. Antes de cargar hay que aplicar la migración que la vuelve opcional (ver README).';
+  END IF;
+  RAISE NOTICE 'OK: libro.paginas_totales admite NULL.';
+
+  -- 2) Secuencias: si quedaron atrasadas (por un seed con IDs fijos), los INSERT fallan por clave duplicada
+  SELECT last_value INTO v_seq FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'libro_libro_id_seq';
+  SELECT coalesce(max(libro_id), 0) INTO v_max FROM libro;
+  IF v_seq IS NOT NULL AND v_seq < v_max THEN
+    RAISE WARNING 'La secuencia de libro (%) está por debajo del máximo libro_id (%). Ver README, sección "Secuencias".', v_seq, v_max;
+  END IF;
+
+  SELECT last_value INTO v_seq FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'curso_curso_id_seq';
+  SELECT coalesce(max(curso_id), 0) INTO v_max FROM curso;
+  IF v_seq IS NOT NULL AND v_seq < v_max THEN
+    RAISE WARNING 'La secuencia de curso (%) está por debajo del máximo curso_id (%). Ver README, sección "Secuencias".', v_seq, v_max;
+  END IF;
+
+  SELECT last_value INTO v_seq FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'historial_asignacion_historial_id_seq';
+  SELECT coalesce(max(historial_id), 0) INTO v_max FROM historial_asignacion;
+  IF v_seq IS NOT NULL AND v_seq < v_max THEN
+    RAISE WARNING 'La secuencia de historial_asignacion (%) está por debajo del máximo (%). Ver README, sección "Secuencias".', v_seq, v_max;
+  END IF;
+
+  RAISE NOTICE 'Verificación terminada.';
+END $$;
+
+-- Cursos 2026 existentes: se valida la materia antes de asignar libros.
+SELECT c.curso_id, c.anio, c.division, c.anio_lectivo, m.nombre AS materia,
+       (SELECT count(*) FROM curso_libro cl WHERE cl.curso_id = c.curso_id) AS libros_asignados
+FROM curso c JOIN materia m USING (materia_id)
+WHERE c.anio_lectivo = 2026
+ORDER BY c.anio, c.division;
+
+-- 01 · Crear materia y cursos 2026 si no existen
+INSERT INTO materia (nombre) VALUES
+  ('Prácticas del Lenguaje'), ('Literatura')
+ON CONFLICT (nombre) DO NOTHING;
+INSERT INTO curso (anio, division, anio_lectivo, materia_id)
+SELECT a.anio, d.division, 2026, m.materia_id
+FROM generate_series(1,6) AS a(anio)
+CROSS JOIN (VALUES ('A'), ('B')) AS d(division)
+JOIN materia m ON m.nombre = CASE
+  WHEN a.anio BETWEEN 1 AND 3 THEN 'Prácticas del Lenguaje'
+  ELSE 'Literatura'
+END
+ON CONFLICT (anio, division, anio_lectivo) DO NOTHING;
+
+-- Nunca reasignar silenciosamente una materia a un curso existente.
+DO $$
+DECLARE v_detalle text;
+BEGIN
+  SELECT string_agg(format('%s.º %s: %s (esperada: %s)',
+      c.anio, c.division, m.nombre,
+      CASE WHEN c.anio <= 3 THEN 'Prácticas del Lenguaje' ELSE 'Literatura' END), '; ')
+    INTO v_detalle
+  FROM curso c JOIN materia m ON m.materia_id = c.materia_id
+  WHERE c.anio_lectivo = 2026 AND c.anio BETWEEN 1 AND 6
+    AND c.division IN ('A','B')
+    AND m.nombre <> CASE WHEN c.anio <= 3 THEN 'Prácticas del Lenguaje' ELSE 'Literatura' END;
+  IF v_detalle IS NOT NULL THEN
+    RAISE EXCEPTION 'Cursos con materia incorrecta; revisar manualmente antes de continuar: %', v_detalle;
+  END IF;
+END $$;
+
+-- =====================================================================
+-- APL 2026 · 02 · Libros del catálogo
+-- Fuente: "Listados de Lectura APL 2026 (1ro a 6to Año)" (catálogo oficial).
+-- Generado el 2026-10-31. Se puede correr más de una vez:
+-- no borra ni modifica datos existentes, solo agrega lo que falta.
+-- 393 libros. Si un libro ya existe (mismo título y autor, sin importar tildes ni
+-- mayúsculas), no se duplica ni se modifica. Los nuevos se cargan SIN páginas (paginas_totales = NULL):
+-- no tendrán progreso de lectura hasta que alguien cargue sus páginas reales.
+-- =====================================================================
+
+
+
+-- Normaliza para comparar títulos y autores: minúsculas, sin tildes ni signos
+CREATE OR REPLACE FUNCTION pg_temp.apl_norm(t text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $fn$
+  SELECT trim(regexp_replace(regexp_replace(
+    lower(translate(coalesce(t, ''), 'ÁÉÍÓÚÜÑÀÈÌÒÙÂÊÎÔÛÄËÏÖÇáéíóúüñàèìòùâêîôûäëïöç', 'AEIOUUNAEIOUAEIOUAEIOCaeiouunaeiouaeiouaeioc')),
+    '[^a-z0-9 ]', ' ', 'g'), '\s+', ' ', 'g'))
+$fn$;
+
+CREATE TEMP TABLE apl_libros (
+  titulo text NOT NULL,
+  autor text NOT NULL,
+  genero text,
+  descripcion text,
+  clave text            -- apellido normalizado para reconocer el libro si ya existe
+) ON COMMIT DROP;
+
+INSERT INTO apl_libros (titulo, autor, genero, descripcion, clave) VALUES
+  ('Fútbol de autor', 'AA. VV.', 'Cuentos', NULL, NULL),
+  ('La venganza de la vaca', 'Aguirre, Sergio', 'Novela', NULL, 'aguirre'),
+  ('Mujercitas', 'Alcott, Louisa May', 'Novela', 'Para relacionar con: Mujercitas (2019).', 'alcott'),
+  ('El espejo africano', 'Bodoc, Liliana', 'Novela', NULL, 'bodoc'),
+  ('La tierra de las papas', 'Bordons, Paloma', 'Novela', NULL, 'bordons'),
+  ('Socorro', 'Bornemann, Elsa', 'Cuentos', NULL, 'bornemann'),
+  ('Socorro 10', 'Bornemann, Elsa', 'Cuentos', NULL, 'bornemann'),
+  ('Secretos de familia', 'Cabal, Graciela', 'Novela', NULL, 'cabal'),
+  ('La casita azul', 'Comino, Sandra', 'Novela', NULL, 'comino'),
+  ('Matilda', 'Dahl, Roald', 'Novela', 'Para relacionar con: Matilda (2022).', 'dahl'),
+  ('La línea', 'Domec, B. y Barnes, A.', 'Libro álbum', NULL, 'domec'),
+  ('Señales del más acá', 'Drennen, Olga', 'Novela corta', NULL, 'drennen'),
+  ('El viaje de Parvana', 'Ellis, Deborah', 'Novela', NULL, 'ellis'),
+  ('Encuentro con Flo', 'Escudero, Laura', 'Novela', NULL, 'escudero'),
+  ('Rafaela', 'Furiasse, Mariana', 'Novela', NULL, 'furiasse'),
+  ('Caídos del mapa', 'Falconi, María Inés', 'Novela', NULL, 'falconi'),
+  ('En busca del cielo perdido', 'González, Eduardo', 'Novela', NULL, 'gonzalez'),
+  ('Octubre, un crimen', 'Huidobro, Norma', 'Novela', NULL, 'huidobro'),
+  ('El libro de la selva', 'Kipling, Rudyard', 'Novela', 'Para relacionar con: Mowgli: la leyenda de la selva (2018).', 'kipling'),
+  ('Me acuerdo', 'Kohan, Martín', 'Autobiografía', NULL, 'kohan'),
+  ('El origen del fuego', 'Mainé, M. y Barreiro, H.', 'Leyendas', NULL, 'maine'),
+  ('Ojos amarillos', 'Mariño, Ricardo', 'Novela corta', NULL, 'marino'),
+  ('Otroso', 'Montes, Graciela', 'Novela', NULL, 'montes'),
+  ('Aventuras y desventuras de Casiperro del hambre', 'Montes, Graciela', 'Novela', NULL, 'montes'),
+  ('Anne, la de Tejados Verdes', 'Montgomery, L. M.', 'Novela', 'Para relacionar con: Anne with an E (2017).', 'montgomery'),
+  ('El equipo de los sueños', 'Olguín, Sergio', 'Novela', NULL, 'olguin'),
+  ('Frin', 'Pescetti, Luis', 'Novela', NULL, 'pescetti'),
+  ('Lejos de Frin', 'Pescetti, Luis', 'Novela', NULL, 'pescetti'),
+  ('Las super 8 (4 títulos)', 'Pogorelsky, Melina', 'Novela', NULL, 'pogorelsky'),
+  ('ATP (h)arta para todo público', 'Porcelli Piussi, Liza', 'Novela', NULL, 'porcelli'),
+  ('Cuentos de la selva', 'Quiroga, Horacio', 'Cuentos', NULL, 'quiroga'),
+  ('Leyendas mapuches', 'Remussi, Diego (ilustr. Pablo De Bella)', 'Leyendas', NULL, 'remussi'),
+  ('Harry Potter (I, II, III)', 'Rowling, J. K.', 'Novela', 'Para relacionar con: Harry Potter y la piedra filosofal (2001), Harry Potter y la cámara secreta (2002), Harry Potter y el prisionero de Azkaban (2004).', 'rowling'),
+  ('El Principito', 'Saint-Exupéry, Antoine de', 'Novela corta', 'Para relacionar con: El Principito (2010).', 'saint exupery'),
+  ('El contador de cuentos', 'Saki', 'Cuento', NULL, 'saki'),
+  ('Vida de un lápiz', 'Schuff, Nicolás y Trach, Martina', 'Libro álbum', NULL, 'schuff'),
+  ('La fábrica del terror I, II, III', 'Shua, Ana María', 'Cuentos', NULL, 'shua'),
+  ('Planeta miedo', 'Shua, Ana María', 'Cuentos', NULL, 'shua'),
+  ('El gigante de Balvanera y otras leyendas urbanas', 'Silvestre, Sol', 'Leyendas urbanas', NULL, 'silvestre'),
+  ('El negro de París', 'Soriano, Osvaldo', 'Novela', NULL, 'soriano'),
+  ('El diablo en la botella', 'Stevenson, Robert L.', 'Cuento', NULL, 'stevenson'),
+  ('El extraño caso del Dr. Jekyll y Mr. Hyde', 'Stevenson, Robert L.', 'Novela', NULL, 'stevenson'),
+  ('Drácula (adaptación)', 'Stoker, Bram (adapt. Franco Vaccarini)', 'Novela', NULL, 'stoker'),
+  ('El árbol de los flecos', 'Suez, Perla', 'Cuentos', NULL, 'suez'),
+  ('Mi herida zombi', 'Vaccarini, Franco', 'Cuentos', NULL, 'vaccarini'),
+  ('Los guerreros de la hierba', 'Valentino, Esteban', 'Novela', NULL, 'valentino'),
+  ('La máquina del tiempo (novela gráfica)', 'Wells, H. G. y Davis, T.', 'Novela gráfica', NULL, 'wells'),
+  ('El fantasma de Canterville', 'Wilde, Oscar', 'Novela corta', NULL, 'wilde'),
+  ('El retrato de Dorian Gray (novela gráfica)', 'Wilde, Oscar (ilustr. Mr. Exe, guion Alejo Valdearena)', 'Novela gráfica', NULL, 'wilde'),
+  ('Mitos antiguos I', 'Varios autores', 'Mitos', NULL, NULL),
+  ('Mitos antiguos II', 'Varios autores', 'Mitos', NULL, NULL),
+  ('Mitos antiguos III', 'Varios autores', 'Mitos', NULL, NULL),
+  ('Mitos en acción I', 'Varios autores', 'Mitos', NULL, NULL),
+  ('Mitos en acción II', 'Varios autores', 'Mitos', NULL, NULL),
+  ('Mitos en acción III', 'Varios autores', 'Mitos', NULL, NULL),
+  ('Mitos clasificados I', 'Varios autores', 'Mitos', NULL, NULL),
+  ('Mitos clasificados II', 'Varios autores', 'Mitos', NULL, NULL),
+  ('Mitos clasificados III', 'Varios autores', 'Mitos', NULL, NULL),
+  ('El mago de Oz', 'Baum, L. Frank', 'Novela', NULL, 'baum'),
+  ('El túnel de los pájaros muertos', 'Birmajer, Marcelo', 'Novela', NULL, 'birmajer'),
+  ('Diciembre súper álbum', 'Bodoc, Liliana', 'Novela', NULL, 'bodoc'),
+  ('Alicia en el país de las maravillas', 'Carroll, Lewis', 'Novela', NULL, 'carroll'),
+  ('Los juegos del hambre', 'Collins, Suzanne', 'Novela', NULL, 'collins'),
+  ('El buscador de finales', 'De Santis, Pablo', 'Novela', NULL, 'de santis'),
+  ('El inventor de juegos', 'De Santis, Pablo', 'Novela', NULL, 'de santis'),
+  ('El juego del laberinto', 'De Santis, Pablo', 'Novela', NULL, 'de santis'),
+  ('El ruido del éxito', 'Ferrari, Andrea', 'Novela', NULL, 'ferrari'),
+  ('Las marcas de la mentira', 'Ferrari, Andrea', 'Novela', NULL, 'ferrari'),
+  ('La velocidad de la música', 'Ferrari, Andrea', 'Novela', NULL, 'ferrari'),
+  ('Hush, hush', 'Fitzpatrick, Becca', 'Novela', NULL, 'fitzpatrick'),
+  ('Puro fútbol', 'Fontanarrosa, Roberto', 'Cuentos', NULL, 'fontanarrosa'),
+  ('El viejo y el mar', 'Hemingway, Ernest', 'Novela', NULL, 'hemingway'),
+  ('Otra vuelta de tuerca', 'James, Henry', 'Novela', 'Para relacionar con: La maldición de Bly Manor (Mike Flanagan, 2020, Netflix).', 'james'),
+  ('La metamorfosis', 'Kafka, Franz', 'Novela', NULL, 'kafka'),
+  ('Historias secretas de ciudades y fantasmas', 'Laragione, Lucía', 'Cuentos', NULL, NULL),
+  ('Los siete nombres', 'Levin, Clara', 'Novela', NULL, 'levin'),
+  ('El aprendiz', 'Méndez, Mario', 'Novela', NULL, 'mendez'),
+  ('Esto no es justo', 'Nicholls, Sally', 'Novela', NULL, 'nicholls'),
+  ('El Eternauta', 'Oesterheld, Héctor Germán', 'Historieta', NULL, 'oesterheld'),
+  ('Las grietas de Jara', 'Piñeiro, Claudia', 'Novela', NULL, 'pineiro'),
+  ('Cuentos de amor, de locura y de muerte', 'Quiroga, Horacio', 'Cuentos', NULL, 'quiroga'),
+  ('El palacio de la medianoche', 'Ruiz Zafón, Carlos', 'Novela', NULL, 'zafon'),
+  ('La sombra del viento', 'Ruiz Zafón, Carlos', 'Novela', NULL, 'zafon'),
+  ('Esperándolo a Tito', 'Sacheri, Eduardo', 'Cuentos', NULL, 'sacheri'),
+  ('Papeles en el viento', 'Sacheri, Eduardo', 'Novela', NULL, 'sacheri'),
+  ('Ser feliz era esto', 'Sacheri, Eduardo', 'Novela', NULL, 'sacheri'),
+  ('El orden de las cosas', 'Thays, Iván', 'Novela', NULL, 'thays'),
+  ('Titanis, el armario de la luna', 'Valentino, Esteban', 'Novela', NULL, 'valentino'),
+  ('Kitchen', 'Yoshimoto, Banana', 'Novela', NULL, 'yoshimoto'),
+  ('Siete grandes cuentos de terror', 'Antología de autores', 'Cuentos', 'Para relacionar con: El club de la medianoche (Mike Flanagan, 2022, Netflix).', NULL),
+  ('Cuentos fantásticos (antología)', 'Antología de autores', 'Cuentos', 'Para relacionar con: El país de los sueños (Francis Lawrence, 2022, Netflix).', NULL),
+  ('Los vecinos mueren en las novelas', 'Aguirre, Sergio', 'Novela', NULL, 'aguirre'),
+  ('Amigos robots', 'Asimov, Isaac', 'Cuentos', 'Para relacionar con: I Am Mother (Grant Sputore, 2019, Netflix).', 'asimov'),
+  ('El perjurio de la nieve', 'Bioy Casares, Adolfo', 'Novela breve', NULL, 'bioy'),
+  ('El jamón del sánguche', 'Bialet, Graciela', 'Novela', NULL, 'bialet'),
+  ('Amigos por el viento', 'Bodoc, Liliana', 'Novela', NULL, 'bodoc'),
+  ('El mapa imposible', 'Bodoc, Liliana', 'Novela', NULL, 'bodoc'),
+  ('El mar y la serpiente', 'Bombara, Paula', 'Novela', NULL, 'bombara'),
+  ('Seis problemas para don Isidro Parodi', 'Borges, Jorge Luis y Bioy Casares, Adolfo', 'Cuentos', NULL, 'borges'),
+  ('La invención de Morel', 'Bioy Casares, Adolfo', 'Novela', 'Para relacionar con: Lost (serie).', 'bioy'),
+  ('Crónicas marcianas', 'Bradbury, Ray', 'Novela', 'Para relacionar con: La llegada (Denis Villeneuve, 2016, Netflix).', 'bradbury'),
+  ('La historia de Julia, la niña que tenía sombra de niño', 'Bruel, Christian', 'Cuento', NULL, 'bruel'),
+  ('Estudio en escarlata', 'Conan Doyle, Arthur', 'Novela', 'Para relacionar con: Estudio en escarlata (Henri Safran, 1968, YouTube).', 'doyle'),
+  ('Ceremonia secreta', 'Denevi, Marco', 'Novela breve', NULL, 'denevi'),
+  ('Enciclopedia en la hoguera', 'De Santis, Pablo', 'Novela', NULL, 'de santis'),
+  ('Páginas mezcladas', 'De Santis, Pablo', 'Novela', NULL, 'de santis'),
+  ('De cómo Romeo se transó a Julieta', 'Falconi, María Inés', 'Teatro', 'Para relacionar con: Shakespeare in Love (John Madden, 1999).', 'falconi'),
+  ('Jamle', 'Falconi, María Inés', 'Teatro', 'Para relacionar con: Hamlet (Kenneth Branagh, 1996, YouTube).', 'falconi'),
+  ('Ruido en una noche de verano', 'Falconi, María Inés', 'Teatro', NULL, 'falconi'),
+  ('Made in Lanús', 'Fernández Tiscornia, Nelly', 'Teatro', NULL, 'tiscornia'),
+  ('Intermitente Rafaela', 'Furiasse, Mariana', 'Novela', NULL, 'furiasse'),
+  ('Relato de un náufrago', 'García Márquez, Gabriel', 'Novela', NULL, 'garcia marquez'),
+  ('Piedra, papel o tijera', 'Garland, Inés', 'Novela', NULL, 'garland'),
+  ('Demian', 'Hesse, Hermann', 'Novela', NULL, 'hesse'),
+  ('Cuentos de terror', 'Laiseca, Alberto (comp.)', 'Cuentos', NULL, 'laiseca'),
+  ('Cuentos de terror', 'Lovecraft, H. P.', 'Cuentos', 'Para relacionar con: El club de la medianoche (Mike Flanagan, 2022, Netflix).', 'lovecraft'),
+  ('Cuentos fantásticos', 'Lugones, Leopoldo', 'Cuentos', NULL, 'lugones'),
+  ('La casa de azúcar; El vestido de terciopelo; La liebre dorada (y otros cuentos seleccionados)', 'Ocampo, Silvina', 'Cuentos', NULL, 'ocampo'),
+  ('La muerte lenta de Luciana B.', 'Martínez, Guillermo', 'Novela', NULL, 'martinez'),
+  ('Misteriosa Buenos Aires (selección de cuentos)', 'Mujica Lainez, Manuel', 'Cuentos', NULL, 'mujica'),
+  ('La grasita', 'Pérez Sabbi, María', 'Novela', NULL, 'sabbi'),
+  ('A la deriva y otros cuentos', 'Quiroga, Horacio', 'Cuentos', NULL, 'quiroga'),
+  ('M''hijo el dotor', 'Sánchez, Florencio', 'Teatro', NULL, 'sanchez'),
+  ('La isla del tesoro', 'Stevenson, Robert L.', 'Novela', NULL, 'stevenson'),
+  ('El hombre invisible', 'Wells, H. G.', 'Novela', NULL, 'wells'),
+  ('Selección poética (3.° año)', 'Varios autores', 'Poesía', NULL, NULL),
+  ('Fantasmas', 'Varios autores', 'Cuento', NULL, NULL),
+  ('Divina Comedia (original o adaptación)', 'Alighieri, Dante', 'Poema', 'Para relacionar con: Nuestra música (Jean-Luc Godard, 2004).', 'alighieri'),
+  ('Cantar de mio Cid', 'Anónimo', 'Poema épico', 'Para relacionar con: El Cid (Anthony Mann, 1961).', NULL),
+  ('Héroes y viajeros de la Antigua Grecia', 'Anónimo', 'Relatos', NULL, NULL),
+  ('Las mil y una noches', 'Anónimo', 'Relatos', NULL, NULL),
+  ('Panchatantra', 'Anónimo', 'Relatos', NULL, NULL),
+  ('Popol Vuh', 'Anónimo', 'Relato mítico', NULL, NULL),
+  ('Robin Hood', 'Anónimo', 'Leyenda', 'Para relacionar con: Robin Hood (Ridley Scott, 2010).', NULL),
+  ('Tierra marcada', 'Antología de cuentos', 'Cuentos', NULL, NULL),
+  ('Leyendas de Guatemala', 'Asturias, Miguel Ángel', 'Relatos', NULL, 'asturias'),
+  ('Orgullo y prejuicio', 'Austen, Jane', 'Novela', 'Para relacionar con: Orgullo y prejuicio (Joe Wright).', 'austen'),
+  ('Cuando te vi caer', 'Basualdo, S.', 'Novela', NULL, 'basualdo'),
+  ('Duelos de pistolas, cuchillos y magos', 'Birmajer, Marcelo', 'Cuentos', NULL, 'birmajer'),
+  ('Decamerón', 'Boccaccio, Giovanni', 'Relatos', NULL, 'boccaccio'),
+  ('Los días de la sombra', 'Bodoc, Liliana', 'Novela', NULL, 'bodoc'),
+  ('Tiempo de dragones', 'Bodoc, Liliana', 'Novela', NULL, 'bodoc'),
+  ('El elegido en su soledad', 'Bodoc, Liliana', 'Novela', NULL, 'bodoc'),
+  ('Cuentos (selección)', 'Borges, Jorge Luis', 'Cuentos', NULL, 'borges'),
+  ('Cumbres borrascosas', 'Brontë, Emily', 'Novela', 'Para relacionar con: Cumbres borrascosas (Andrea Arnold, 2011).', 'bronte'),
+  ('Jane Eyre', 'Brontë, Charlotte', 'Novela', 'Para relacionar con: Jane Eyre (Cary Fukunaga).', 'bronte'),
+  ('Obras (selección)', 'Calderón de la Barca, Pedro', 'Drama', NULL, 'calderon'),
+  ('El Quijote de la Mancha (1.ª parte)', 'Cervantes, Miguel de', 'Novela', NULL, 'cervantes'),
+  ('Rompecabezas', 'De Santis, Pablo', 'Historieta', NULL, 'de santis'),
+  ('Cuento de Navidad', 'Dickens, Charles', 'Cuento', 'Para relacionar con: Los fantasmas de Scrooge (Robert Zemeckis, 2009).', 'dickens'),
+  ('Grandes esperanzas', 'Dickens, Charles', 'Novela', NULL, 'dickens'),
+  ('Las mil y una noches argentinas', 'Draghi Lucero, Juan', 'Relatos', NULL, 'draghi'),
+  ('La dama de las camelias', 'Dumas (h), Alejandro', 'Novela', 'Para relacionar con: La dama de las camelias (Gasparini).', 'dumas'),
+  ('El conde de Montecristo', 'Dumas, Alejandro', 'Novela', 'Para relacionar con: El conde de Montecristo (Kevin Reynolds).', 'dumas'),
+  ('Los tres mosqueteros', 'Dumas, Alejandro', 'Novela', 'Para relacionar con: Los tres mosqueteros (Martin Bourboulon, 2023).', 'dumas'),
+  ('El desertor', 'Eckhardt, M.', 'Novela', NULL, 'eckhardt'),
+  ('Nuestra parte de noche', 'Enríquez, Mariana', 'Novela', NULL, 'enriquez'),
+  ('Agamenón', 'Esquilo', 'Tragedia', NULL, 'esquilo'),
+  ('Ifigenia', 'Eurípides', 'Tragedia', NULL, 'euripides'),
+  ('Zoom', 'Ferrari, Andrea', 'Novela', NULL, 'ferrari'),
+  ('Antígona furiosa', 'Gambaro, Griselda', 'Teatro', NULL, 'gambaro'),
+  ('Las Islas', 'Gamerro, Carlos', 'Cuentos', NULL, 'gamerro'),
+  ('Bodas de sangre', 'García Lorca, Federico', 'Tragedia', NULL, 'lorca'),
+  ('La casa de Bernarda Alba', 'García Lorca, Federico', 'Tragedia', NULL, 'lorca'),
+  ('Yerma', 'García Lorca, Federico', 'Tragedia', NULL, 'lorca'),
+  ('Lomax', 'Garijo, R.', 'Historieta', NULL, 'garijo'),
+  ('Adiós Rapa Nui', 'Gil López', 'Novela', NULL, NULL),
+  ('El león rendido', 'González, Eduardo', 'Novela', NULL, 'gonzalez'),
+  ('Martín Fierro', 'Hernández, José', 'Poema', NULL, 'hernandez'),
+  ('Ilíada', 'Homero', 'Poema épico', 'Para relacionar con: Troya (Wolfgang Petersen, 2004); Helena de Troya (2003).', 'homero'),
+  ('Odisea', 'Homero', 'Poema épico', NULL, 'homero'),
+  ('Don Quijote (adaptación)', 'Jeanmarie, F.', 'Novela', NULL, 'jeanmarie'),
+  ('Los árboles caídos también son el bosque', 'Kamiya, A.', 'Cuentos', NULL, 'kamiya'),
+  ('Caballero negro', 'Lardone, Lilia', 'Novela', NULL, 'lardone'),
+  ('Puertas adentro', 'Lardone, Lilia', 'Novela', NULL, 'lardone'),
+  ('Antígona Vélez', 'Marechal, Leopoldo', 'Teatro', NULL, 'marechal'),
+  ('Hadas y dragones', 'Ministerio de Cultura y Educación', 'Relatos', NULL, NULL),
+  ('Che', 'Oesterheld, Héctor Germán', 'Historieta', NULL, 'oesterheld'),
+  ('1982', 'Olguín, Sergio', 'Novela', NULL, 'olguin'),
+  ('1984', 'Orwell, George', 'Novela', 'Para relacionar con: 1984 (Michael Radford).', 'orwell'),
+  ('Cuentos que cuentan los tehuelches', 'Palermo, M.', 'Cuentos', NULL, 'palermo'),
+  ('Miedos de invierno', 'Pérez Díaz', 'Relatos', NULL, 'perez diaz'),
+  ('Como si no hubiera que cruzar el mar', 'Pisos, Cecilia', 'Novela', NULL, 'pisos'),
+  ('Trasfondo', 'Ratto, Patricia', 'Novela', NULL, 'ratto'),
+  ('La leyenda de Taita Osongo', 'Rosell, J. F.', 'Novela', NULL, 'rosell'),
+  ('Cabecita negra y otros cuentos', 'Rozenmacher, Germán', 'Cuentos', NULL, 'rozenmacher'),
+  ('Dos años, ocho meses y veintiocho noches', 'Rushdie, Salman', 'Novela', NULL, 'rushdie'),
+  ('Carta al sargento Kirk', 'Sasturain, Juan', 'Poemas', NULL, 'sasturain'),
+  ('La valija de Benavides / Perdiendo velocidad', 'Schweblin, Samanta', 'Cuentos', NULL, 'schweblin'),
+  ('Selección de leyendas latinoamericanas, europeas, orientales y árabes', 'Varios autores', 'Leyendas', NULL, NULL),
+  ('El rey Lear', 'Shakespeare, William', 'Teatro', 'Para relacionar con: El rey Lear (Jean-Luc Godard).', 'shakespeare'),
+  ('Macbeth', 'Shakespeare, William', 'Teatro', NULL, 'shakespeare'),
+  ('Julio César', 'Shakespeare, William', 'Teatro', NULL, 'shakespeare'),
+  ('Antígona', 'Sófocles', 'Teatro', NULL, 'sofocles'),
+  ('Electra', 'Sófocles', 'Teatro', NULL, 'sofocles'),
+  ('Rojo y negro', 'Stendhal', 'Novela', 'Para relacionar con: Rojo y negro (Claude Autant-Lara, 1954).', 'stendhal'),
+  ('El arte de la guerra', 'Sun Tzu', 'Reflexiones', NULL, 'sun tzu'),
+  ('Los viajes de Gulliver', 'Swift, Jonathan', 'Novela', 'Para relacionar con: Los viajes de Gulliver (Charles Sturridge, 1996).', 'swift'),
+  ('El señor de los anillos', 'Tolkien, J. R. R.', 'Novela', 'Para relacionar con: El señor de los anillos (Peter Jackson).', 'tolkien'),
+  ('Anna Karenina', 'Tolstói, León', 'Novela', 'Para relacionar con: Anna Karenina (Joe Wright).', 'tolsto'),
+  ('Todos los soles mienten', 'Valentino, Esteban', 'Novela', NULL, 'valentino'),
+  ('Es tan difícil volver a Ítaca', 'Valentino, Esteban', 'Novela', NULL, 'valentino'),
+  ('Nuestra Señora de París', 'Hugo, Víctor', 'Novela', 'Para relacionar con: El jorobado de Notre Dame (Gary Trousdale, 1996).', 'hugo'),
+  ('Églogas', 'Virgilio', 'Poema', NULL, 'virgilio'),
+  ('Eneida', 'Virgilio', 'Poema', NULL, 'virgilio'),
+  ('Geórgicas', 'Virgilio', 'Poema', NULL, 'virgilio'),
+  ('El retrato de Dorian Gray', 'Wilde, Oscar', 'Novela', NULL, 'wilde'),
+  ('La importancia de llamarse Ernesto', 'Wilde, Oscar', 'Comedia', NULL, 'wilde'),
+  ('Cuentos orientales', 'Yourcenar, Marguerite', 'Cuentos', NULL, 'yourcenar'),
+  ('La casa de los conejos', 'Alcoba, Laura', 'Novela', NULL, 'alcoba'),
+  ('La casa de los espíritus', 'Allende, Isabel', 'Novela', NULL, 'allende'),
+  ('De amor y de sombra', 'Allende, Isabel', 'Novela', NULL, 'allende'),
+  ('Ladrilleros', 'Almada, Selva', 'Novela', NULL, 'almada'),
+  ('El viento que arrasa', 'Almada, Selva', 'Novela', NULL, 'almada'),
+  ('No es un río', 'Almada, Selva', 'Novela', NULL, 'almada'),
+  ('Chicas muertas', 'Almada, Selva', 'Crónica', NULL, 'almada'),
+  ('Lazarillo de Tormes', 'Anónimo', 'Novela picaresca', NULL, NULL),
+  ('El hombre bicentenario', 'Asimov, Isaac', 'Cuentos', NULL, 'asimov'),
+  ('Yo, robot', 'Asimov, Isaac', 'Cuentos', NULL, 'asimov'),
+  ('La isla desierta', 'Arlt, Roberto', 'Teatro', NULL, 'arlt'),
+  ('Inventario y otros poemas', 'Benedetti, Mario', 'Poesía', NULL, 'benedetti'),
+  ('Rimas', 'Bécquer, Gustavo Adolfo', 'Poesía', NULL, 'becquer'),
+  ('Leyendas', 'Bécquer, Gustavo Adolfo', 'Narrativo', NULL, 'becquer'),
+  ('El niño con el pijama de rayas', 'Boyne, John', 'Novela', NULL, 'boyne'),
+  ('Elisa, la rosa inesperada', 'Bodoc, Liliana', 'Novela', NULL, 'bodoc'),
+  ('Diez negritos', 'Christie, Agatha', 'Novela policial', NULL, 'christie'),
+  ('Asesinato en el Orient Express', 'Christie, Agatha', 'Novela policial', NULL, 'christie'),
+  ('La ratonera', 'Christie, Agatha', 'Teatro', NULL, 'christie'),
+  ('Mateo', 'Discépolo, Armando', 'Teatro', NULL, 'discepolo'),
+  ('Stéfano', 'Discépolo, Armando', 'Teatro', NULL, 'discepolo'),
+  ('Babilonia', 'Discépolo, Armando', 'Teatro', NULL, 'discepolo'),
+  ('Los peligros de fumar en la cama', 'Enriquez, Mariana', 'Cuentos', NULL, 'enriquez'),
+  ('Malinche', 'Esquivel, Laura', 'Novela', NULL, 'esquivel'),
+  ('Como agua para chocolate', 'Esquivel, Laura', 'Novela', NULL, 'esquivel'),
+  ('Aura', 'Fuentes, Carlos', 'Novela', NULL, 'fuentes'),
+  ('El naranjo', 'Fuentes, Carlos', 'Cuentos', NULL, 'fuentes'),
+  ('El mar que nos trajo', 'Gambaro, Griselda', 'Novela', NULL, 'gambaro'),
+  ('La malasangre', 'Gambaro, Griselda', 'Teatro', NULL, 'gambaro'),
+  ('Decir sí', 'Gambaro, Griselda', 'Teatro', NULL, 'gambaro'),
+  ('Las venas abiertas de América Latina', 'Galeano, Eduardo', 'Ensayo', NULL, 'galeano'),
+  ('Patas arriba. La escuela del mundo al revés', 'Galeano, Eduardo', 'Ensayo', NULL, 'galeano'),
+  ('El libro de los abrazos', 'Galeano, Eduardo', 'Relatos', NULL, 'galeano'),
+  ('Úselo y tírelo', 'Galeano, Eduardo', 'Relatos', NULL, 'galeano'),
+  ('Mujeres', 'Galeano, Eduardo', 'Relatos', NULL, 'galeano'),
+  ('Cien años de soledad', 'García Márquez, Gabriel', 'Novela', NULL, 'garcia marquez'),
+  ('Noticias de un secuestro', 'García Márquez, Gabriel', 'Novela', NULL, 'garcia marquez'),
+  ('Del amor y otros demonios', 'García Márquez, Gabriel', 'Novela', NULL, 'garcia marquez'),
+  ('Doce cuentos peregrinos', 'García Márquez, Gabriel', 'Cuentos', NULL, 'garcia marquez'),
+  ('Casa de muñecas', 'Ibsen, Henrik', 'Teatro', NULL, 'ibsen'),
+  ('Un enemigo del pueblo', 'Ibsen, Henrik', 'Teatro', NULL, 'ibsen'),
+  ('Arráncame la vida', 'Mastretta, Ángeles', 'Novela', NULL, 'mastretta'),
+  ('Mujeres de ojos grandes', 'Mastretta, Ángeles', 'Cuentos', NULL, 'mastretta'),
+  ('200 años de poesía argentina', 'Monteleone, Jorge', 'Poesía', NULL, 'monteleone'),
+  ('Tokio blues', 'Murakami, Haruki', 'Novela', NULL, 'murakami'),
+  ('Hombres sin mujeres', 'Murakami, Haruki', 'Cuentos', NULL, 'murakami'),
+  ('Antología poética', 'Neruda, Pablo', 'Poesía', NULL, 'neruda'),
+  ('Las viudas de los jueves', 'Piñeiro, Claudia', 'Novela', NULL, 'pineiro'),
+  ('Tuya', 'Piñeiro, Claudia', 'Novela', NULL, 'pineiro'),
+  ('Catedrales', 'Piñeiro, Claudia', 'Novela', NULL, 'pineiro'),
+  ('Cuentos que me apasionaron 1', 'Sabato, Ernesto', 'Cuentos', NULL, 'sabato'),
+  ('El túnel', 'Sabato, Ernesto', 'Novela', NULL, 'sabato'),
+  ('La resistencia', 'Sabato, Ernesto', 'Ensayo', NULL, 'sabato'),
+  ('Pájaros en la boca', 'Schweblin, Samanta', 'Cuentos', NULL, 'schweblin'),
+  ('El cartero', 'Skármeta, Antonio', 'Novela breve', NULL, 'skarmeta'),
+  ('Y el fútbol contó un cuento', 'Sacheri, Eduardo', 'Cuentos', NULL, 'sacheri'),
+  ('La noche de la Usina', 'Sacheri, Eduardo', 'Novela', NULL, 'sacheri'),
+  ('La pregunta de sus ojos', 'Sacheri, Eduardo', 'Novela', NULL, 'sacheri'),
+  ('Antología poética', 'Storni, Alfonsina', 'Poesía', NULL, 'storni'),
+  ('Teatro Abierto 1981', 'AA. VV.', 'Teatro', NULL, NULL),
+  ('Teatro x la Identidad', 'AA. VV.', 'Teatro', NULL, NULL),
+  ('Nosotras en libertad', 'AA. VV.', 'Cuentos', NULL, NULL),
+  ('Operación masacre', 'Walsh, Rodolfo', 'Novela de no ficción', 'Para relacionar con: Operación masacre (Jorge Cedrón, 1973).', 'walsh'),
+  ('La ladrona de libros', 'Zusak, Markus', 'Novela', NULL, 'zusak'),
+  ('El mármol', 'Aira, César', 'Novela', NULL, 'aira'),
+  ('El mago', 'Aira, César', 'Novela', NULL, 'aira'),
+  ('Ema, la cautiva', 'Aira, César', 'Novela', NULL, 'aira'),
+  ('El desapego es una manera de querernos', 'Almada, Selva', 'Novela', NULL, 'almada'),
+  ('El colectivo', 'Almeida, Eugenia', 'Novela', NULL, 'almeida'),
+  ('Inundación', 'Almeida, Eugenia', 'Novela', NULL, 'almeida'),
+  ('Lisístrata', 'Aristófanes', 'Comedia', NULL, 'aristofanes'),
+  ('El juguete rabioso', 'Arlt, Roberto', 'Novela', NULL, 'arlt'),
+  ('Aguafuertes porteñas (selección)', 'Arlt, Roberto', 'Relatos', NULL, 'arlt'),
+  ('Las otras islas', 'Birmajer, Marcelo y otros', 'Relatos', NULL, 'birmajer'),
+  ('Diario de la guerra del cerdo', 'Bioy Casares, Adolfo', 'Novela', 'Para relacionar con: Diario de la guerra del cerdo (Leopoldo Torre Nilsson, 1975).', 'bioy'),
+  ('Crónicas de Bustos Domecq', 'Borges, Jorge Luis y Bioy Casares, Adolfo', 'Crónicas', NULL, 'bioy'),
+  ('Los que aman, odian', 'Bioy Casares, Adolfo y Ocampo, Silvina', 'Novela', NULL, 'bioy'),
+  ('Cuaderno San Martín', 'Borges, Jorge Luis', 'Poemas', NULL, 'borges'),
+  ('El Aleph', 'Borges, Jorge Luis', 'Cuentos', NULL, 'borges'),
+  ('Ficciones', 'Borges, Jorge Luis', 'Cuentos', NULL, 'borges'),
+  ('El libro de arena', 'Borges, Jorge Luis', 'Cuentos', NULL, 'borges'),
+  ('Tributo del mundo', 'Bellessi, Diana', 'Poemas', NULL, 'bellessi'),
+  ('Los que llegamos más lejos', 'Briante, Miguel y otros', 'Cuentos', NULL, 'briante'),
+  ('Kincón', 'Briante, Miguel', 'Novela', NULL, 'briante'),
+  ('El salmón', 'Casas, Fabián', 'Poemas', NULL, 'casas'),
+  ('Los teresos', 'Casas, Fabián', 'Poemas', NULL, 'casas'),
+  ('El candelabro de plata y otros cuentos', 'Castillo, Abelardo', 'Cuentos', NULL, 'castillo'),
+  ('Con otra gente', 'Conti, Haroldo', 'Cuentos', NULL, 'conti'),
+  ('Rayuela', 'Cortázar, Julio', 'Novela', NULL, 'cortazar'),
+  ('El libro de Manuel', 'Cortázar, Julio', 'Novela', NULL, 'cortazar'),
+  ('Cuentos (selección)', 'Cortázar, Julio', 'Cuentos', NULL, 'cortazar'),
+  ('Historias de cronopios y de famas', 'Cortázar, Julio', 'Cuentos', NULL, 'cortazar'),
+  ('Octaedro', 'Cortázar, Julio', 'Cuentos', NULL, 'cortazar'),
+  ('Final del juego', 'Cortázar, Julio', 'Cuentos', NULL, 'cortazar'),
+  ('Falsificaciones', 'Denevi, Marco', 'Relatos', NULL, 'denevi'),
+  ('El amante de la China del Norte', 'Duras, Marguerite', 'Novela', NULL, 'duras'),
+  ('El matadero', 'Echeverría, Esteban', 'Cuento', NULL, 'echeverria'),
+  ('La cautiva', 'Echeverría, Esteban', 'Poema', NULL, 'echeverria'),
+  ('Los perros: 1956', 'Faust, M.', 'Novela', NULL, 'faust'),
+  ('Papeles de recienvenido', 'Fernández, Macedonio', 'Relatos', NULL, 'macedonio'),
+  ('El mundo ha vivido equivocado', 'Fontanarrosa, Roberto', 'Cuentos', NULL, 'fontanarrosa'),
+  ('El rey de la milonga', 'Fontanarrosa, Roberto', 'Cuentos', NULL, 'fontanarrosa'),
+  ('Mejor todo', 'Fontanarrosa, Roberto', 'Cuentos', NULL, 'fontanarrosa'),
+  ('Cuentos de fútbol argentino', 'Fontanarrosa, Roberto', 'Cuentos', NULL, 'fontanarrosa'),
+  ('La mesa de los galanes', 'Fontanarrosa, Roberto', 'Cuentos', NULL, 'fontanarrosa'),
+  ('Enero', 'Gallardo, Sara', 'Novela', NULL, 'gallardo'),
+  ('Ómnibus', 'Gandolfo, Elvio', 'Novela', NULL, 'gandolfo'),
+  ('El tormento más puro', 'García Lao, Fernanda', 'Relatos', NULL, 'garcia lao'),
+  ('Sonetos del amor oscuro', 'García Lorca, Federico', 'Poemas', NULL, 'lorca'),
+  ('El fuego', 'Garijo, R.', 'Novela', NULL, 'garijo'),
+  ('Cólera buey', 'Gelman, Juan', 'Poemas', NULL, 'gelman'),
+  ('Gotán', 'Gelman, Juan', 'Poemas', NULL, 'gelman'),
+  ('El frasquito', 'Guzmán, Luis', 'Novela', NULL, 'guzman'),
+  ('Hotel Edén', 'Guzmán, Luis', 'Novela', NULL, 'guzman'),
+  ('Los sorrentinos', 'Higa, V.', 'Novela', NULL, 'higa'),
+  ('El país del viento', 'Iparraguirre, Sylvia', 'Cuentos', NULL, 'iparraguirre'),
+  ('La lección', 'Ionesco, Eugène', 'Teatro', NULL, 'ionesco'),
+  ('La cantante calva', 'Ionesco, Eugène', 'Teatro', NULL, 'ionesco'),
+  ('Rinoceronte', 'Ionesco, Eugène', 'Teatro', NULL, 'ionesco'),
+  ('El libro del verano', 'Jansson, Tove', 'Novela', NULL, 'jansson'),
+  ('Retrato del artista adolescente', 'Joyce, James', 'Novela', NULL, 'joyce'),
+  ('Dublineses', 'Joyce, James', 'Cuentos', NULL, 'joyce'),
+  ('Dos veces junio', 'Kohan, Martín', 'Novela', NULL, 'kohan'),
+  ('Ciencias morales', 'Kohan, Martín', 'Novela', 'Para relacionar con: La mirada invisible (Diego Lerman).', 'kohan'),
+  ('Confesión', 'Kohan, Martín', 'Novela', NULL, 'kohan'),
+  ('Cuentas pendientes', 'Kohan, Martín', 'Novela', NULL, 'kohan'),
+  ('Partitas', 'Lamborghini, Leónidas', 'Poemas', NULL, 'lamborghini'),
+  ('El niño proletario', 'Lamborghini, Osvaldo', 'Cuento', NULL, 'lamborghini'),
+  ('Fantasmas de Malvinas', 'Lorenz, Federico', 'Crónica', NULL, 'lorenz'),
+  ('Muñecos chicos', 'Liocovich, P.', 'Relatos', NULL, 'liocovich'),
+  ('Adán Buenosayres', 'Marechal, Leopoldo', 'Novela', NULL, 'marechal'),
+  ('Acerca de Roderer', 'Martínez, Guillermo', 'Novela', NULL, 'martinez'),
+  ('Yo también tuve una novia bisexual', 'Martínez, Guillermo', 'Novela', NULL, 'martinez'),
+  ('La vida te despeina', 'Mastretta, Ángeles', 'Cuentos', NULL, 'mastretta'),
+  ('Lecturas grabadas', 'Ministerio de Educación', 'Antología de cuentos', NULL, NULL),
+  ('Cuentos con detectives y comisarios', 'Ministerio de Educación', 'Antología de cuentos', NULL, NULL),
+  ('Nuestros cuentos', 'Ministerio de Educación', 'Antología de cuentos', NULL, NULL),
+  ('Cuentos (selección)', 'Ocampo, Silvina', 'Cuentos', NULL, 'ocampo'),
+  ('Vikinga Bonsai', 'Ojeda, Ana', 'Novela', NULL, 'ojeda'),
+  ('Rebelión en la granja', 'Orwell, George', 'Novela', NULL, 'orwell'),
+  ('Bolonqui', 'Oyola, Leonardo', 'Novela', NULL, 'oyola'),
+  ('La ciudad ausente', 'Piglia, Ricardo', 'Novela', NULL, 'piglia'),
+  ('Respiración artificial', 'Piglia, Ricardo', 'Novela', NULL, 'piglia'),
+  ('Plata quemada', 'Piglia, Ricardo', 'Novela', 'Para relacionar con: Plata quemada (Marcelo Piñeyro, 2000).', 'piglia'),
+  ('Prisión perpetua', 'Piglia, Ricardo', 'Novela', NULL, 'piglia'),
+  ('Plop', 'Pinedo, Rafael', 'Novela', NULL, 'pinedo'),
+  ('El mundo sin las personas que lo afean y lo arruinan', 'Pron, Patricio', 'Cuentos', NULL, 'pron'),
+  ('El beso de la mujer araña', 'Puig, Manuel', 'Novela', 'Para relacionar con: El beso de la mujer araña (Héctor Babenco, 1985).', 'puig'),
+  ('Cae la noche tropical', 'Puig, Manuel', 'Novela', NULL, 'puig'),
+  ('Boquitas pintadas', 'Puig, Manuel', 'Novela', NULL, 'puig'),
+  ('Nudos', 'Ratto, Patricia', 'Novela', NULL, 'ratto'),
+  ('Pequeños hombres blancos', 'Ratto, Patricia', 'Novela', NULL, 'ratto'),
+  ('Faunas', 'Ratto, Patricia', 'Cuentos', NULL, 'ratto'),
+  ('Cometierra', 'Reyes, Dolores', 'Novela', NULL, 'reyes'),
+  ('Miseria', 'Reyes, Dolores', 'Novela', NULL, 'reyes'),
+  ('La revolución es un sueño eterno', 'Rivera, Andrés', 'Novela', NULL, 'rivera'),
+  ('El manco Paz', 'Rivera, Andrés', 'Novela', NULL, 'rivera'),
+  ('El farmer', 'Rivera, Andrés', 'Novela', NULL, 'rivera'),
+  ('Sobre héroes y tumbas', 'Sabato, Ernesto', 'Novela', NULL, 'sabato'),
+  ('Informe sobre ciegos', 'Sabato, Ernesto', 'Novela', 'Para relacionar con: El poder de las tinieblas (Mario Sabato).', 'sabato'),
+  ('El oficinista', 'Saccomanno, Guillermo', 'Novela', NULL, 'saccomanno'),
+  ('La lengua del malón', 'Saccomanno, Guillermo', 'Novela', NULL, 'saccomanno'),
+  ('Siete casas vacías', 'Schweblin, Samanta', 'Cuentos', NULL, 'schweblin'),
+  ('El buen mal', 'Schweblin, Samanta', 'Cuentos', NULL, 'schweblin'),
+  ('Distancia de rescate', 'Schweblin, Samanta', 'Novela', 'Para relacionar con: Distancia de rescate (Claudia Llosa, 2021).', 'schweblin'),
+  ('Cicatrices', 'Saer, Juan José', 'Novela', NULL, 'saer'),
+  ('Glosa', 'Saer, Juan José', 'Novela', NULL, 'saer'),
+  ('Sombras sobre vidrio esmerilado', 'Saer, Juan José', 'Cuentos', NULL, 'saer'),
+  ('El balcón', 'Saer, Juan José', 'Cuentos', NULL, 'saer'),
+  ('La arena en los zapatos', 'Sasturain, Juan', 'Novela', NULL, 'sasturain'),
+  ('Cuidado que hay trampa', 'Shua, Ana María', 'Cuentos', NULL, 'shua'),
+  ('Triste, solitario y final', 'Soriano, Osvaldo', 'Novela', NULL, 'soriano'),
+  ('Una sombra ya pronto serás', 'Soriano, Osvaldo', 'Novela', 'Para relacionar con: Una sombra ya pronto serás (Héctor Olivera, 1994).', 'soriano'),
+  ('Puerto Belgrano', 'Terranova, Juan', 'Novela', NULL, 'terranova'),
+  ('La belleza del mundo', 'Tizón, Héctor', 'Novela', NULL, 'tizon'),
+  ('Extraño y pálido fulgor', 'Tizón, Héctor', 'Novela', NULL, 'tizon'),
+  ('Los heraldos negros', 'Vallejo, César', 'Poemas', NULL, 'vallejo'),
+  ('En lo más implacable de la noche', 'Vilariño, Idea', 'Poemas', NULL, 'vilarino'),
+  ('Las malas', 'Villada Sosa, Camila', 'Novela', NULL, 'villada'),
+  ('Soy una tonta por quererte', 'Villada Sosa, Camila', 'Novela', NULL, 'villada'),
+  ('Prontuario', 'Viñas, David', 'Novela', NULL, 'vinas'),
+  ('Un dios cotidiano', 'Viñas, David', 'Novela', NULL, 'vinas'),
+  ('Cuentos brutales', 'Walsh, Rodolfo', 'Cuentos', NULL, 'walsh'),
+  ('Cuentos para tahúres y otros relatos policiales', 'Walsh, Rodolfo', 'Cuentos', NULL, 'walsh');
+
+-- Evita duplicados exactos de título y autor en el catálogo temporal.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM apl_libros
+    GROUP BY pg_temp.apl_norm(titulo), pg_temp.apl_norm(autor)
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'El catálogo temporal contiene libros duplicados (título y autor).';
+  END IF;
+END $$;
+
+INSERT INTO libro (titulo, autor, genero, descripcion, nivel_educativo, activo, paginas_totales)
+SELECT v.titulo, v.autor, v.genero, v.descripcion, 'Secundario', true, NULL
+FROM apl_libros v
+WHERE NOT EXISTS (
+  SELECT 1 FROM libro l
+  WHERE pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(v.titulo)
+       AND (v.clave IS NULL AND pg_temp.apl_norm(l.autor) = pg_temp.apl_norm(v.autor) OR v.clave IS NOT NULL AND pg_temp.apl_norm(l.autor) LIKE '%' || v.clave || '%')
+);
+
+DO $$
+DECLARE v_total int; v_encontrados int;
+BEGIN
+  SELECT count(*) INTO v_total FROM apl_libros;
+  SELECT count(*) INTO v_encontrados FROM apl_libros v
+  WHERE EXISTS (SELECT 1 FROM libro l WHERE pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(v.titulo)
+       AND (v.clave IS NULL AND pg_temp.apl_norm(l.autor) = pg_temp.apl_norm(v.autor) OR v.clave IS NOT NULL AND pg_temp.apl_norm(l.autor) LIKE '%' || v.clave || '%'));
+  RAISE NOTICE 'Libros del listado: %. Presentes en el catálogo después de la carga: %.', v_total, v_encontrados;
+  IF v_encontrados < v_total THEN
+    RAISE EXCEPTION 'Faltan % libros después de la carga: se deshace todo.', v_total - v_encontrados;
+  END IF;
+END $$;
+
+
+
+-- =====================================================================
+-- APL 2026 · 03 · Asignación de libros a los cursos con su puntaje
+-- Fuente: "Listados de Lectura APL 2026 (1ro a 6to Año)" (catálogo oficial).
+-- Generado el 2026-10-31. Se puede correr más de una vez:
+-- no borra ni modifica datos existentes, solo agrega lo que falta.
+-- 390 asignaciones por año, cada una a las divisiones A y B (780 en total).
+-- Requiere haber corrido 01 y 02. Si un libro ya estaba asignado al curso, NO se cambia su puntaje
+-- (las diferencias se ven en 04). Cada asignación nueva queda en historial_asignacion.
+-- Los libros sin puntaje ("Consultar", "S/D") no se asignan: ver README.
+-- =====================================================================
+
+
+
+-- Normaliza para comparar títulos y autores: minúsculas, sin tildes ni signos
+CREATE OR REPLACE FUNCTION pg_temp.apl_norm(t text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $fn$
+  SELECT trim(regexp_replace(regexp_replace(
+    lower(translate(coalesce(t, ''), 'ÁÉÍÓÚÜÑÀÈÌÒÙÂÊÎÔÛÄËÏÖÇáéíóúüñàèìòùâêîôûäëïöç', 'AEIOUUNAEIOUAEIOUAEIOCaeiouunaeiouaeiouaeioc')),
+    '[^a-z0-9 ]', ' ', 'g'), '\s+', ' ', 'g'))
+$fn$;
+
+CREATE TEMP TABLE apl_asignaciones (
+  anio int NOT NULL,
+  titulo text NOT NULL,
+  clave text,
+  puntaje int NOT NULL CHECK (puntaje BETWEEN 1 AND 100)
+) ON COMMIT DROP;
+
+INSERT INTO apl_asignaciones (anio, titulo, clave, puntaje) VALUES
+  (1, 'Fútbol de autor', NULL, 25),
+  (1, 'La venganza de la vaca', 'aguirre', 25),
+  (1, 'Mujercitas', 'alcott', 40),
+  (1, 'El espejo africano', 'bodoc', 25),
+  (1, 'La tierra de las papas', 'bordons', 25),
+  (1, 'Socorro', 'bornemann', 20),
+  (1, 'Socorro 10', 'bornemann', 20),
+  (1, 'Secretos de familia', 'cabal', 30),
+  (1, 'La casita azul', 'comino', 25),
+  (1, 'Matilda', 'dahl', 25),
+  (1, 'La línea', 'domec', 10),
+  (1, 'Señales del más acá', 'drennen', 25),
+  (1, 'El viaje de Parvana', 'ellis', 35),
+  (1, 'Encuentro con Flo', 'escudero', 30),
+  (1, 'Rafaela', 'furiasse', 25),
+  (1, 'Caídos del mapa', 'falconi', 25),
+  (1, 'En busca del cielo perdido', 'gonzalez', 20),
+  (1, 'Octubre, un crimen', 'huidobro', 25),
+  (1, 'El libro de la selva', 'kipling', 35),
+  (1, 'Me acuerdo', 'kohan', 25),
+  (1, 'El origen del fuego', 'maine', 30),
+  (1, 'Ojos amarillos', 'marino', 20),
+  (1, 'Otroso', 'montes', 30),
+  (1, 'Aventuras y desventuras de Casiperro del hambre', 'montes', 25),
+  (1, 'Anne, la de Tejados Verdes', 'montgomery', 40),
+  (1, 'El equipo de los sueños', 'olguin', 25),
+  (1, 'Frin', 'pescetti', 30),
+  (1, 'Lejos de Frin', 'pescetti', 30),
+  (1, 'Las super 8 (4 títulos)', 'pogorelsky', 25),
+  (1, 'ATP (h)arta para todo público', 'porcelli', 25),
+  (1, 'Cuentos de la selva', 'quiroga', 25),
+  (1, 'Leyendas mapuches', 'remussi', 20),
+  (1, 'Harry Potter (I, II, III)', 'rowling', 35),
+  (1, 'El Principito', 'saint exupery', 35),
+  (1, 'El contador de cuentos', 'saki', 15),
+  (1, 'Vida de un lápiz', 'schuff', 10),
+  (1, 'La fábrica del terror I, II, III', 'shua', 20),
+  (1, 'Planeta miedo', 'shua', 20),
+  (1, 'El gigante de Balvanera y otras leyendas urbanas', 'silvestre', 25),
+  (1, 'El negro de París', 'soriano', 15),
+  (1, 'El diablo en la botella', 'stevenson', 25),
+  (1, 'El extraño caso del Dr. Jekyll y Mr. Hyde', 'stevenson', 30),
+  (1, 'Drácula (adaptación)', 'stoker', 35),
+  (1, 'El árbol de los flecos', 'suez', 20),
+  (1, 'Mi herida zombi', 'vaccarini', 25),
+  (1, 'Los guerreros de la hierba', 'valentino', 30),
+  (1, 'La máquina del tiempo (novela gráfica)', 'wells', 15),
+  (1, 'El fantasma de Canterville', 'wilde', 25),
+  (1, 'El retrato de Dorian Gray (novela gráfica)', 'wilde', 15),
+  (1, 'Mitos antiguos I', NULL, 20),
+  (1, 'Mitos antiguos II', NULL, 20),
+  (1, 'Mitos antiguos III', NULL, 20),
+  (1, 'Mitos en acción I', NULL, 20),
+  (1, 'Mitos en acción II', NULL, 20),
+  (1, 'Mitos en acción III', NULL, 20),
+  (1, 'Mitos clasificados I', NULL, 20),
+  (1, 'Mitos clasificados II', NULL, 20),
+  (1, 'Mitos clasificados III', NULL, 20),
+  (2, 'El mago de Oz', 'baum', 30),
+  (2, 'El túnel de los pájaros muertos', 'birmajer', 30),
+  (2, 'Diciembre súper álbum', 'bodoc', 30),
+  (2, 'Alicia en el país de las maravillas', 'carroll', 25),
+  (2, 'Los juegos del hambre', 'collins', 35),
+  (2, 'El buscador de finales', 'de santis', 30),
+  (2, 'El inventor de juegos', 'de santis', 30),
+  (2, 'El juego del laberinto', 'de santis', 35),
+  (2, 'El ruido del éxito', 'ferrari', 35),
+  (2, 'Las marcas de la mentira', 'ferrari', 40),
+  (2, 'La velocidad de la música', 'ferrari', 40),
+  (2, 'Hush, hush', 'fitzpatrick', 35),
+  (2, 'Puro fútbol', 'fontanarrosa', 30),
+  (2, 'El viejo y el mar', 'hemingway', 25),
+  (2, 'Otra vuelta de tuerca', 'james', 35),
+  (2, 'La metamorfosis', 'kafka', 30),
+  (2, 'Historias secretas de ciudades y fantasmas', NULL, 30),
+  (2, 'Los siete nombres', 'levin', 30),
+  (2, 'El aprendiz', 'mendez', 30),
+  (2, 'Esto no es justo', 'nicholls', 30),
+  (2, 'El Eternauta', 'oesterheld', 40),
+  (2, 'Las grietas de Jara', 'pineiro', 35),
+  (2, 'Cuentos de amor, de locura y de muerte', 'quiroga', 25),
+  (2, 'El palacio de la medianoche', 'zafon', 40),
+  (2, 'La sombra del viento', 'zafon', 70),
+  (2, 'Esperándolo a Tito', 'sacheri', 40),
+  (2, 'Papeles en el viento', 'sacheri', 45),
+  (2, 'Ser feliz era esto', 'sacheri', 40),
+  (2, 'El orden de las cosas', 'thays', 30),
+  (2, 'Titanis, el armario de la luna', 'valentino', 40),
+  (2, 'Kitchen', 'yoshimoto', 30),
+  (3, 'Siete grandes cuentos de terror', NULL, 30),
+  (3, 'Cuentos fantásticos (antología)', NULL, 30),
+  (3, 'Los vecinos mueren en las novelas', 'aguirre', 25),
+  (3, 'Amigos robots', 'asimov', 25),
+  (3, 'El perjurio de la nieve', 'bioy', 30),
+  (3, 'El jamón del sánguche', 'bialet', 35),
+  (3, 'Amigos por el viento', 'bodoc', 30),
+  (3, 'El mapa imposible', 'bodoc', 30),
+  (3, 'El mar y la serpiente', 'bombara', 35),
+  (3, 'La invención de Morel', 'bioy', 35),
+  (3, 'Crónicas marcianas', 'bradbury', 25),
+  (3, 'La historia de Julia, la niña que tenía sombra de niño', 'bruel', 25),
+  (3, 'Estudio en escarlata', 'doyle', 30),
+  (3, 'Ceremonia secreta', 'denevi', 30),
+  (3, 'Enciclopedia en la hoguera', 'de santis', 35),
+  (3, 'Páginas mezcladas', 'de santis', 35),
+  (3, 'De cómo Romeo se transó a Julieta', 'falconi', 40),
+  (3, 'Jamle', 'falconi', 40),
+  (3, 'Ruido en una noche de verano', 'falconi', 40),
+  (3, 'Made in Lanús', 'tiscornia', 35),
+  (3, 'Rafaela', 'furiasse', 40),
+  (3, 'Intermitente Rafaela', 'furiasse', 40),
+  (3, 'Relato de un náufrago', 'garcia marquez', 30),
+  (3, 'Piedra, papel o tijera', 'garland', 35),
+  (3, 'Demian', 'hesse', 35),
+  (3, 'Otra vuelta de tuerca', 'james', 35),
+  (3, 'Cuentos de terror', 'laiseca', 35),
+  (3, 'Cuentos de terror', 'lovecraft', 30),
+  (3, 'Cuentos fantásticos', 'lugones', 30),
+  (3, 'La casa de azúcar; El vestido de terciopelo; La liebre dorada (y otros cuentos seleccionados)', 'ocampo', 35),
+  (3, 'La muerte lenta de Luciana B.', 'martinez', 30),
+  (3, 'Misteriosa Buenos Aires (selección de cuentos)', 'mujica', 35),
+  (3, 'La grasita', 'sabbi', 30),
+  (3, 'A la deriva y otros cuentos', 'quiroga', 30),
+  (3, 'M''hijo el dotor', 'sanchez', 25),
+  (3, 'La isla del tesoro', 'stevenson', 25),
+  (3, 'El hombre invisible', 'wells', 30),
+  (3, 'Selección poética (3.° año)', NULL, 35),
+  (3, 'Fantasmas', NULL, 35),
+  (4, 'Divina Comedia (original o adaptación)', 'alighieri', 100),
+  (4, 'Cantar de mio Cid', NULL, 100),
+  (4, 'Héroes y viajeros de la Antigua Grecia', NULL, 40),
+  (4, 'Las mil y una noches', NULL, 60),
+  (4, 'Panchatantra', NULL, 50),
+  (4, 'Popol Vuh', NULL, 50),
+  (4, 'Robin Hood', NULL, 80),
+  (4, 'Tierra marcada', NULL, 50),
+  (4, 'Leyendas de Guatemala', 'asturias', 50),
+  (4, 'Orgullo y prejuicio', 'austen', 100),
+  (4, 'Cuando te vi caer', 'basualdo', 60),
+  (4, 'Duelos de pistolas, cuchillos y magos', 'birmajer', 50),
+  (4, 'Decamerón', 'boccaccio', 50),
+  (4, 'Los días de la sombra', 'bodoc', 100),
+  (4, 'Tiempo de dragones', 'bodoc', 100),
+  (4, 'El elegido en su soledad', 'bodoc', 100),
+  (4, 'Cumbres borrascosas', 'bronte', 100),
+  (4, 'Jane Eyre', 'bronte', 100),
+  (4, 'El Quijote de la Mancha (1.ª parte)', 'cervantes', 50),
+  (4, 'Rompecabezas', 'de santis', 60),
+  (4, 'Cuento de Navidad', 'dickens', 80),
+  (4, 'Grandes esperanzas', 'dickens', 80),
+  (4, 'Las mil y una noches argentinas', 'draghi', 60),
+  (4, 'La dama de las camelias', 'dumas', 100),
+  (4, 'El conde de Montecristo', 'dumas', 100),
+  (4, 'Los tres mosqueteros', 'dumas', 100),
+  (4, 'El desertor', 'eckhardt', 50),
+  (4, 'Nuestra parte de noche', 'enriquez', 100),
+  (4, 'Agamenón', 'esquilo', 100),
+  (4, 'Ifigenia', 'euripides', 100),
+  (4, 'Zoom', 'ferrari', 80),
+  (4, 'Antígona furiosa', 'gambaro', 50),
+  (4, 'Las Islas', 'gamerro', 60),
+  (4, 'Bodas de sangre', 'lorca', 80),
+  (4, 'La casa de Bernarda Alba', 'lorca', 80),
+  (4, 'Yerma', 'lorca', 80),
+  (4, 'Lomax', 'garijo', 50),
+  (4, 'Adiós Rapa Nui', NULL, 60),
+  (4, 'El león rendido', 'gonzalez', 50),
+  (4, 'Martín Fierro', 'hernandez', 100),
+  (4, 'Ilíada', 'homero', 100),
+  (4, 'Odisea', 'homero', 100),
+  (4, 'Don Quijote (adaptación)', 'jeanmarie', 100),
+  (4, 'Los árboles caídos también son el bosque', 'kamiya', 70),
+  (4, 'Caballero negro', 'lardone', 50),
+  (4, 'Puertas adentro', 'lardone', 50),
+  (4, 'Antígona Vélez', 'marechal', 50),
+  (4, 'Hadas y dragones', NULL, 40),
+  (4, 'Che', 'oesterheld', 60),
+  (4, '1982', 'olguin', 60),
+  (4, '1984', 'orwell', 100),
+  (4, 'Cuentos que cuentan los tehuelches', 'palermo', 50),
+  (4, 'Miedos de invierno', 'perez diaz', 40),
+  (4, 'Como si no hubiera que cruzar el mar', 'pisos', 40),
+  (4, 'Trasfondo', 'ratto', 50),
+  (4, 'La leyenda de Taita Osongo', 'rosell', 40),
+  (4, 'Cabecita negra y otros cuentos', 'rozenmacher', 80),
+  (4, 'Dos años, ocho meses y veintiocho noches', 'rushdie', 100),
+  (4, 'Carta al sargento Kirk', 'sasturain', 40),
+  (4, 'La valija de Benavides / Perdiendo velocidad', 'schweblin', 60),
+  (4, 'El rey Lear', 'shakespeare', 100),
+  (4, 'Macbeth', 'shakespeare', 100),
+  (4, 'Julio César', 'shakespeare', 100),
+  (4, 'El gigante de Balvanera y otras leyendas urbanas', 'silvestre', 100),
+  (4, 'Rojo y negro', 'stendhal', 100),
+  (4, 'El arte de la guerra', 'sun tzu', 40),
+  (4, 'Los viajes de Gulliver', 'swift', 100),
+  (4, 'El señor de los anillos', 'tolkien', 100),
+  (4, 'Anna Karenina', 'tolsto', 100),
+  (4, 'Todos los soles mienten', 'valentino', 70),
+  (4, 'Es tan difícil volver a Ítaca', 'valentino', 70),
+  (4, 'Nuestra Señora de París', 'hugo', 100),
+  (4, 'Églogas', 'virgilio', 100),
+  (4, 'Eneida', 'virgilio', 100),
+  (4, 'Geórgicas', 'virgilio', 100),
+  (4, 'El retrato de Dorian Gray', 'wilde', 60),
+  (4, 'La importancia de llamarse Ernesto', 'wilde', 50),
+  (4, 'Cuentos orientales', 'yourcenar', 60),
+  (5, 'La casa de los conejos', 'alcoba', 40),
+  (5, 'La casa de los espíritus', 'allende', 50),
+  (5, 'De amor y de sombra', 'allende', 40),
+  (5, 'Ladrilleros', 'almada', 50),
+  (5, 'El viento que arrasa', 'almada', 40),
+  (5, 'No es un río', 'almada', 40),
+  (5, 'Chicas muertas', 'almada', 40),
+  (5, 'Lazarillo de Tormes', NULL, 40),
+  (5, 'El hombre bicentenario', 'asimov', 40),
+  (5, 'Yo, robot', 'asimov', 40),
+  (5, 'La isla desierta', 'arlt', 40),
+  (5, 'Inventario y otros poemas', 'benedetti', 40),
+  (5, 'Rimas', 'becquer', 40),
+  (5, 'Leyendas', 'becquer', 40),
+  (5, 'La invención de Morel', 'bioy', 40),
+  (5, 'El niño con el pijama de rayas', 'boyne', 50),
+  (5, 'Elisa, la rosa inesperada', 'bodoc', 50),
+  (5, 'Diez negritos', 'christie', 50),
+  (5, 'Asesinato en el Orient Express', 'christie', 50),
+  (5, 'Mateo', 'discepolo', 40),
+  (5, 'Stéfano', 'discepolo', 40),
+  (5, 'Babilonia', 'discepolo', 40),
+  (5, 'Los peligros de fumar en la cama', 'enriquez', 50),
+  (5, 'Malinche', 'esquivel', 40),
+  (5, 'Como agua para chocolate', 'esquivel', 40),
+  (5, 'Aura', 'fuentes', 40),
+  (5, 'El naranjo', 'fuentes', 40),
+  (5, 'El mar que nos trajo', 'gambaro', 50),
+  (5, 'La malasangre', 'gambaro', 50),
+  (5, 'Decir sí', 'gambaro', 40),
+  (5, 'Las venas abiertas de América Latina', 'galeano', 60),
+  (5, 'Patas arriba. La escuela del mundo al revés', 'galeano', 60),
+  (5, 'El libro de los abrazos', 'galeano', 50),
+  (5, 'Úselo y tírelo', 'galeano', 50),
+  (5, 'Mujeres', 'galeano', 40),
+  (5, 'Cien años de soledad', 'garcia marquez', 60),
+  (5, 'Noticias de un secuestro', 'garcia marquez', 50),
+  (5, 'Del amor y otros demonios', 'garcia marquez', 40),
+  (5, 'Doce cuentos peregrinos', 'garcia marquez', 40),
+  (5, 'Casa de muñecas', 'ibsen', 40),
+  (5, 'Un enemigo del pueblo', 'ibsen', 40),
+  (5, 'Arráncame la vida', 'mastretta', 50),
+  (5, 'Mujeres de ojos grandes', 'mastretta', 40),
+  (5, '200 años de poesía argentina', 'monteleone', 50),
+  (5, 'Tokio blues', 'murakami', 50),
+  (5, 'Hombres sin mujeres', 'murakami', 40),
+  (5, 'Antología poética', 'neruda', 40),
+  (5, 'Las viudas de los jueves', 'pineiro', 40),
+  (5, 'Tuya', 'pineiro', 40),
+  (5, 'Catedrales', 'pineiro', 50),
+  (5, 'Cuentos de amor, de locura y de muerte', 'quiroga', 40),
+  (5, 'Cuentos que me apasionaron 1', 'sabato', 40),
+  (5, 'El túnel', 'sabato', 40),
+  (5, 'La resistencia', 'sabato', 40),
+  (5, 'Pájaros en la boca', 'schweblin', 50),
+  (5, 'El cartero', 'skarmeta', 40),
+  (5, 'Y el fútbol contó un cuento', 'sacheri', 40),
+  (5, 'La noche de la Usina', 'sacheri', 50),
+  (5, 'La pregunta de sus ojos', 'sacheri', 50),
+  (5, 'Antología poética', 'storni', 40),
+  (5, 'Teatro Abierto 1981', NULL, 40),
+  (5, 'Teatro x la Identidad', NULL, 40),
+  (5, 'Nosotras en libertad', NULL, 40),
+  (5, 'Operación masacre', 'walsh', 50),
+  (5, 'La ladrona de libros', 'zusak', 50),
+  (6, 'El mármol', 'aira', 50),
+  (6, 'El mago', 'aira', 50),
+  (6, 'Ema, la cautiva', 'aira', 50),
+  (6, 'El viento que arrasa', 'almada', 50),
+  (6, 'El desapego es una manera de querernos', 'almada', 50),
+  (6, 'No es un río', 'almada', 50),
+  (6, 'El colectivo', 'almeida', 40),
+  (6, 'Inundación', 'almeida', 40),
+  (6, 'Lisístrata', 'aristofanes', 40),
+  (6, 'El juguete rabioso', 'arlt', 60),
+  (6, 'Aguafuertes porteñas (selección)', 'arlt', 60),
+  (6, 'Las otras islas', 'birmajer', 50),
+  (6, 'Diario de la guerra del cerdo', 'bioy', 100),
+  (6, 'Crónicas de Bustos Domecq', 'bioy', 100),
+  (6, 'Los que aman, odian', 'bioy', 100),
+  (6, 'Cuaderno San Martín', 'borges', 40),
+  (6, 'El Aleph', 'borges', 80),
+  (6, 'Ficciones', 'borges', 80),
+  (6, 'El libro de arena', 'borges', 80),
+  (6, 'Tributo del mundo', 'bellessi', 40),
+  (6, 'Los que llegamos más lejos', 'briante', 60),
+  (6, 'Kincón', 'briante', 60),
+  (6, 'El salmón', 'casas', 40),
+  (6, 'Los teresos', 'casas', 40),
+  (6, 'El candelabro de plata y otros cuentos', 'castillo', 60),
+  (6, 'Con otra gente', 'conti', 50),
+  (6, 'Rayuela', 'cortazar', 80),
+  (6, 'El libro de Manuel', 'cortazar', 80),
+  (6, 'Cuentos (selección)', 'cortazar', 50),
+  (6, 'Historias de cronopios y de famas', 'cortazar', 50),
+  (6, 'Octaedro', 'cortazar', 50),
+  (6, 'Final del juego', 'cortazar', 50),
+  (6, 'Falsificaciones', 'denevi', 50),
+  (6, 'El amante de la China del Norte', 'duras', 80),
+  (6, 'El matadero', 'echeverria', 40),
+  (6, 'La cautiva', 'echeverria', 40),
+  (6, 'Los perros: 1956', 'faust', 50),
+  (6, 'Papeles de recienvenido', 'macedonio', 40),
+  (6, 'El mundo ha vivido equivocado', 'fontanarrosa', 60),
+  (6, 'El rey de la milonga', 'fontanarrosa', 60),
+  (6, 'Mejor todo', 'fontanarrosa', 60),
+  (6, 'Cuentos de fútbol argentino', 'fontanarrosa', 60),
+  (6, 'La mesa de los galanes', 'fontanarrosa', 60),
+  (6, 'Enero', 'gallardo', 70),
+  (6, 'Ómnibus', 'gandolfo', 50),
+  (6, 'El tormento más puro', 'garcia lao', 50),
+  (6, 'Sonetos del amor oscuro', 'lorca', 40),
+  (6, 'El fuego', 'garijo', 40),
+  (6, 'Cólera buey', 'gelman', 40),
+  (6, 'Gotán', 'gelman', 40),
+  (6, 'El frasquito', 'guzman', 80),
+  (6, 'Hotel Edén', 'guzman', 80),
+  (6, 'Los sorrentinos', 'higa', 60),
+  (6, 'El país del viento', 'iparraguirre', 70),
+  (6, 'La lección', 'ionesco', 40),
+  (6, 'La cantante calva', 'ionesco', 40),
+  (6, 'Rinoceronte', 'ionesco', 40),
+  (6, 'El libro del verano', 'jansson', 60),
+  (6, 'Retrato del artista adolescente', 'joyce', 60),
+  (6, 'Dublineses', 'joyce', 60),
+  (6, 'Dos veces junio', 'kohan', 100),
+  (6, 'Ciencias morales', 'kohan', 100),
+  (6, 'Confesión', 'kohan', 100),
+  (6, 'Cuentas pendientes', 'kohan', 100),
+  (6, 'Partitas', 'lamborghini', 50),
+  (6, 'El niño proletario', 'lamborghini', 40),
+  (6, 'Fantasmas de Malvinas', 'lorenz', 60),
+  (6, 'Muñecos chicos', 'liocovich', 60),
+  (6, 'Adán Buenosayres', 'marechal', 70),
+  (6, 'La vida te despeina', 'mastretta', 80),
+  (6, 'Lecturas grabadas', NULL, 50),
+  (6, 'Cuentos con detectives y comisarios', NULL, 50),
+  (6, 'Nuestros cuentos', NULL, 50),
+  (6, 'Vikinga Bonsai', 'ojeda', 80),
+  (6, 'Rebelión en la granja', 'orwell', 60),
+  (6, 'Bolonqui', 'oyola', 70),
+  (6, 'La ciudad ausente', 'piglia', 100),
+  (6, 'Respiración artificial', 'piglia', 100),
+  (6, 'Plata quemada', 'piglia', 100),
+  (6, 'Prisión perpetua', 'piglia', 100),
+  (6, 'Plop', 'pinedo', 60),
+  (6, 'El mundo sin las personas que lo afean y lo arruinan', 'pron', 70),
+  (6, 'El beso de la mujer araña', 'puig', 100),
+  (6, 'Cae la noche tropical', 'puig', 100),
+  (6, 'Boquitas pintadas', 'puig', 100),
+  (6, 'Nudos', 'ratto', 50),
+  (6, 'Pequeños hombres blancos', 'ratto', 50),
+  (6, 'Faunas', 'ratto', 50),
+  (6, 'Cometierra', 'reyes', 70),
+  (6, 'Miseria', 'reyes', 100),
+  (6, 'La revolución es un sueño eterno', 'rivera', 100),
+  (6, 'El manco Paz', 'rivera', 100),
+  (6, 'El farmer', 'rivera', 100),
+  (6, 'Sobre héroes y tumbas', 'sabato', 100),
+  (6, 'Informe sobre ciegos', 'sabato', 100),
+  (6, 'El oficinista', 'saccomanno', 60),
+  (6, 'La lengua del malón', 'saccomanno', 60),
+  (6, 'Siete casas vacías', 'schweblin', 100),
+  (6, 'El buen mal', 'schweblin', 100),
+  (6, 'Distancia de rescate', 'schweblin', 100),
+  (6, 'Cicatrices', 'saer', 80),
+  (6, 'Glosa', 'saer', 80),
+  (6, 'Sombras sobre vidrio esmerilado', 'saer', 50),
+  (6, 'La arena en los zapatos', 'sasturain', 70),
+  (6, 'Cuidado que hay trampa', 'shua', 50),
+  (6, 'Triste, solitario y final', 'soriano', 100),
+  (6, 'Una sombra ya pronto serás', 'soriano', 100),
+  (6, 'Puerto Belgrano', 'terranova', 80),
+  (6, 'La belleza del mundo', 'tizon', 60),
+  (6, 'Extraño y pálido fulgor', 'tizon', 60),
+  (6, 'Los heraldos negros', 'vallejo', 40),
+  (6, 'En lo más implacable de la noche', 'vilarino', 60),
+  (6, 'Las malas', 'villada', 100),
+  (6, 'Soy una tonta por quererte', 'villada', 100),
+  (6, 'Prontuario', 'vinas', 70),
+  (6, 'Un dios cotidiano', 'vinas', 70),
+  (6, 'Operación masacre', 'walsh', 100),
+  (6, 'Cuentos brutales', 'walsh', 50),
+  (6, 'Cuentos para tahúres y otros relatos policiales', 'walsh', 50);
+
+-- Antes de asignar: todos los libros y los 12 cursos tienen que existir
+DO $$
+DECLARE v_faltan int; v_cursos int;
+BEGIN
+  SELECT count(*) INTO v_faltan FROM apl_asignaciones a
+  WHERE NOT EXISTS (SELECT 1 FROM libro l WHERE pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(a.titulo)
+       AND (a.clave IS NULL OR pg_temp.apl_norm(l.autor) LIKE '%' || a.clave || '%'));
+  IF v_faltan > 0 THEN
+    RAISE EXCEPTION '% libros del listado no están en el catálogo. Correr primero 02_libros.sql.', v_faltan;
+  END IF;
+
+  SELECT count(*) INTO v_cursos FROM curso
+  WHERE anio_lectivo = 2026 AND anio BETWEEN 1 AND 6 AND division IN ('A', 'B');
+  IF v_cursos < 12 THEN
+    RAISE EXCEPTION 'Hay % de los 12 cursos 2026. Correr primero 01_cursos.sql.', v_cursos;
+  END IF;
+END $$;
+
+WITH libro_elegido AS (
+  -- Si hubiera duplicados en el catálogo, se usa el de menor ID
+  SELECT DISTINCT ON (a.anio, a.titulo, a.clave) a.anio, a.puntaje, l.libro_id
+  FROM apl_asignaciones a
+  JOIN libro l ON pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(a.titulo)
+       AND (a.clave IS NULL OR pg_temp.apl_norm(l.autor) LIKE '%' || a.clave || '%')
+  ORDER BY a.anio, a.titulo, a.clave, l.libro_id
+),
+nuevas AS (
+  INSERT INTO curso_libro (curso_id, libro_id, puntaje)
+  SELECT c.curso_id, le.libro_id, le.puntaje
+  FROM libro_elegido le
+  JOIN curso c ON c.anio = le.anio AND c.anio_lectivo = 2026 AND c.division IN ('A', 'B')
+  ON CONFLICT (curso_id, libro_id) DO NOTHING
+  RETURNING curso_id, libro_id, puntaje
+)
+INSERT INTO historial_asignacion (curso_id, libro_id, usuario_id, anio_lectivo, accion, puntaje)
+SELECT curso_id, libro_id, NULL, 2026, 'ASIGNADO'::"AccionAsignacion", puntaje
+FROM nuevas;
+
+
+
+-- Resultado: libros y puntaje total por curso
+SELECT c.anio, c.division, count(cl.libro_id) AS libros, coalesce(sum(cl.puntaje), 0) AS suma_puntajes
+FROM curso c LEFT JOIN curso_libro cl ON cl.curso_id = c.curso_id
+WHERE c.anio_lectivo = 2026
+GROUP BY c.anio, c.division
+ORDER BY c.anio, c.division;
+
+-- =====================================================================
+-- APL 2026 · 04 · Verificación posterior (solo lectura)
+-- Fuente: "Listados de Lectura APL 2026 (1ro a 6to Año)" (catálogo oficial).
+-- Generado el 2026-10-31. Se puede correr más de una vez:
+-- no borra ni modifica datos existentes, solo agrega lo que falta.
+-- No escribe nada. Muestra diferencias entre el listado y lo que quedó en la base.
+-- =====================================================================
+
+-- Normaliza para comparar títulos y autores: minúsculas, sin tildes ni signos
+CREATE OR REPLACE FUNCTION pg_temp.apl_norm(t text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $fn$
+  SELECT trim(regexp_replace(regexp_replace(
+    lower(translate(coalesce(t, ''), 'ÁÉÍÓÚÜÑÀÈÌÒÙÂÊÎÔÛÄËÏÖÇáéíóúüñàèìòùâêîôûäëïöç', 'AEIOUUNAEIOUAEIOUAEIOCaeiouunaeiouaeiouaeioc')),
+    '[^a-z0-9 ]', ' ', 'g'), '\s+', ' ', 'g'))
+$fn$;
+
+CREATE TEMP TABLE IF NOT EXISTS apl_esperado (anio int, titulo text, clave text, puntaje int);
+TRUNCATE apl_esperado;
+INSERT INTO apl_esperado (anio, titulo, clave, puntaje) VALUES
+  (1, 'Fútbol de autor', NULL, 25),
+  (1, 'La venganza de la vaca', 'aguirre', 25),
+  (1, 'Mujercitas', 'alcott', 40),
+  (1, 'El espejo africano', 'bodoc', 25),
+  (1, 'La tierra de las papas', 'bordons', 25),
+  (1, 'Socorro', 'bornemann', 20),
+  (1, 'Socorro 10', 'bornemann', 20),
+  (1, 'Secretos de familia', 'cabal', 30),
+  (1, 'La casita azul', 'comino', 25),
+  (1, 'Matilda', 'dahl', 25),
+  (1, 'La línea', 'domec', 10),
+  (1, 'Señales del más acá', 'drennen', 25),
+  (1, 'El viaje de Parvana', 'ellis', 35),
+  (1, 'Encuentro con Flo', 'escudero', 30),
+  (1, 'Rafaela', 'furiasse', 25),
+  (1, 'Caídos del mapa', 'falconi', 25),
+  (1, 'En busca del cielo perdido', 'gonzalez', 20),
+  (1, 'Octubre, un crimen', 'huidobro', 25),
+  (1, 'El libro de la selva', 'kipling', 35),
+  (1, 'Me acuerdo', 'kohan', 25),
+  (1, 'El origen del fuego', 'maine', 30),
+  (1, 'Ojos amarillos', 'marino', 20),
+  (1, 'Otroso', 'montes', 30),
+  (1, 'Aventuras y desventuras de Casiperro del hambre', 'montes', 25),
+  (1, 'Anne, la de Tejados Verdes', 'montgomery', 40),
+  (1, 'El equipo de los sueños', 'olguin', 25),
+  (1, 'Frin', 'pescetti', 30),
+  (1, 'Lejos de Frin', 'pescetti', 30),
+  (1, 'Las super 8 (4 títulos)', 'pogorelsky', 25),
+  (1, 'ATP (h)arta para todo público', 'porcelli', 25),
+  (1, 'Cuentos de la selva', 'quiroga', 25),
+  (1, 'Leyendas mapuches', 'remussi', 20),
+  (1, 'Harry Potter (I, II, III)', 'rowling', 35),
+  (1, 'El Principito', 'saint exupery', 35),
+  (1, 'El contador de cuentos', 'saki', 15),
+  (1, 'Vida de un lápiz', 'schuff', 10),
+  (1, 'La fábrica del terror I, II, III', 'shua', 20),
+  (1, 'Planeta miedo', 'shua', 20),
+  (1, 'El gigante de Balvanera y otras leyendas urbanas', 'silvestre', 25),
+  (1, 'El negro de París', 'soriano', 15),
+  (1, 'El diablo en la botella', 'stevenson', 25),
+  (1, 'El extraño caso del Dr. Jekyll y Mr. Hyde', 'stevenson', 30),
+  (1, 'Drácula (adaptación)', 'stoker', 35),
+  (1, 'El árbol de los flecos', 'suez', 20),
+  (1, 'Mi herida zombi', 'vaccarini', 25),
+  (1, 'Los guerreros de la hierba', 'valentino', 30),
+  (1, 'La máquina del tiempo (novela gráfica)', 'wells', 15),
+  (1, 'El fantasma de Canterville', 'wilde', 25),
+  (1, 'El retrato de Dorian Gray (novela gráfica)', 'wilde', 15),
+  (1, 'Mitos antiguos I', NULL, 20),
+  (1, 'Mitos antiguos II', NULL, 20),
+  (1, 'Mitos antiguos III', NULL, 20),
+  (1, 'Mitos en acción I', NULL, 20),
+  (1, 'Mitos en acción II', NULL, 20),
+  (1, 'Mitos en acción III', NULL, 20),
+  (1, 'Mitos clasificados I', NULL, 20),
+  (1, 'Mitos clasificados II', NULL, 20),
+  (1, 'Mitos clasificados III', NULL, 20),
+  (2, 'El mago de Oz', 'baum', 30),
+  (2, 'El túnel de los pájaros muertos', 'birmajer', 30),
+  (2, 'Diciembre súper álbum', 'bodoc', 30),
+  (2, 'Alicia en el país de las maravillas', 'carroll', 25),
+  (2, 'Los juegos del hambre', 'collins', 35),
+  (2, 'El buscador de finales', 'de santis', 30),
+  (2, 'El inventor de juegos', 'de santis', 30),
+  (2, 'El juego del laberinto', 'de santis', 35),
+  (2, 'El ruido del éxito', 'ferrari', 35),
+  (2, 'Las marcas de la mentira', 'ferrari', 40),
+  (2, 'La velocidad de la música', 'ferrari', 40),
+  (2, 'Hush, hush', 'fitzpatrick', 35),
+  (2, 'Puro fútbol', 'fontanarrosa', 30),
+  (2, 'El viejo y el mar', 'hemingway', 25),
+  (2, 'Otra vuelta de tuerca', 'james', 35),
+  (2, 'La metamorfosis', 'kafka', 30),
+  (2, 'Historias secretas de ciudades y fantasmas', NULL, 30),
+  (2, 'Los siete nombres', 'levin', 30),
+  (2, 'El aprendiz', 'mendez', 30),
+  (2, 'Esto no es justo', 'nicholls', 30),
+  (2, 'El Eternauta', 'oesterheld', 40),
+  (2, 'Las grietas de Jara', 'pineiro', 35),
+  (2, 'Cuentos de amor, de locura y de muerte', 'quiroga', 25),
+  (2, 'El palacio de la medianoche', 'zafon', 40),
+  (2, 'La sombra del viento', 'zafon', 70),
+  (2, 'Esperándolo a Tito', 'sacheri', 40),
+  (2, 'Papeles en el viento', 'sacheri', 45),
+  (2, 'Ser feliz era esto', 'sacheri', 40),
+  (2, 'El orden de las cosas', 'thays', 30),
+  (2, 'Titanis, el armario de la luna', 'valentino', 40),
+  (2, 'Kitchen', 'yoshimoto', 30),
+  (3, 'Siete grandes cuentos de terror', NULL, 30),
+  (3, 'Cuentos fantásticos (antología)', NULL, 30),
+  (3, 'Los vecinos mueren en las novelas', 'aguirre', 25),
+  (3, 'Amigos robots', 'asimov', 25),
+  (3, 'El perjurio de la nieve', 'bioy', 30),
+  (3, 'El jamón del sánguche', 'bialet', 35),
+  (3, 'Amigos por el viento', 'bodoc', 30),
+  (3, 'El mapa imposible', 'bodoc', 30),
+  (3, 'El mar y la serpiente', 'bombara', 35),
+  (3, 'La invención de Morel', 'bioy', 35),
+  (3, 'Crónicas marcianas', 'bradbury', 25),
+  (3, 'La historia de Julia, la niña que tenía sombra de niño', 'bruel', 25),
+  (3, 'Estudio en escarlata', 'doyle', 30),
+  (3, 'Ceremonia secreta', 'denevi', 30),
+  (3, 'Enciclopedia en la hoguera', 'de santis', 35),
+  (3, 'Páginas mezcladas', 'de santis', 35),
+  (3, 'De cómo Romeo se transó a Julieta', 'falconi', 40),
+  (3, 'Jamle', 'falconi', 40),
+  (3, 'Ruido en una noche de verano', 'falconi', 40),
+  (3, 'Made in Lanús', 'tiscornia', 35),
+  (3, 'Rafaela', 'furiasse', 40),
+  (3, 'Intermitente Rafaela', 'furiasse', 40),
+  (3, 'Relato de un náufrago', 'garcia marquez', 30),
+  (3, 'Piedra, papel o tijera', 'garland', 35),
+  (3, 'Demian', 'hesse', 35),
+  (3, 'Otra vuelta de tuerca', 'james', 35),
+  (3, 'Cuentos de terror', 'laiseca', 35),
+  (3, 'Cuentos de terror', 'lovecraft', 30),
+  (3, 'Cuentos fantásticos', 'lugones', 30),
+  (3, 'La casa de azúcar; El vestido de terciopelo; La liebre dorada (y otros cuentos seleccionados)', 'ocampo', 35),
+  (3, 'La muerte lenta de Luciana B.', 'martinez', 30),
+  (3, 'Misteriosa Buenos Aires (selección de cuentos)', 'mujica', 35),
+  (3, 'La grasita', 'sabbi', 30),
+  (3, 'A la deriva y otros cuentos', 'quiroga', 30),
+  (3, 'M''hijo el dotor', 'sanchez', 25),
+  (3, 'La isla del tesoro', 'stevenson', 25),
+  (3, 'El hombre invisible', 'wells', 30),
+  (3, 'Selección poética (3.° año)', NULL, 35),
+  (3, 'Fantasmas', NULL, 35),
+  (4, 'Divina Comedia (original o adaptación)', 'alighieri', 100),
+  (4, 'Cantar de mio Cid', NULL, 100),
+  (4, 'Héroes y viajeros de la Antigua Grecia', NULL, 40),
+  (4, 'Las mil y una noches', NULL, 60),
+  (4, 'Panchatantra', NULL, 50),
+  (4, 'Popol Vuh', NULL, 50),
+  (4, 'Robin Hood', NULL, 80),
+  (4, 'Tierra marcada', NULL, 50),
+  (4, 'Leyendas de Guatemala', 'asturias', 50),
+  (4, 'Orgullo y prejuicio', 'austen', 100),
+  (4, 'Cuando te vi caer', 'basualdo', 60),
+  (4, 'Duelos de pistolas, cuchillos y magos', 'birmajer', 50),
+  (4, 'Decamerón', 'boccaccio', 50),
+  (4, 'Los días de la sombra', 'bodoc', 100),
+  (4, 'Tiempo de dragones', 'bodoc', 100),
+  (4, 'El elegido en su soledad', 'bodoc', 100),
+  (4, 'Cumbres borrascosas', 'bronte', 100),
+  (4, 'Jane Eyre', 'bronte', 100),
+  (4, 'El Quijote de la Mancha (1.ª parte)', 'cervantes', 50),
+  (4, 'Rompecabezas', 'de santis', 60),
+  (4, 'Cuento de Navidad', 'dickens', 80),
+  (4, 'Grandes esperanzas', 'dickens', 80),
+  (4, 'Las mil y una noches argentinas', 'draghi', 60),
+  (4, 'La dama de las camelias', 'dumas', 100),
+  (4, 'El conde de Montecristo', 'dumas', 100),
+  (4, 'Los tres mosqueteros', 'dumas', 100),
+  (4, 'El desertor', 'eckhardt', 50),
+  (4, 'Nuestra parte de noche', 'enriquez', 100),
+  (4, 'Agamenón', 'esquilo', 100),
+  (4, 'Ifigenia', 'euripides', 100),
+  (4, 'Zoom', 'ferrari', 80),
+  (4, 'Antígona furiosa', 'gambaro', 50),
+  (4, 'Las Islas', 'gamerro', 60),
+  (4, 'Bodas de sangre', 'lorca', 80),
+  (4, 'La casa de Bernarda Alba', 'lorca', 80),
+  (4, 'Yerma', 'lorca', 80),
+  (4, 'Lomax', 'garijo', 50),
+  (4, 'Adiós Rapa Nui', NULL, 60),
+  (4, 'El león rendido', 'gonzalez', 50),
+  (4, 'Martín Fierro', 'hernandez', 100),
+  (4, 'Ilíada', 'homero', 100),
+  (4, 'Odisea', 'homero', 100),
+  (4, 'Don Quijote (adaptación)', 'jeanmarie', 100),
+  (4, 'Los árboles caídos también son el bosque', 'kamiya', 70),
+  (4, 'Caballero negro', 'lardone', 50),
+  (4, 'Puertas adentro', 'lardone', 50),
+  (4, 'Antígona Vélez', 'marechal', 50),
+  (4, 'Hadas y dragones', NULL, 40),
+  (4, 'Che', 'oesterheld', 60),
+  (4, '1982', 'olguin', 60),
+  (4, '1984', 'orwell', 100),
+  (4, 'Cuentos que cuentan los tehuelches', 'palermo', 50),
+  (4, 'Miedos de invierno', 'perez diaz', 40),
+  (4, 'Como si no hubiera que cruzar el mar', 'pisos', 40),
+  (4, 'Trasfondo', 'ratto', 50),
+  (4, 'La leyenda de Taita Osongo', 'rosell', 40),
+  (4, 'Cabecita negra y otros cuentos', 'rozenmacher', 80),
+  (4, 'Dos años, ocho meses y veintiocho noches', 'rushdie', 100),
+  (4, 'Carta al sargento Kirk', 'sasturain', 40),
+  (4, 'La valija de Benavides / Perdiendo velocidad', 'schweblin', 60),
+  (4, 'El rey Lear', 'shakespeare', 100),
+  (4, 'Macbeth', 'shakespeare', 100),
+  (4, 'Julio César', 'shakespeare', 100),
+  (4, 'El gigante de Balvanera y otras leyendas urbanas', 'silvestre', 100),
+  (4, 'Rojo y negro', 'stendhal', 100),
+  (4, 'El arte de la guerra', 'sun tzu', 40),
+  (4, 'Los viajes de Gulliver', 'swift', 100),
+  (4, 'El señor de los anillos', 'tolkien', 100),
+  (4, 'Anna Karenina', 'tolsto', 100),
+  (4, 'Todos los soles mienten', 'valentino', 70),
+  (4, 'Es tan difícil volver a Ítaca', 'valentino', 70),
+  (4, 'Nuestra Señora de París', 'hugo', 100),
+  (4, 'Églogas', 'virgilio', 100),
+  (4, 'Eneida', 'virgilio', 100),
+  (4, 'Geórgicas', 'virgilio', 100),
+  (4, 'El retrato de Dorian Gray', 'wilde', 60),
+  (4, 'La importancia de llamarse Ernesto', 'wilde', 50),
+  (4, 'Cuentos orientales', 'yourcenar', 60),
+  (5, 'La casa de los conejos', 'alcoba', 40),
+  (5, 'La casa de los espíritus', 'allende', 50),
+  (5, 'De amor y de sombra', 'allende', 40),
+  (5, 'Ladrilleros', 'almada', 50),
+  (5, 'El viento que arrasa', 'almada', 40),
+  (5, 'No es un río', 'almada', 40),
+  (5, 'Chicas muertas', 'almada', 40),
+  (5, 'Lazarillo de Tormes', NULL, 40),
+  (5, 'El hombre bicentenario', 'asimov', 40),
+  (5, 'Yo, robot', 'asimov', 40),
+  (5, 'La isla desierta', 'arlt', 40),
+  (5, 'Inventario y otros poemas', 'benedetti', 40),
+  (5, 'Rimas', 'becquer', 40),
+  (5, 'Leyendas', 'becquer', 40),
+  (5, 'La invención de Morel', 'bioy', 40),
+  (5, 'El niño con el pijama de rayas', 'boyne', 50),
+  (5, 'Elisa, la rosa inesperada', 'bodoc', 50),
+  (5, 'Diez negritos', 'christie', 50),
+  (5, 'Asesinato en el Orient Express', 'christie', 50),
+  (5, 'Mateo', 'discepolo', 40),
+  (5, 'Stéfano', 'discepolo', 40),
+  (5, 'Babilonia', 'discepolo', 40),
+  (5, 'Los peligros de fumar en la cama', 'enriquez', 50),
+  (5, 'Malinche', 'esquivel', 40),
+  (5, 'Como agua para chocolate', 'esquivel', 40),
+  (5, 'Aura', 'fuentes', 40),
+  (5, 'El naranjo', 'fuentes', 40),
+  (5, 'El mar que nos trajo', 'gambaro', 50),
+  (5, 'La malasangre', 'gambaro', 50),
+  (5, 'Decir sí', 'gambaro', 40),
+  (5, 'Las venas abiertas de América Latina', 'galeano', 60),
+  (5, 'Patas arriba. La escuela del mundo al revés', 'galeano', 60),
+  (5, 'El libro de los abrazos', 'galeano', 50),
+  (5, 'Úselo y tírelo', 'galeano', 50),
+  (5, 'Mujeres', 'galeano', 40),
+  (5, 'Cien años de soledad', 'garcia marquez', 60),
+  (5, 'Noticias de un secuestro', 'garcia marquez', 50),
+  (5, 'Del amor y otros demonios', 'garcia marquez', 40),
+  (5, 'Doce cuentos peregrinos', 'garcia marquez', 40),
+  (5, 'Casa de muñecas', 'ibsen', 40),
+  (5, 'Un enemigo del pueblo', 'ibsen', 40),
+  (5, 'Arráncame la vida', 'mastretta', 50),
+  (5, 'Mujeres de ojos grandes', 'mastretta', 40),
+  (5, '200 años de poesía argentina', 'monteleone', 50),
+  (5, 'Tokio blues', 'murakami', 50),
+  (5, 'Hombres sin mujeres', 'murakami', 40),
+  (5, 'Antología poética', 'neruda', 40),
+  (5, 'Las viudas de los jueves', 'pineiro', 40),
+  (5, 'Tuya', 'pineiro', 40),
+  (5, 'Catedrales', 'pineiro', 50),
+  (5, 'Cuentos de amor, de locura y de muerte', 'quiroga', 40),
+  (5, 'Cuentos que me apasionaron 1', 'sabato', 40),
+  (5, 'El túnel', 'sabato', 40),
+  (5, 'La resistencia', 'sabato', 40),
+  (5, 'Pájaros en la boca', 'schweblin', 50),
+  (5, 'El cartero', 'skarmeta', 40),
+  (5, 'Y el fútbol contó un cuento', 'sacheri', 40),
+  (5, 'La noche de la Usina', 'sacheri', 50),
+  (5, 'La pregunta de sus ojos', 'sacheri', 50),
+  (5, 'Antología poética', 'storni', 40),
+  (5, 'Teatro Abierto 1981', NULL, 40),
+  (5, 'Teatro x la Identidad', NULL, 40),
+  (5, 'Nosotras en libertad', NULL, 40),
+  (5, 'Operación masacre', 'walsh', 50),
+  (5, 'La ladrona de libros', 'zusak', 50),
+  (6, 'El mármol', 'aira', 50),
+  (6, 'El mago', 'aira', 50),
+  (6, 'Ema, la cautiva', 'aira', 50),
+  (6, 'El viento que arrasa', 'almada', 50),
+  (6, 'El desapego es una manera de querernos', 'almada', 50),
+  (6, 'No es un río', 'almada', 50),
+  (6, 'El colectivo', 'almeida', 40),
+  (6, 'Inundación', 'almeida', 40),
+  (6, 'Lisístrata', 'aristofanes', 40),
+  (6, 'El juguete rabioso', 'arlt', 60),
+  (6, 'Aguafuertes porteñas (selección)', 'arlt', 60),
+  (6, 'Las otras islas', 'birmajer', 50),
+  (6, 'Diario de la guerra del cerdo', 'bioy', 100),
+  (6, 'Crónicas de Bustos Domecq', 'bioy', 100),
+  (6, 'Los que aman, odian', 'bioy', 100),
+  (6, 'Cuaderno San Martín', 'borges', 40),
+  (6, 'El Aleph', 'borges', 80),
+  (6, 'Ficciones', 'borges', 80),
+  (6, 'El libro de arena', 'borges', 80),
+  (6, 'Tributo del mundo', 'bellessi', 40),
+  (6, 'Los que llegamos más lejos', 'briante', 60),
+  (6, 'Kincón', 'briante', 60),
+  (6, 'El salmón', 'casas', 40),
+  (6, 'Los teresos', 'casas', 40),
+  (6, 'El candelabro de plata y otros cuentos', 'castillo', 60),
+  (6, 'Con otra gente', 'conti', 50),
+  (6, 'Rayuela', 'cortazar', 80),
+  (6, 'El libro de Manuel', 'cortazar', 80),
+  (6, 'Cuentos (selección)', 'cortazar', 50),
+  (6, 'Historias de cronopios y de famas', 'cortazar', 50),
+  (6, 'Octaedro', 'cortazar', 50),
+  (6, 'Final del juego', 'cortazar', 50),
+  (6, 'Falsificaciones', 'denevi', 50),
+  (6, 'El amante de la China del Norte', 'duras', 80),
+  (6, 'El matadero', 'echeverria', 40),
+  (6, 'La cautiva', 'echeverria', 40),
+  (6, 'Los perros: 1956', 'faust', 50),
+  (6, 'Papeles de recienvenido', 'macedonio', 40),
+  (6, 'El mundo ha vivido equivocado', 'fontanarrosa', 60),
+  (6, 'El rey de la milonga', 'fontanarrosa', 60),
+  (6, 'Mejor todo', 'fontanarrosa', 60),
+  (6, 'Cuentos de fútbol argentino', 'fontanarrosa', 60),
+  (6, 'La mesa de los galanes', 'fontanarrosa', 60),
+  (6, 'Enero', 'gallardo', 70),
+  (6, 'Ómnibus', 'gandolfo', 50),
+  (6, 'El tormento más puro', 'garcia lao', 50),
+  (6, 'Sonetos del amor oscuro', 'lorca', 40),
+  (6, 'El fuego', 'garijo', 40),
+  (6, 'Cólera buey', 'gelman', 40),
+  (6, 'Gotán', 'gelman', 40),
+  (6, 'El frasquito', 'guzman', 80),
+  (6, 'Hotel Edén', 'guzman', 80),
+  (6, 'Los sorrentinos', 'higa', 60),
+  (6, 'El país del viento', 'iparraguirre', 70),
+  (6, 'La lección', 'ionesco', 40),
+  (6, 'La cantante calva', 'ionesco', 40),
+  (6, 'Rinoceronte', 'ionesco', 40),
+  (6, 'El libro del verano', 'jansson', 60),
+  (6, 'Retrato del artista adolescente', 'joyce', 60),
+  (6, 'Dublineses', 'joyce', 60),
+  (6, 'Dos veces junio', 'kohan', 100),
+  (6, 'Ciencias morales', 'kohan', 100),
+  (6, 'Confesión', 'kohan', 100),
+  (6, 'Cuentas pendientes', 'kohan', 100),
+  (6, 'Partitas', 'lamborghini', 50),
+  (6, 'El niño proletario', 'lamborghini', 40),
+  (6, 'Fantasmas de Malvinas', 'lorenz', 60),
+  (6, 'Muñecos chicos', 'liocovich', 60),
+  (6, 'Adán Buenosayres', 'marechal', 70),
+  (6, 'La vida te despeina', 'mastretta', 80),
+  (6, 'Lecturas grabadas', NULL, 50),
+  (6, 'Cuentos con detectives y comisarios', NULL, 50),
+  (6, 'Nuestros cuentos', NULL, 50),
+  (6, 'Vikinga Bonsai', 'ojeda', 80),
+  (6, 'Rebelión en la granja', 'orwell', 60),
+  (6, 'Bolonqui', 'oyola', 70),
+  (6, 'La ciudad ausente', 'piglia', 100),
+  (6, 'Respiración artificial', 'piglia', 100),
+  (6, 'Plata quemada', 'piglia', 100),
+  (6, 'Prisión perpetua', 'piglia', 100),
+  (6, 'Plop', 'pinedo', 60),
+  (6, 'El mundo sin las personas que lo afean y lo arruinan', 'pron', 70),
+  (6, 'El beso de la mujer araña', 'puig', 100),
+  (6, 'Cae la noche tropical', 'puig', 100),
+  (6, 'Boquitas pintadas', 'puig', 100),
+  (6, 'Nudos', 'ratto', 50),
+  (6, 'Pequeños hombres blancos', 'ratto', 50),
+  (6, 'Faunas', 'ratto', 50),
+  (6, 'Cometierra', 'reyes', 70),
+  (6, 'Miseria', 'reyes', 100),
+  (6, 'La revolución es un sueño eterno', 'rivera', 100),
+  (6, 'El manco Paz', 'rivera', 100),
+  (6, 'El farmer', 'rivera', 100),
+  (6, 'Sobre héroes y tumbas', 'sabato', 100),
+  (6, 'Informe sobre ciegos', 'sabato', 100),
+  (6, 'El oficinista', 'saccomanno', 60),
+  (6, 'La lengua del malón', 'saccomanno', 60),
+  (6, 'Siete casas vacías', 'schweblin', 100),
+  (6, 'El buen mal', 'schweblin', 100),
+  (6, 'Distancia de rescate', 'schweblin', 100),
+  (6, 'Cicatrices', 'saer', 80),
+  (6, 'Glosa', 'saer', 80),
+  (6, 'Sombras sobre vidrio esmerilado', 'saer', 50),
+  (6, 'La arena en los zapatos', 'sasturain', 70),
+  (6, 'Cuidado que hay trampa', 'shua', 50),
+  (6, 'Triste, solitario y final', 'soriano', 100),
+  (6, 'Una sombra ya pronto serás', 'soriano', 100),
+  (6, 'Puerto Belgrano', 'terranova', 80),
+  (6, 'La belleza del mundo', 'tizon', 60),
+  (6, 'Extraño y pálido fulgor', 'tizon', 60),
+  (6, 'Los heraldos negros', 'vallejo', 40),
+  (6, 'En lo más implacable de la noche', 'vilarino', 60),
+  (6, 'Las malas', 'villada', 100),
+  (6, 'Soy una tonta por quererte', 'villada', 100),
+  (6, 'Prontuario', 'vinas', 70),
+  (6, 'Un dios cotidiano', 'vinas', 70),
+  (6, 'Operación masacre', 'walsh', 100),
+  (6, 'Cuentos brutales', 'walsh', 50),
+  (6, 'Cuentos para tahúres y otros relatos policiales', 'walsh', 50);
+
+-- 1) Cantidad esperada vs. cargada por curso
+SELECT c.anio, c.division,
+       (SELECT count(*) FROM apl_esperado e WHERE e.anio = c.anio) AS esperados,
+       count(cl.libro_id) AS asignados
+FROM curso c LEFT JOIN curso_libro cl ON cl.curso_id = c.curso_id
+WHERE c.anio_lectivo = 2026 AND c.division IN ('A', 'B')
+GROUP BY c.anio, c.division
+ORDER BY c.anio, c.division;
+
+-- 2) Libros del listado que no quedaron asignados a su curso
+SELECT e.anio, d.division, e.titulo
+FROM apl_esperado e CROSS JOIN (VALUES ('A'), ('B')) AS d(division)
+WHERE NOT EXISTS (
+  SELECT 1 FROM curso c JOIN curso_libro cl ON cl.curso_id = c.curso_id JOIN libro l ON l.libro_id = cl.libro_id
+  WHERE c.anio = e.anio AND c.division = d.division AND c.anio_lectivo = 2026
+    AND pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(e.titulo) AND (e.clave IS NULL OR pg_temp.apl_norm(l.autor) LIKE '%' || e.clave || '%')
+)
+ORDER BY e.anio, d.division, e.titulo;
+
+-- 3) Asignaciones con un puntaje distinto al del listado (porque ya existían antes de la carga)
+SELECT c.anio, c.division, l.titulo, cl.puntaje AS puntaje_en_base, e.puntaje AS puntaje_listado
+FROM apl_esperado e
+JOIN libro l ON pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(e.titulo) AND (e.clave IS NULL OR pg_temp.apl_norm(l.autor) LIKE '%' || e.clave || '%')
+JOIN curso c ON c.anio = e.anio AND c.anio_lectivo = 2026
+JOIN curso_libro cl ON cl.curso_id = c.curso_id AND cl.libro_id = l.libro_id
+WHERE cl.puntaje <> e.puntaje
+ORDER BY c.anio, c.division, l.titulo;
+
+-- 4) Libros asignados en 2026 que todavía no tienen páginas (no muestran progreso de lectura)
+SELECT DISTINCT l.libro_id, l.titulo, l.autor
+FROM libro l JOIN curso_libro cl ON cl.libro_id = l.libro_id JOIN curso c ON c.curso_id = cl.curso_id
+WHERE c.anio_lectivo = 2026 AND l.paginas_totales IS NULL
+ORDER BY l.titulo;
+
+
+-- VALIDACIÓN BLOQUEANTE: cualquier diferencia revierte TODA la carga.
+-- Se utiliza el mismo criterio de elección de libro que en la asignación.
+DO $$
+DECLARE
+  v_duplicados integer;
+  v_faltantes integer;
+  v_puntajes integer;
+  v_cursos integer;
+BEGIN
+  SELECT count(*) INTO v_duplicados FROM (
+    SELECT anio, pg_temp.apl_norm(titulo), coalesce(clave, '')
+    FROM apl_esperado
+    GROUP BY anio, pg_temp.apl_norm(titulo), coalesce(clave, '')
+    HAVING count(*) > 1
+  ) d;
+  IF v_duplicados > 0 THEN
+    RAISE EXCEPTION 'Hay % asignaciones duplicadas dentro de un mismo año.', v_duplicados;
+  END IF;
+
+  SELECT count(*) INTO v_cursos
+  FROM curso c JOIN materia m ON m.materia_id = c.materia_id
+  WHERE c.anio_lectivo = 2026 AND c.anio BETWEEN 1 AND 6
+    AND c.division IN ('A','B')
+    AND m.nombre = CASE WHEN c.anio <= 3 THEN 'Prácticas del Lenguaje' ELSE 'Literatura' END;
+  IF v_cursos <> 12 THEN
+    RAISE EXCEPTION 'Se esperaban 12 cursos con materias correctas; encontrados: %.', v_cursos;
+  END IF;
+
+  WITH esperadas AS (
+    SELECT c.curso_id, e.anio, e.titulo, e.clave, e.puntaje,
+      (SELECT min(l.libro_id) FROM libro l
+       WHERE pg_temp.apl_norm(l.titulo) = pg_temp.apl_norm(e.titulo)
+         AND (e.clave IS NULL OR pg_temp.apl_norm(l.autor) LIKE '%' || e.clave || '%')) AS libro_id
+    FROM apl_esperado e
+    JOIN curso c ON c.anio = e.anio AND c.anio_lectivo = 2026 AND c.division IN ('A','B')
+  )
+  SELECT count(*) FILTER (WHERE cl.libro_id IS NULL),
+         count(*) FILTER (WHERE cl.libro_id IS NOT NULL AND cl.puntaje <> x.puntaje)
+    INTO v_faltantes, v_puntajes
+  FROM esperadas x
+  LEFT JOIN curso_libro cl ON cl.curso_id = x.curso_id AND cl.libro_id = x.libro_id;
+
+  IF v_faltantes > 0 OR v_puntajes > 0 THEN
+    RAISE EXCEPTION 'Carga APL inválida: % asignaciones faltantes y % puntajes incorrectos. ROLLBACK automático.',
+      v_faltantes, v_puntajes;
+  END IF;
+  RAISE NOTICE 'Validación final OK: cursos, asignaciones y puntajes correctos.';
+END $$;
+
+COMMIT;
