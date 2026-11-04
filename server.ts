@@ -12,6 +12,7 @@ import teacherPanelRoutes from './src/routes/teacherPanel.routes';
 import favoriteRoutes from './src/routes/favorite.routes';
 import feedRoutes from './src/routes/feed.routes'; // <-- AGREGADO
 import forumRoutes from './src/routes/forum.routes';
+import invitationRoutes from './src/routes/invitation.routes';
 import listRoutes from './src/routes/list.routes';
 import medalRoutes from './src/routes/medal.routes';
 import metaLecturaRoutes from './src/routes/metaLectura.routes';
@@ -70,6 +71,7 @@ app.use('/api/v1/medal', medalRoutes);
 app.use('/api/v1/metas-lectura', metaLecturaRoutes);
 app.use('/api/v1/feed', feedRoutes); // <-- AGREGADO
 app.use('/api/v1/forums', forumRoutes);
+app.use('/api/v1/invitations', invitationRoutes);
 app.use('/api/v1/lists', listRoutes);
 // app.use('/api/v1/medals', medalRoutes);
 app.use('/api/v1/reading-lists', readingListRoutes);

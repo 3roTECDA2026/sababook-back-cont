@@ -1,7 +1,7 @@
 // src/models/auth.model.ts
 import { prisma } from '../db/connect/db';
 
-import { TipoRol } from '@prisma/client';
+import { EstadoCuenta, TipoRol } from '@prisma/client';
 
 interface UserAuth {
   usuario_id: number;
@@ -9,6 +9,7 @@ interface UserAuth {
   email: string;
   contrasena: string;
   rol: TipoRol;
+  estado_cuenta: EstadoCuenta;
   avatar_url: string | null;
   nivel_educativo: string | null;
   perfil_completo: boolean;
@@ -26,6 +27,7 @@ class AuthModel {
           email: true,
           contrasena: true,
           rol: true,
+          estado_cuenta: true,
           avatar_url: true,
           nivel_educativo: true,
           perfil_completo: true,

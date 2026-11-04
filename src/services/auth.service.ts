@@ -29,6 +29,10 @@ class AuthService {
       throw new Error('INVALID_CREDENTIALS');
     }
 
+    if (user.estado_cuenta === 'PENDIENTE') {
+      throw new Error('ACCOUNT_PENDING');
+    }
+
     const secret = process.env.JWT_SECRET;
 
     if (!secret) {

@@ -17,6 +17,12 @@ class AuthController {
       if (message === 'INVALID_CREDENTIALS') {
         return res.status(401).json({ error: 'Invalid email or password' });
       }
+      if (message === 'ACCOUNT_PENDING') {
+        return res.status(403).json({
+          error: 'Tu cuenta todavía no está activada. Usá el enlace de invitación que te envió la escuela.',
+          code: 'ACCOUNT_PENDING',
+        });
+      }
       console.error('Error during login:', message);
       return res.status(500).json({ error: 'Internal server error' });
     }
