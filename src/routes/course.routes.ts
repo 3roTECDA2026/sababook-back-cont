@@ -15,6 +15,7 @@ import {
   obtenerHistorial,
   obtenerProgresoAlumno,
   obtenerAsignacionesAnteriores,
+  getCourseStudents,
 } from '../controllers/course.controller';
 import { verifyToken, requireAdmin } from '../middleware/auth.middleware';
 
@@ -45,5 +46,8 @@ router.delete('/:id/books/:bookId', verifyToken, quitarLibro);
 
 // Asignaciones del libro en años anteriores, para la alerta al asignar (SAB-066)
 router.get('/:id/books/:bookId/previous-assignments', verifyToken, obtenerAsignacionesAnteriores);
+
+// Alumnos inscriptos en el curso: administrador o docente del curso, lo valida el service (SAB-135)
+router.get('/:id/students', verifyToken, getCourseStudents);
 
 export default router;
