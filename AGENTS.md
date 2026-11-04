@@ -55,6 +55,8 @@ Se cargan desde `.env` (ignorado por git). La plantilla es `.env.example`.
 | `DATABASE_URL` | Conexión de la app vía pooler de Supabase (puerto **6543**, modo transacción) |
 | `DIRECT_URL` | Conexión directa/sesión (puerto **5432**). Usar para comandos de migración |
 | `SUPABASE_URL`, `SUPABASE_KEY` | Cliente de Supabase |
+| `SUPABASE_SECRET_KEY` | Clave secreta de Supabase (solo back). La usa Storage para los PDFs (SAB-67) |
+| `SUPABASE_PDF_BUCKET` | Bucket privado de los PDFs de material de lectura (por defecto `material-lectura`) |
 | `ADMIN_INITIAL_KEY` | Alta inicial de administrador |
 | `CORS_ORIGINS` | Orígenes extra permitidos por CORS, separados por coma (ej. la URL de Netlify). Se suma a la lista fija de `server.ts`. Se lee al arrancar: tras cambiarla hay que reiniciar |
 
