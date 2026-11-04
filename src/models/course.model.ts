@@ -1,7 +1,7 @@
 // src/models/course.model.ts
 import { prisma } from '../db/connect/db';
 import { AccionAsignacion } from '@prisma/client';
-import type { Prisma, curso, curso_docente, curso_libro, TipoRol } from '@prisma/client';
+import type { Prisma, curso, curso_docente, curso_libro, inscripcion, TipoRol } from '@prisma/client';
 
 export interface DatosCurso {
   anio: number;
@@ -14,6 +14,7 @@ export interface FiltrosCursos {
   anio_lectivo?: number;
   materia_id?: number;
   docente_id?: number;
+  alumno_id?: number;
 }
 
 export interface MateriaCurso {
@@ -85,6 +86,10 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
       materia_id: filtros.materia_id,
       curso_docente: filtros.docente_id
         ? { some: { usuario_id: filtros.docente_id } }
+        : undefined,
+      // SAB-116: cursos en los que está inscripto un alumno
+      inscripcion: filtros.alumno_id
+        ? { some: { usuario_id: filtros.alumno_id } }
         : undefined,
     },
     include: {
@@ -194,6 +199,47 @@ export const quitarDocenteDB = async (curso_id: number, usuario_id: number): Pro
 export const esDocenteDelCursoDB = async (curso_id: number, usuario_id: number): Promise<boolean> => {
   const cantidad = await prisma.curso_docente.count({ where: { curso_id, usuario_id } });
   return cantidad > 0;
+};
+
+// ---------- Alumnos del curso (SAB-116) ----------
+
+export const obtenerAnioLectivoCursoDB = async (curso_id: number): Promise<number | null> => {
+  const c = await prisma.curso.findUnique({ where: { curso_id }, select: { anio_lectivo: true } });
+  return c?.anio_lectivo ?? null;
+};
+
+// Inscripción del alumno en un año lectivo (como máximo una, por el índice único de inscripcion)
+export const findStudentEnrollmentDB = async (usuario_id: number, anio_lectivo: number) => {
+  return await prisma.inscripcion.findUnique({
+    where: { usuario_id_anio_lectivo: { usuario_id, anio_lectivo } },
+    include: { curso: { select: { curso_id: true, anio: true, division: true } } },
+  });
+};
+
+export const inscribirAlumnoDB = async (
+  curso_id: number,
+  usuario_id: number,
+  anio_lectivo: number
+): Promise<inscripcion> => {
+  return await prisma.inscripcion.create({ data: { curso_id, usuario_id, anio_lectivo } });
+};
+// Inscribe al alumno en el curso, o lo pasa a ese curso si ya tenía otro en el año.
+// Es una sola operación en la base: el alumno nunca queda sin curso a mitad de camino.
+export const moverAlumnoDB = async (
+  curso_id: number,
+  usuario_id: number,
+  anio_lectivo: number
+): Promise<inscripcion> => {
+  return await prisma.inscripcion.upsert({
+    where: { usuario_id_anio_lectivo: { usuario_id, anio_lectivo } },
+    update: { curso_id, fecha_inscripcion: new Date() },
+    create: { curso_id, usuario_id, anio_lectivo },
+  });
+};
+// Devuelve cuántas inscripciones borró (0 si el alumno no estaba en ese curso)
+export const quitarAlumnoDB = async (curso_id: number, usuario_id: number): Promise<number> => {
+  const { count } = await prisma.inscripcion.deleteMany({ where: { curso_id, usuario_id } });
+  return count;
 };
 
 // ---------- Historial de asignaciones ----------
