@@ -114,7 +114,9 @@ El seed se puede correr varias veces sin duplicar datos. No borra nada: crea o a
 
 Para un resultado limpio, usá una base vacía: el seed no corrige puntajes de asignaciones que ya existían.
 
-Protección: aborta si `NODE_ENV=production` o si la base no es local. Para una base de prueba remota propia (por ejemplo, tu proyecto de Supabase), corré con `ALLOW_SEED=true`.
+Protección: aborta si `NODE_ENV=production` o si la base no es local. Para una base de prueba remota propia (por ejemplo, tu proyecto de Supabase), corré con `ALLOW_SEED=true`. **Nunca uses `ALLOW_SEED=true` en una base que sirva una app publicada**: el seed crea un administrador con contraseña conocida.
+
+Nota: para poder probar el progreso de lectura, el seed pone `paginas_totales = 200` a los libros usados en los favoritos de prueba, aunque el libro ya existiera con otro valor o sin páginas.
 
 En PowerShell, solo para esa terminal:
 
