@@ -35,6 +35,9 @@
   "overrides": {
     "proxy-addr": ">=2.0.8"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "devDependencies": {
     "@types/bcrypt": "6.0.0",
     "@types/cheerio": "0.22.35",

@@ -1,0 +1,329 @@
+// prisma/seed.ts
+import 'dotenv/config';
+import { PrismaClient, TipoRol } from '@prisma/client';
+import bcrypt from 'bcrypt';
+import { LIBROS_APL, ASIGNACIONES_APL } from './seed-data/apl-2026';
+import type { LibroApl } from './seed-data/apl-2026';
+
+const PAGINAS_DE_PRUEBA = 200; // solo para los libros de los favoritos de prueba
+const prisma = new PrismaClient();
+
+const ANIO_LECTIVO = 2026;
+const PASSWORD = 'Test1234!';
+
+// ---------- Protección: nunca contra producción ----------
+function assertSafeEnvironment() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Seed abortado: NODE_ENV=production.');
+  }
+  let host = '';
+  try {
+    host = new URL(process.env.DATABASE_URL ?? '').hostname;
+  } catch {
+    throw new Error('Seed abortado: DATABASE_URL no es válida.');
+  }
+  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(host);
+  if (!isLocal && process.env.ALLOW_SEED !== 'true') {
+    throw new Error(
+      `Seed abortado: la base (${host}) no es local. ` +
+        'Si es una base de PRUEBA propia, corré con ALLOW_SEED=true. ' +
+        'Nunca lo uses contra una base de producción.'
+    );
+  }
+}
+
+// ---------- Materias ----------
+async function seedMaterias() {
+  const practicas = await prisma.materia.upsert({
+    where: { nombre: 'Prácticas del Lenguaje' },
+    update: {},
+    create: { nombre: 'Prácticas del Lenguaje' },
+  });
+  const literatura = await prisma.materia.upsert({
+    where: { nombre: 'Literatura' },
+    update: {},
+    create: { nombre: 'Literatura' },
+  });
+  return { practicas, literatura };
+}
+
+// ---------- Cursos: 1° a 6°, divisiones A y B ----------
+async function seedCursos(practicasId: number, literaturaId: number) {
+  const cursos = [];
+  for (let anio = 1; anio <= 6; anio++) {
+    for (const division of ['A', 'B']) {
+      const curso = await prisma.curso.upsert({
+        where: {
+          anio_division_anio_lectivo: { anio, division, anio_lectivo: ANIO_LECTIVO },
+        },
+        update: {},
+        create: {
+          anio,
+          division,
+          anio_lectivo: ANIO_LECTIVO,
+          materia_id: anio <= 3 ? practicasId : literaturaId,
+        },
+      });
+      cursos.push(curso);
+    }
+  }
+  return cursos;
+}
+
+// ---------- Usuarios ----------
+const DOCENTES = [
+  'Marta Ruiz', 'Carlos Peña', 'Lucía Ferreyra',
+  'Hugo Sosa', 'Valeria Núñez', 'Diego Ledesma',
+]; // ficticios: un docente por año (atiende A y B)
+
+async function upsertUsuario(
+  email: string, nombre: string, rol: TipoRol, hash: string
+) {
+  return prisma.usuario.upsert({
+    where: { email },
+    update: { nombre, rol, contrasena: hash },
+    create: { email, nombre, rol, contrasena: hash, perfil_completo: true },
+  });
+}
+
+async function seedUsuarios(cursos: { curso_id: number; anio: number; division: string }[]) {
+  const hash = await bcrypt.hash(PASSWORD, 10);
+
+  const admin = await upsertUsuario('admin@sababook.test', 'Admin Prueba', TipoRol.ADMINISTRADOR, hash);
+
+  const docentes = [];
+  for (let i = 0; i < DOCENTES.length; i++) {
+    docentes.push(
+      await upsertUsuario(`docente${i + 1}@sababook.test`, DOCENTES[i], TipoRol.DOCENTE, hash)
+    );
+  }
+
+  // 2 alumnos por curso: alumno-1a-1, alumno-1a-2, ...
+  const alumnos: { usuario_id: number; curso_id: number }[] = [];
+  for (const curso of cursos) {
+    for (let n = 1; n <= 2; n++) {
+      const email = `alumno.${curso.anio}${curso.division.toLowerCase()}.${n}@sababook.test`;
+      const u = await upsertUsuario(
+        email, `Alumno ${curso.anio}°${curso.division} #${n}`, TipoRol.ALUMNO, hash
+      );
+      alumnos.push({ usuario_id: u.usuario_id, curso_id: curso.curso_id });
+    }
+  }
+  return { admin, docentes, alumnos };
+}
+
+// ---------- Un docente por curso (SAB-117) ----------
+async function seedCursoDocente(
+  cursos: { curso_id: number; anio: number }[],
+  docentes: { usuario_id: number }[]
+) {
+  for (const curso of cursos) {
+    const docente = docentes[curso.anio - 1];
+    const existente = await prisma.curso_docente.findUnique({ where: { curso_id: curso.curso_id } });
+    if (existente) continue; // ya tiene docente: no se pisa
+    await prisma.curso_docente.create({
+      data: { curso_id: curso.curso_id, usuario_id: docente.usuario_id },
+    });
+  }
+}
+
+// ---------- Libros y asignaciones (misma fuente y criterio que el PR #91) ----------
+const normalizar = (t: string) =>
+  t
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// ¿El libro que ya está en la base es el del listado? (título + apellido)
+const mismoLibro = (e: { titulo: string; autor: string }, v: LibroApl) =>
+  normalizar(e.titulo) === normalizar(v.titulo) &&
+  (v.clave === null
+    ? normalizar(e.autor) === normalizar(v.autor)
+    : normalizar(e.autor).includes(v.clave));
+
+// ¿Esta asignación del listado corresponde a este libro?
+const coincide = (l: LibroApl, a: { titulo: string; clave: string | null }) =>
+  normalizar(l.titulo) === normalizar(a.titulo) &&
+  (a.clave === null || normalizar(l.autor).includes(a.clave));
+
+async function seedLibros() {
+  const existentes = await prisma.libro.findMany({
+    select: { libro_id: true, titulo: true, autor: true },
+  });
+  const ids = new Map<LibroApl, number>();
+  let creados = 0;
+
+  for (const v of LIBROS_APL) {
+    const existente = existentes.find((e) => mismoLibro(e, v));
+    if (existente) {
+      ids.set(v, existente.libro_id);
+      continue;
+    }
+
+    // Nivel según el primer año donde aparece (Básico 1°–3°, Superior 4°–6°)
+    const anios = ASIGNACIONES_APL.filter((a) => coincide(v, a)).map((a) => a.anio);
+    const primerAnio = anios.length > 0 ? Math.min(...anios) : 6;
+
+    const creado = await prisma.libro.create({
+      data: {
+        titulo: v.titulo,
+        autor: v.autor,
+        genero: v.genero,
+        descripcion: v.descripcion,
+        nivel_educativo: primerAnio <= 3 ? 'Básico' : 'Superior',
+        activo: true,
+        paginas_totales: null,
+      },
+    });
+    existentes.push(creado);
+    ids.set(v, creado.libro_id);
+    creados++;
+  }
+
+  console.log(`Libros: ${LIBROS_APL.length} en el listado, ${creados} creados.`);
+  return ids;
+}
+
+async function seedAsignaciones(
+  cursos: { curso_id: number; anio: number }[],
+  libroIds: Map<LibroApl, number>
+) {
+  let nuevas = 0;
+
+  for (const asig of ASIGNACIONES_APL) {
+    const candidatos = LIBROS_APL.filter((l) => coincide(l, asig)).map((l) => libroIds.get(l)!);
+    if (candidatos.length === 0) {
+      throw new Error(`Asignación sin libro: ${asig.anio}° "${asig.titulo}"`);
+    }
+    const libro_id = Math.min(...candidatos);
+
+    for (const curso of cursos.filter((c) => c.anio === asig.anio)) {
+      const yaAsignado = await prisma.curso_libro.findUnique({
+        where: { curso_id_libro_id: { curso_id: curso.curso_id, libro_id } },
+      });
+      if (yaAsignado) continue; // no se pisa el puntaje ni se repite el historial
+
+      // Igual que la app: la asignación y su historial van juntos
+      await prisma.$transaction([
+        prisma.curso_libro.create({
+          data: { curso_id: curso.curso_id, libro_id, puntaje: asig.puntaje },
+        }),
+        prisma.historial_asignacion.create({
+          data: {
+            curso_id: curso.curso_id,
+            libro_id,
+            usuario_id: null,
+            anio_lectivo: ANIO_LECTIVO,
+            accion: 'ASIGNADO',
+            puntaje: asig.puntaje,
+          },
+        }),
+      ]);
+      nuevas++;
+    }
+  }
+  console.log(`Asignaciones nuevas: ${nuevas}.`);
+}
+
+// ---------- Inscripciones ----------
+// inscripcion tiene @@unique([usuario_id, anio_lectivo]): un alumno, un curso por año.
+async function seedInscripciones(alumnos: { usuario_id: number; curso_id: number }[]) {
+  for (const alumno of alumnos) {
+    await prisma.inscripcion.upsert({
+      where: {
+        usuario_id_anio_lectivo: {
+          usuario_id: alumno.usuario_id,
+          anio_lectivo: ANIO_LECTIVO,
+        },
+      },
+      update: {},
+      create: {
+        usuario_id: alumno.usuario_id,
+        curso_id: alumno.curso_id,
+        anio_lectivo: ANIO_LECTIVO,
+      },
+    });
+  }
+}
+
+async function main() {
+  assertSafeEnvironment();
+
+  const { practicas, literatura } = await seedMaterias();
+  const cursos = await seedCursos(practicas.materia_id, literatura.materia_id);
+  const { docentes, alumnos } = await seedUsuarios(cursos);
+  await seedCursoDocente(cursos, docentes);
+  const libroIds = await seedLibros();
+  await seedAsignaciones(cursos, libroIds);
+  await seedInscripciones(alumnos);
+  await seedFavoritos(alumnos);
+  await seedConfiguracion();
+
+  console.log('Seed listo.');
+}
+
+// ---------- Favoritos y estados de lectura ----------
+// es_favorito (corazón) y estado_lectura son independientes (SAB-87).
+async function seedFavoritos(alumnos: { usuario_id: number; curso_id: number }[]) {
+  const casos = [
+    { estado: 'leido', esFavorito: true },
+    { estado: 'leyendo', esFavorito: false },
+    { estado: 'quiero-leer', esFavorito: false },
+    { estado: 'general', esFavorito: true },
+  ];
+
+  for (const alumno of alumnos) {
+    const asignados = await prisma.curso_libro.findMany({
+      where: { curso_id: alumno.curso_id },
+      orderBy: { libro_id: 'asc' },
+      take: casos.length,
+    });
+
+        await prisma.libro.updateMany({
+      where: { libro_id: { in: asignados.map((a) => a.libro_id) }, paginas_totales: null },
+      data: { paginas_totales: PAGINAS_DE_PRUEBA },
+    });
+
+    for (let i = 0; i < asignados.length; i++) {
+      const { estado, esFavorito } = casos[i];
+      await prisma.favorito.upsert({
+        where: {
+          usuario_id_libro_id: {
+            usuario_id: alumno.usuario_id,
+            libro_id: asignados[i].libro_id,
+          },
+        },
+        update: {},
+        create: {
+          usuario_id: alumno.usuario_id,
+          libro_id: asignados[i].libro_id,
+          estado_lectura: estado,
+          es_favorito: esFavorito,
+        },
+      });
+    }
+  }
+}
+
+// ---------- Configuración ----------
+async function seedConfiguracion() {
+  await prisma.configuracion_sistema.upsert({
+    where: { clave: 'puntaje_minimo_anual' },
+    update: {},
+    create: {
+      clave: 'puntaje_minimo_anual',
+      valor: '140',
+      descripcion: 'Puntos mínimos que un alumno debe juntar por año lectivo.',
+    },
+  });
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());
