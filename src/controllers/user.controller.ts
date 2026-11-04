@@ -125,19 +125,22 @@ class UserController {
     }
   }
 
-  async getUserById(req: Request, res: Response) {
+  async getUserById(req: AuthRequest, res: Response) {
     try {
-      const userId = parseInt(String(req.params.id), 10);
-      if (!userId) {
+      const userId = Number(req.params.id);
+      if (!Number.isSafeInteger(userId) || userId <= 0) {
         return res.status(400).json({ error: 'Invalid user ID' });
       }
-      const user = await userService.getUserById(userId);
+      const user = await userService.getUserById(userId, req.userId);
       if (user) {
         return res.status(200).json(user);
       } else {
         return res.status(404).json({ error: `User not found` });
       }
     } catch (error) {
+      if (error instanceof UserRuleError) {
+        return res.status(error.status).json({ error: error.message });
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error getting user by ID:', message);
       res.status(500).json({ error: 'Internal server error' });

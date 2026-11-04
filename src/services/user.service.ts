@@ -123,7 +123,9 @@ class UserService {
     return await userModel.getAllUsers(filters);
   }
 
-  async getUserById(id: number) {
+  // SAB-136: el admin ve a cualquiera; los demás, solo sus propios datos
+  async getUserById(id: number, requesterId: number | undefined) {
+    await this.assertCanAccessUser(id, requesterId, 'No podés ver los datos de otro usuario.');
     return await userModel.getUserById(id);
   }
 
