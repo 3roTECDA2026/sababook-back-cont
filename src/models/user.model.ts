@@ -1,5 +1,5 @@
 import { prisma } from '../db/connect/db';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../utils/password';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
 import { unaccentContains } from '../utils/search';
 import { Prisma, TipoRol } from '@prisma/client';
@@ -75,11 +75,11 @@ const buildUserWhere = async (filters: UserFilters): Promise<Prisma.usuarioWhere
   return conditions.length > 0 ? { AND: conditions } : {};
 };
 
+// SAB-136: datos públicos del usuario. Nunca incluye la contraseña.
 export interface User {
   usuario_id: number;
   nombre: string;
   email: string;
-  contrasena: string;
   rol: TipoRol;
   fecha_registro: Date;
   perfil_completo: boolean;
@@ -116,7 +116,21 @@ interface NewUserResult {
   rol: TipoRol;
 }
 
-type UpdateUserData = Partial<Omit<User, 'usuario_id'>>;
+// Campos que se pueden actualizar. El servicio decide cuáles según quién edita (SAB-136).
+export type UpdateUserData = Partial<
+  Pick<Prisma.usuarioUpdateInput, 'nombre' | 'email' | 'rol' | 'avatar_url' | 'nivel_educativo' | 'contrasena'>
+>;
+
+const PUBLIC_USER_SELECT = {
+  usuario_id: true,
+  nombre: true,
+  email: true,
+  rol: true,
+  fecha_registro: true,
+  perfil_completo: true,
+  avatar_url: true,
+  nivel_educativo: true,
+} satisfies Prisma.usuarioSelect;
 
 class UserModel {
   async getAllUsers(filters: UserFilters = {}): Promise<UserConRol[]> {
@@ -145,7 +159,6 @@ class UserModel {
   }
 
   async createUser(userData: CreateUserData): Promise<NewUserResult> {
-    const saltRounds = 10;
     const {
       nombre,
       email,
@@ -159,7 +172,7 @@ class UserModel {
     const fecha_registro = new Date();
 
     try {
-      const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
+      const hashedPassword = await hashPassword(contrasena);
 
       const newUser = await prisma.usuario.create({
         data: {
@@ -191,30 +204,23 @@ class UserModel {
     }
   }
 
+  // Recibe datos ya validados por el servicio. Devuelve el usuario sin la contraseña (SAB-136).
   async updateUser(userId: number, userData: UpdateUserData): Promise<User> {
-    const dataToUpdate: Record<string, any> = {};
-    Object.keys(userData).forEach((key) => {
-      const val = (userData as any)[key];
-      if (val !== undefined) {
-        dataToUpdate[key] = val;
-      }
-    });
-
-    if (Object.keys(dataToUpdate).length === 0) {
+    if (Object.keys(userData).length === 0) {
       throw new Error('No data provided for update.');
     }
 
     try {
       const updatedUser = await prisma.usuario.update({
         where: { usuario_id: userId },
-        data: dataToUpdate,
+        data: userData,
+        select: PUBLIC_USER_SELECT,
       });
 
       return {
         usuario_id: updatedUser.usuario_id,
         nombre: updatedUser.nombre,
         email: updatedUser.email,
-        contrasena: updatedUser.contrasena,
         rol: updatedUser.rol,
         fecha_registro: updatedUser.fecha_registro ?? new Date(),
         perfil_completo: updatedUser.perfil_completo ?? false,

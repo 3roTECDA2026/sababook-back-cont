@@ -1,4 +1,5 @@
-import { userModel, UserFilters, countEnrollmentsDB } from '../models/user.model';import { PaginationParams } from '../utils/pagination';
+import { userModel, UserFilters, countEnrollmentsDB } from '../models/user.model';
+import { PaginationParams } from '../utils/pagination';
 import { TipoRol } from '@prisma/client';
 
 export interface CreateUserDTO {
