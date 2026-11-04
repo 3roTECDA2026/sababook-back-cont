@@ -392,25 +392,13 @@ class TriviaController {
         return res.status(401).json({ error: 'Authentication required' });
       }
 
+      if (req.userRole === TipoRol.ALUMNO) {
+        return res.status(403).json({ error: 'Los alumnos no tienen acceso al detalle con respuestas de la evaluación.' });
+      }
+
       const detail = await triviaModel.getEvaluationById(evaluationId);
       if (!detail) {
         return res.status(404).json({ error: 'Evaluation not found' });
-      }
-
-      if (req.userRole === TipoRol.ALUMNO) {
-        const courseId = await triviaModel.getEvaluationCourse(evaluationId);
-        if (courseId === undefined) {
-          return res.status(404).json({ error: 'Evaluation not found' });
-        }
-        if (courseId !== null) {
-          const studentCourses = await triviaModel.getStudentCourseIds(req.userId);
-          if (!studentCourses.includes(courseId)) {
-            return res.status(403).json({ error: 'Esta evaluación no pertenece a tus cursos.' });
-          }
-        }
-        if (detail.evaluation.habilitada === false) {
-          return res.status(403).json({ error: 'La evaluación aún no fue habilitada por el docente.' });
-        }
       }
 
       return res.status(200).json(detail);
