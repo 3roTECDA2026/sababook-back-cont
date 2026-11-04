@@ -103,16 +103,25 @@ El servidor estará disponible en `http://localhost:3001`.
 
 ## Seed de datos de prueba
 
-Carga cursos, usuarios, libros del APL 2026, inscripciones, favoritos y configuración.
-**Solo para entornos locales o de prueba. Nunca contra la base de producción ni la compartida del equipo.**
+Carga materias, cursos de 1° a 6° (divisiones A y B, año 2026), usuarios de prueba, los libros del APL 2026 con su puntaje por curso (393 libros y 780 asignaciones, con su registro en el historial), inscripciones, favoritos con estados de lectura y el mínimo anual de 140 puntos.
+
+**Solo para entornos locales o de prueba. Nunca contra una base de producción.**
 
 1. Aplicá las migraciones en una base vacía: `npx prisma migrate deploy`
 2. Corré el seed: `npx prisma db seed`
 
-El seed se puede correr varias veces sin duplicar datos.
+El seed se puede correr varias veces sin duplicar datos. No borra nada: crea o actualiza.
 
-Protección: aborta si `NODE_ENV=production` o si la base no es local. Para una base de
-prueba remota propia, usá `ALLOW_SEED=true`.
+Para un resultado limpio, usá una base vacía: el seed no corrige puntajes de asignaciones que ya existían.
+
+Protección: aborta si `NODE_ENV=production` o si la base no es local. Para una base de prueba remota propia (por ejemplo, tu proyecto de Supabase), corré con `ALLOW_SEED=true`.
+
+En PowerShell, solo para esa terminal:
+
+```
+$env:DATABASE_URL="<connection string de tu base de prueba>"
+$env:ALLOW_SEED="true"
+npx prisma db seed
 
 ### Usuarios de prueba
 

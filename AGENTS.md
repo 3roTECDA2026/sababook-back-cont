@@ -177,8 +177,7 @@ ahí **solo a través de las migraciones incluidas en los PR**.
    aplicar a mano lo que faltó: la marca como aplicada pero no la ejecuta.
 7. Al agregar columnas `NOT NULL` con default, pensar qué valor deben tomar las filas
    existentes (puede requerir un `UPDATE` en la misma migración).
-8. `prisma/seed.ts` empieza con `TRUNCATE ... CASCADE`: borra todos los datos de tu base.
-   Usarlo solo para empezar de cero.
+8. `prisma/seed.ts` no borra datos: crea o actualiza (upsert), así que se puede correr varias veces.
 
 ### Flujo para un cambio de esquema
 
