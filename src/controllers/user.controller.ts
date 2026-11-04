@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { TipoRol, Prisma } from '@prisma/client';
 import { userService, UserRuleError } from '../services/user.service';
+import type { AuthRequest } from '../middleware/auth.middleware';
 import { parsePagination } from '../utils/pagination';
 import {
   getEnumParam,
@@ -80,18 +81,21 @@ class UserController {
     }
   }
 
-  async updateUser(req: Request, res: Response) {
+  // SAB-136: el admin edita a cualquiera; los demás, solo sus propios datos (lo valida el service)
+  async updateUser(req: AuthRequest, res: Response) {
     try {
-      const userId = parseInt(String(req.params.id), 10);
-      const updatedUser = req.body;
-      if (isNaN(userId)) {
+      const userId = Number(req.params.id);
+      if (!Number.isSafeInteger(userId) || userId <= 0) {
         return res.status(400).json({ error: 'Invalid ID format' });
       }
-      const result = await userService.updateUser(userId, updatedUser);
+      const result = await userService.updateUser(userId, req.body ?? {}, req.userId);
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof UserRuleError) {
         return res.status(error.status).json({ error: error.message });
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return res.status(409).json({ error: 'Ya existe un usuario con ese email.' });
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -106,34 +110,43 @@ class UserController {
     }
   }
 
-  async deleteUser(req: Request, res: Response) {
+  async deleteUser(req: AuthRequest, res: Response) {
     try {
-      const userId = parseInt(String(req.params.id), 10);
-      if (!userId) {
+      const userId = Number(req.params.id);
+      if (!Number.isSafeInteger(userId) || userId <= 0) {
         return res.status(400).json({ error: 'Invalid user ID' });
       }
-      await userService.deleteUser(userId);
+      await userService.deleteUser(userId, req.userId);
       return res.status(204).end();
     } catch (error) {
+      if (error instanceof UserRuleError) {
+        return res.status(error.status).json({ error: error.message });
+      }
       const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('not found')) {
+        return res.status(404).json({ error: message });
+      }
       console.error('Error deleting user:', message);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
 
-  async getUserById(req: Request, res: Response) {
+  async getUserById(req: AuthRequest, res: Response) {
     try {
-      const userId = parseInt(String(req.params.id), 10);
-      if (!userId) {
+      const userId = Number(req.params.id);
+      if (!Number.isSafeInteger(userId) || userId <= 0) {
         return res.status(400).json({ error: 'Invalid user ID' });
       }
-      const user = await userService.getUserById(userId);
+      const user = await userService.getUserById(userId, req.userId);
       if (user) {
         return res.status(200).json(user);
       } else {
         return res.status(404).json({ error: `User not found` });
       }
     } catch (error) {
+      if (error instanceof UserRuleError) {
+        return res.status(error.status).json({ error: error.message });
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error getting user by ID:', message);
       res.status(500).json({ error: 'Internal server error' });
