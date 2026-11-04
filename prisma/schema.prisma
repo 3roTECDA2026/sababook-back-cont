@@ -97,6 +97,8 @@ model libro {
   genero                String? @db.VarChar(100)
   descripcion           String?
   portada_url           String?
+  // SAB-67: ruta del PDF en Supabase Storage (NULL = sin PDF)
+  pdf_path              String?
   nivel_educativo       String? @db.VarChar(50)
   calificacion_promedio Float?
   activo                Boolean @default(true)

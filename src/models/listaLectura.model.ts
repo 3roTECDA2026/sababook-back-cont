@@ -48,7 +48,10 @@ class ListaLecturaModel {
         nivel: nueva.nivel ?? '',
         fecha_creacion: nueva.fecha_creacion ?? new Date(),
       };
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new Error(`Ya existe lista_lectura con lista_id ${lista_id} y docente_id ${docente_id}.`);
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error('Error en ListaLecturaModel.crearListaLectura:', message);
       throw new Error('No se pudo crear la lista de lectura.');

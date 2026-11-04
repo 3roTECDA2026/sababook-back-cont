@@ -3,8 +3,16 @@ import { Request, Response } from 'express';
 import { TipoRol, Prisma } from '@prisma/client';
 import { userService } from '../services/user.service';
 import { parsePagination } from '../utils/pagination';
-import { getStringParam, QueryParamError } from '../utils/queryParams';
+import {
+  getEnumParam,
+  getPositiveIntParam,
+  getStringParam,
+  QueryParamError,
+} from '../utils/queryParams';
 import { MAX_SEARCH_LENGTH } from '../utils/search';
+import { getCourseFilters } from '../utils/courseFilters';
+import type { UserFilters } from '../models/user.model';
+import { READING_STATUS_FILTERS } from '../models/favorite.model';
 
 class UserController {
   async getAllUsers(req: Request, res: Response) {
@@ -23,7 +31,14 @@ class UserController {
       return res.status(400).json({ error: 'El rol no es válido.' });
     }
 
-    const filters = { q, rol: rol as TipoRol | undefined };
+    // SAB-060: año de cursada, curso, libro y estado de lectura
+    const filters: UserFilters = {
+      q,
+      rol: rol as TipoRol | undefined,
+      ...(await getCourseFilters(req.query)),
+      libro_id: getPositiveIntParam(req.query, 'libro_id'),
+      estado_lectura: getEnumParam(req.query, 'estado_lectura', READING_STATUS_FILTERS),
+    };
 
     const pagination = parsePagination(req.query, 5);
     if (pagination) {

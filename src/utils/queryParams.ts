@@ -18,3 +18,34 @@ export const getStringParam = (
   const trimmed = value.trim();
   return trimmed === '' ? undefined : trimmed;
 };
+
+// SAB-060: entero positivo (IDs, años), o undefined si no vino.
+// Si vino pero no es un entero positivo, es un error.
+export const getPositiveIntParam = (
+  query: Record<string, unknown>,
+  key: string
+): number | undefined => {
+  const text = getStringParam(query, key);
+  if (text === undefined) return undefined;
+
+  const value = Number(text);
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(value) || value <= 0) {
+    throw new QueryParamError(`El parámetro ${key} debe ser un número entero positivo.`);
+  }
+  return value;
+};
+
+// SAB-060: uno de los valores permitidos, o undefined si no vino.
+export const getEnumParam = <T extends string>(
+  query: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[]
+): T | undefined => {
+  const text = getStringParam(query, key);
+  if (text === undefined) return undefined;
+
+  if (!allowed.includes(text as T)) {
+    throw new QueryParamError(`El parámetro ${key} no es válido. Valores posibles: ${allowed.join(', ')}.`);
+  }
+  return text as T;
+};
