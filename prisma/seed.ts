@@ -119,7 +119,7 @@ async function seedCursoDocente(
 ) {
   for (const curso of cursos) {
     const docente = docentes[curso.anio - 1];
-    const existente = await prisma.curso_docente.findUnique({ where: { curso_id: curso.curso_id } });
+    const existente = await prisma.curso_docente.findFirst({ where: { curso_id: curso.curso_id } });
     if (existente) continue; // ya tiene docente: no se pisa
     await prisma.curso_docente.create({
       data: { curso_id: curso.curso_id, usuario_id: docente.usuario_id },
@@ -283,7 +283,14 @@ async function seedFavoritos(alumnos: { usuario_id: number; curso_id: number }[]
     });
 
         await prisma.libro.updateMany({
-      where: { libro_id: { in: asignados.map((a) => a.libro_id) }, paginas_totales: null },
+      where: {
+        libro_id: {
+          in: asignados.map((a) => a.libro_id),
+        },
+        paginas_totales: {
+          equals: null,
+        },
+      },
       data: { paginas_totales: PAGINAS_DE_PRUEBA },
     });
 
