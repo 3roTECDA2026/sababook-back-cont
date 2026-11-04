@@ -1,7 +1,7 @@
 // src/controllers/user.controller.ts
 import { Request, Response } from 'express';
 import { TipoRol, Prisma } from '@prisma/client';
-import { userService } from '../services/user.service';
+import { userService, UserRuleError } from '../services/user.service';
 import { parsePagination } from '../utils/pagination';
 import {
   getEnumParam,
@@ -90,6 +90,9 @@ class UserController {
       const result = await userService.updateUser(userId, updatedUser);
       return res.status(200).json(result);
     } catch (error) {
+      if (error instanceof UserRuleError) {
+        return res.status(error.status).json({ error: error.message });
+      }
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (errorMessage.includes('not found')) {

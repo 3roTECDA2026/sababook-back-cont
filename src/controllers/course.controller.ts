@@ -352,6 +352,27 @@ export const inscribirAlumno = async (req: AuthRequest, res: Response): Promise<
   }
 };
 
+// Pone al alumno en este curso; si tenía otro en el mismo año, lo pasa en una sola operación
+export const moverAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  const usuarioId = parsearId(req.params.userId);
+  if (!id || !usuarioId) {
+    res.status(400).json({ error: 'El ID del curso o del alumno no es válido.' });
+    return;
+  }
+
+  try {
+    await courseService.moverAlumno(id, usuarioId);
+    res.status(200).json({ message: 'Curso del alumno actualizado correctamente.' });
+  } catch (err) {
+    if (responderError(res, err, { P2003: CURSO_NO_ENCONTRADO })) {
+      return;
+    }
+    console.error('Error al cambiar el curso del alumno:', err);
+    res.status(500).json({ error: 'Error interno al cambiar el curso del alumno.' });
+  }
+};
+
 export const quitarAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
   const id = parsearId(req.params.id);
   const usuarioId = parsearId(req.params.userId);
@@ -371,7 +392,6 @@ export const quitarAlumno = async (req: AuthRequest, res: Response): Promise<voi
     res.status(500).json({ error: 'Error interno al quitar al alumno.' });
   }
 };
-
 // ---------- Libros del curso ----------
 
 export const obtenerLibrosDelCurso = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -577,6 +597,7 @@ export default {
   asignarDocente,
   quitarDocente,
   inscribirAlumno,
+  moverAlumno,
   quitarAlumno,
   obtenerLibrosDelCurso,
   asignarLibro,

@@ -17,6 +17,7 @@ import {
   obtenerAnioLectivoCursoDB,
   findStudentEnrollmentDB,
   inscribirAlumnoDB,
+  moverAlumnoDB,
   quitarAlumnoDB,
   obtenerHistorialDB,
   obtenerLibrosDelCursoDB,
@@ -117,6 +118,30 @@ class CourseService {
     }
 
     return await inscribirAlumnoDB(curso_id, usuario_id, anio_lectivo);
+  }
+
+  // SAB-116: pone al alumno en este curso. Si ya estaba en otro del mismo año, lo pasa
+  // en una sola operación (no hace falta quitarlo antes)
+  async moverAlumno(curso_id: number, usuario_id: number) {
+    const usuario = await obtenerRolUsuarioDB(usuario_id);
+    if (!usuario) {
+      throw new ErrorNegocio(404, 'Usuario no encontrado.');
+    }
+    if (usuario.rol !== TipoRol.ALUMNO) {
+      throw new ErrorNegocio(400, 'El usuario indicado no tiene rol alumno.');
+    }
+
+    const anio_lectivo = await obtenerAnioLectivoCursoDB(curso_id);
+    if (anio_lectivo === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    const inscripcionActual = await findStudentEnrollmentDB(usuario_id, anio_lectivo);
+    if (inscripcionActual?.curso_id === curso_id) {
+      throw new ErrorNegocio(409, 'El alumno ya está inscripto en este curso.');
+    }
+
+    return await moverAlumnoDB(curso_id, usuario_id, anio_lectivo);
   }
 
   async quitarAlumno(curso_id: number, usuario_id: number) {

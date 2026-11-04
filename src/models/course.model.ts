@@ -223,7 +223,19 @@ export const inscribirAlumnoDB = async (
 ): Promise<inscripcion> => {
   return await prisma.inscripcion.create({ data: { curso_id, usuario_id, anio_lectivo } });
 };
-
+// Inscribe al alumno en el curso, o lo pasa a ese curso si ya tenía otro en el año.
+// Es una sola operación en la base: el alumno nunca queda sin curso a mitad de camino.
+export const moverAlumnoDB = async (
+  curso_id: number,
+  usuario_id: number,
+  anio_lectivo: number
+): Promise<inscripcion> => {
+  return await prisma.inscripcion.upsert({
+    where: { usuario_id_anio_lectivo: { usuario_id, anio_lectivo } },
+    update: { curso_id, fecha_inscripcion: new Date() },
+    create: { curso_id, usuario_id, anio_lectivo },
+  });
+};
 // Devuelve cuántas inscripciones borró (0 si el alumno no estaba en ese curso)
 export const quitarAlumnoDB = async (curso_id: number, usuario_id: number): Promise<number> => {
   const { count } = await prisma.inscripcion.deleteMany({ where: { curso_id, usuario_id } });

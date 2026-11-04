@@ -310,3 +310,9 @@ class UserModel {
 }
 
 export const userModel = new UserModel();
+
+
+// SAB-116: inscripciones del usuario en cualquier año lectivo
+export const countEnrollmentsDB = async (usuario_id: number): Promise<number> => {
+  return await prisma.inscripcion.count({ where: { usuario_id } });
+};

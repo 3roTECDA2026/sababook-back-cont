@@ -9,6 +9,7 @@ import {
   asignarDocente,
   quitarDocente,
   inscribirAlumno,
+  moverAlumno,
   quitarAlumno,
   obtenerLibrosDelCurso,
   asignarLibro,
@@ -41,6 +42,7 @@ router.delete('/:id/teachers/:userId', verifyToken, requireAdmin, quitarDocente)
 
 // Alumnos del curso: solo el administrador (SAB-116)
 router.post('/:id/students', verifyToken, requireAdmin, inscribirAlumno);
+router.put('/:id/students/:userId', verifyToken, requireAdmin, moverAlumno);
 router.delete('/:id/students/:userId', verifyToken, requireAdmin, quitarAlumno);
 
 // Libros del curso: administrador o docente asignado al curso (lo valida el service)
