@@ -383,10 +383,14 @@ class TriviaModel {
     }
   }
 
-  async getEvaluationsByCourse(cursoId: number): Promise<Evaluacion[]> {
+  async getEvaluationsByCourse(cursoId: number, onlyEnabled: boolean = false): Promise<Evaluacion[]> {
     try {
+      const where: any = { curso_id: cursoId };
+      if (onlyEnabled) {
+        where.habilitada = true;
+      }
       const rows = await prisma.trivia_evaluacion.findMany({
-        where: { curso_id: cursoId },
+        where,
         include: {
           _count: { select: { trivia_pregunta: true } },
         },
@@ -490,8 +494,10 @@ class TriviaModel {
       const where: any = { libro_id: bookId };
       if (courseIds) {
         where.OR = [{ curso_id: { in: courseIds } }, { curso_id: null }];
-        where.habilitada = true;
       } else if (onlyEnabled) {
+        where.curso_id = null;
+      }
+      if (courseIds || onlyEnabled) {
         where.habilitada = true;
       }
       const rows = await prisma.trivia_evaluacion.findMany({

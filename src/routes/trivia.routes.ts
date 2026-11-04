@@ -12,7 +12,7 @@ router.patch('/evaluacion/:evaluationId/habilitar', verifyToken, TriviaControlle
 router.get('/evaluacion/:evaluationId', verifyToken, TriviaController.getEvaluationById);
 
 router.get('/jugar/libro/:bookId', optionalAuth, TriviaController.getTriviaForPlay);
-router.get('/jugar/evaluacion/:evaluationId', optionalAuth, TriviaController.getEvaluationForPlay);
+router.get('/jugar/evaluacion/:evaluationId', verifyToken, TriviaController.getEvaluationForPlay);
 router.post('/jugar/check', verifyToken, TriviaController.checkAnswers);
 router.get('/jugar/evaluacion/:evaluationId/status', verifyToken, TriviaController.getAttemptStatus);
 
