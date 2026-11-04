@@ -95,9 +95,22 @@ const validarDatosCurso = (body: Record<string, unknown>, parcial: boolean) => {
 };
 
 // Valida el puntaje (créditos) de un libro: entero entre 1 y 100
-const validarPuntaje = (valor: unknown): number | null => {
+const validarPuntaje = (
+  valor: unknown
+): { valido: boolean; puntaje: number | null } => {
+  if (valor === undefined || valor === null || valor === '') {
+    return { valido: true, puntaje: null };
+  }
   const puntaje = parsearEntero(valor);
-  return puntaje !== null && puntaje >= 1 && puntaje <= 100 ? puntaje : null;
+  if (puntaje === null || puntaje < 1 || puntaje > 100) {
+    return { valido: false, puntaje: null };
+  }
+  return { valido: true, puntaje };
+};
+
+const validarPuntajeAnual = (valor: unknown): number | null => {
+  const puntaje = parsearEntero(valor);
+  return puntaje !== null && puntaje >= 140 && puntaje <= 200 ? puntaje : null;
 };
 
 // ---------- Cursos ----------
@@ -419,8 +432,8 @@ export const asignarLibro = async (req: AuthRequest, res: Response): Promise<voi
     return;
   }
 
-  const puntaje = validarPuntaje(req.body?.puntaje);
-  if (puntaje === null) {
+  const { valido, puntaje } = validarPuntaje(req.body?.puntaje);
+  if (!valido) {
     res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
@@ -450,8 +463,8 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
     return;
   }
 
-  const puntaje = validarPuntaje(req.body?.puntaje);
-  if (puntaje === null) {
+  const { valido, puntaje } = validarPuntaje(req.body?.puntaje);
+  if (!valido) {
     res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
@@ -469,6 +482,31 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
     }
     console.error('Error al actualizar el puntaje:', err);
     res.status(500).json({ error: 'Error interno al actualizar el puntaje.' });
+  }
+};
+
+export const actualizarPuntajeAnual = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'El ID del curso no es válido.' });
+    return;
+  }
+
+  const puntajeAnual = validarPuntajeAnual(req.body?.puntaje_anual);
+  if (puntajeAnual === null) {
+    res
+      .status(400)
+      .json({ error: 'El puntaje anual debe ser un número entero entre 140 y 200.' });
+    return;
+  }
+
+  try {
+    const curso = await courseService.actualizarPuntajeAnual(id, puntajeAnual, req.userId);
+    res.status(200).json(curso);
+  } catch (err) {
+    if (responderError(res, err, { P2025: CURSO_NO_ENCONTRADO })) return;
+    console.error('Error al actualizar el puntaje anual:', err);
+    res.status(500).json({ error: 'Error interno al actualizar el puntaje anual.' });
   }
 };
 
@@ -566,6 +604,27 @@ export const obtenerProgresoAlumno = async (req: AuthRequest, res: Response): Pr
   }
 };
 
+export const obtenerPuntajesCurso = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'El ID del curso no es válido.' });
+    return;
+  }
+
+  try {
+    const puntajes = await courseService.obtenerPuntajesCurso(id, req.userId);
+    if (!puntajes) {
+      res.status(404).json({ error: CURSO_NO_ENCONTRADO.mensaje });
+      return;
+    }
+    res.status(200).json(puntajes);
+  } catch (err) {
+    if (responderError(res, err)) return;
+    console.error('Error al obtener los puntajes del curso:', err);
+    res.status(500).json({ error: 'Error interno al obtener los puntajes del curso.' });
+  }
+};
+
 // ---------- Alerta de asignaciones en años anteriores ----------
 
 export const obtenerAsignacionesAnteriores = async (
@@ -602,8 +661,10 @@ export default {
   obtenerLibrosDelCurso,
   asignarLibro,
   actualizarPuntajeLibro,
+  actualizarPuntajeAnual,
   quitarLibro,
   obtenerHistorial,
   obtenerProgresoAlumno,
+  obtenerPuntajesCurso,
   obtenerAsignacionesAnteriores,
 };

@@ -27,6 +27,7 @@ export interface CursoResumen {
   anio: number;
   division: string;
   anio_lectivo: number;
+  puntaje_anual: number;
   materia: MateriaCurso;
   cantidad_docentes: number;
   cantidad_libros: number;
@@ -46,7 +47,7 @@ export interface LibroCurso {
   autor: string;
   portada_url: string | null;
   pdf_path: string | null;
-  puntaje: number;
+  puntaje: number | null;
 }
 
 export interface CursoDetalle {
@@ -54,6 +55,7 @@ export interface CursoDetalle {
   anio: number;
   division: string;
   anio_lectivo: number;
+  puntaje_anual: number;
   materia: MateriaCurso;
   docentes: DocenteCurso[];
   libros: LibroCurso[];
@@ -107,6 +109,7 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
     anio: c.anio,
     division: c.division,
     anio_lectivo: c.anio_lectivo,
+    puntaje_anual: c.puntaje_anual,
     materia: c.materia,
     cantidad_docentes: c._count.curso_docente,
     cantidad_libros: c._count.curso_libro,
@@ -137,6 +140,7 @@ export const obtenerCursoPorIdDB = async (curso_id: number): Promise<CursoDetall
     anio: c.anio,
     division: c.division,
     anio_lectivo: c.anio_lectivo,
+    puntaje_anual: c.puntaje_anual,
     materia: c.materia,
     docentes: c.curso_docente.map((cd) => cd.usuario),
     libros: c.curso_libro.map((cl) => ({ ...cl.libro, puntaje: cl.puntaje })),
@@ -325,7 +329,7 @@ export const obtenerLibrosDelCursoDB = async (curso_id: number): Promise<LibroCu
 export const asignarLibroDB = async (
   curso_id: number,
   libro_id: number,
-  puntaje: number,
+  puntaje: number | null,
   usuario_id?: number
 ): Promise<curso_libro> => {
   return await prisma.$transaction(async (tx) => {
@@ -344,7 +348,7 @@ export const asignarLibroDB = async (
 export const actualizarPuntajeLibroDB = async (
   curso_id: number,
   libro_id: number,
-  puntaje: number,
+  puntaje: number | null,
   usuario_id?: number
 ): Promise<curso_libro> => {
   return await prisma.$transaction(async (tx) => {
@@ -384,13 +388,16 @@ export const quitarLibroDB = async (
 
 // ---------- creditos / progreso ----------
 
-// Criterio 2: lee el mínimo anual desde configuracion_sistema (140 por defecto si no está cargado)
-export const obtenerPuntajeMinimoAnualDB = async (): Promise<number> => {
-  const config = await prisma.configuracion_sistema.findUnique({
-    where: { clave: 'puntaje_minimo_anual' },
+export const PUNTAJE_ANUAL_POR_DEFECTO = 140;
+
+export const actualizarPuntajeAnualDB = async (
+  curso_id: number,
+  puntaje_anual: number
+): Promise<curso> => {
+  return await prisma.curso.update({
+    where: { curso_id },
+    data: { puntaje_anual },
   });
-  const valor = config ? Number(config.valor) : NaN;
-  return Number.isFinite(valor) && valor > 0 ? valor : 140;
 };
 
 export interface ProgresoAlumno {
@@ -402,15 +409,37 @@ export interface ProgresoAlumno {
   cumplido: boolean;
 }
 
-//Progreso de un alumno en un año lectivo.
+export interface PuntajeAlumno {
+  usuario_id: number;
+  nombre: string;
+  puntaje_acumulado: number;
+  minimo_requerido: number;
+  faltante: number;
+  cumplido: boolean;
+}
+
+export interface CursoPuntajes {
+  curso: {
+    curso_id: number;
+    anio: number;
+    division: string;
+    anio_lectivo: number;
+    puntaje_anual: number;
+  };
+  alumnos: PuntajeAlumno[];
+}
+
 export const obtenerProgresoAlumnoDB = async (
   alumno_id: number,
-  anio_lectivo: number,
-  minimo: number
+  anio_lectivo: number
 ): Promise<ProgresoAlumno> => {
   const inscripcion = await prisma.inscripcion.findUnique({
     where: { usuario_id_anio_lectivo: { usuario_id: alumno_id, anio_lectivo } },
-    include: { curso: { select: { curso_id: true, anio: true, division: true } } },
+    include: {
+      curso: {
+        select: { curso_id: true, anio: true, division: true, puntaje_anual: true },
+      },
+    },
   });
 
   if (!inscripcion) {
@@ -418,11 +447,14 @@ export const obtenerProgresoAlumnoDB = async (
       anio_lectivo,
       curso: null,
       puntaje_acumulado: 0,
-      minimo_requerido: minimo,
-      faltante: minimo,
+      minimo_requerido: PUNTAJE_ANUAL_POR_DEFECTO,
+      faltante: PUNTAJE_ANUAL_POR_DEFECTO,
       cumplido: false,
     };
   }
+
+  const { puntaje_anual, ...curso } = inscripcion.curso;
+  const minimo = puntaje_anual ?? PUNTAJE_ANUAL_POR_DEFECTO;
 
   const asignados = await prisma.curso_libro.findMany({
     where: { curso_id: inscripcion.curso_id },
@@ -436,17 +468,78 @@ export const obtenerProgresoAlumnoDB = async (
   const leidosIds = new Set(leidos.map((f) => f.libro_id));
 
   const puntaje_acumulado = asignados
-    .filter((a) => leidosIds.has(a.libro_id))
-    .reduce((suma, a) => suma + a.puntaje, 0);
+    .filter((a) => a.puntaje !== null && leidosIds.has(a.libro_id))
+    .reduce((suma, a) => suma + (a.puntaje ?? 0), 0);
 
   return {
     anio_lectivo,
-    curso: inscripcion.curso,
+    curso,
     puntaje_acumulado,
     minimo_requerido: minimo,
     faltante: Math.max(0, minimo - puntaje_acumulado),
     cumplido: puntaje_acumulado >= minimo,
   };
+};
+
+export const obtenerPuntajesCursoDB = async (
+  curso_id: number
+): Promise<CursoPuntajes | null> => {
+  const curso = await prisma.curso.findUnique({
+    where: { curso_id },
+    select: {
+      curso_id: true,
+      anio: true,
+      division: true,
+      anio_lectivo: true,
+      puntaje_anual: true,
+    },
+  });
+
+  if (!curso) return null;
+
+  const [libros, inscripciones] = await Promise.all([
+    prisma.curso_libro.findMany({
+      where: { curso_id },
+      select: { libro_id: true, puntaje: true },
+    }),
+    prisma.inscripcion.findMany({
+      where: { curso_id },
+      select: {
+        usuario: {
+          select: {
+            usuario_id: true,
+            nombre: true,
+            favorito: { select: { libro_id: true, estado_lectura: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const puntajePorLibro = new Map(libros.map((l) => [l.libro_id, l.puntaje]));
+  const minimo = curso.puntaje_anual ?? PUNTAJE_ANUAL_POR_DEFECTO;
+
+  const alumnos = inscripciones
+    .map(({ usuario }) => {
+      const puntaje_acumulado = usuario.favorito
+        .filter((f) => f.estado_lectura === 'leido')
+        .reduce((suma, f) => {
+          const puntaje = puntajePorLibro.get(f.libro_id);
+          return puntaje == null ? suma : suma + puntaje;
+        }, 0);
+
+      return {
+        usuario_id: usuario.usuario_id,
+        nombre: usuario.nombre,
+        puntaje_acumulado,
+        minimo_requerido: minimo,
+        faltante: Math.max(0, minimo - puntaje_acumulado),
+        cumplido: puntaje_acumulado >= minimo,
+      };
+    })
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+  return { curso, alumnos };
 };
 
 // ---------- Alerta de asignaciones en años anteriores ----------

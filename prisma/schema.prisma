@@ -521,6 +521,7 @@ model curso {
   anio          Int
   division      String          @db.VarChar(5)
   anio_lectivo  Int
+  puntaje_anual Int             @default(140)
   materia_id    Int
   materia       materia         @relation(fields: [materia_id], references: [materia_id], onDelete: NoAction, onUpdate: NoAction)
   curso_docente curso_docente[]
@@ -549,7 +550,7 @@ model curso_docente {
 model curso_libro {
   curso_id Int
   libro_id Int
-  puntaje  Int
+  puntaje  Int?
   curso    curso @relation(fields: [curso_id], references: [curso_id], onDelete: NoAction, onUpdate: NoAction)
   libro    libro @relation(fields: [libro_id], references: [libro_id], onDelete: NoAction, onUpdate: NoAction)
 
