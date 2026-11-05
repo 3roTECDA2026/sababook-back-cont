@@ -467,9 +467,12 @@ export const obtenerProgresoAlumnoDB = async (
   });
   const leidosIds = new Set(leidos.map((f) => f.libro_id));
 
-  const puntaje_acumulado = asignados
-    .filter((a) => a.puntaje !== null && leidosIds.has(a.libro_id))
-    .reduce((suma, a) => suma + (a.puntaje ?? 0), 0);
+  const puntaje_acumulado = Math.min(
+    asignados
+      .filter((a) => a.puntaje !== null && leidosIds.has(a.libro_id))
+      .reduce((suma, a) => suma + (a.puntaje ?? 0), 0),
+    minimo
+  );
 
   return {
     anio_lectivo,
@@ -521,12 +524,15 @@ export const obtenerPuntajesCursoDB = async (
 
   const alumnos = inscripciones
     .map(({ usuario }) => {
-      const puntaje_acumulado = usuario.favorito
-        .filter((f) => f.estado_lectura === 'leido')
-        .reduce((suma, f) => {
-          const puntaje = puntajePorLibro.get(f.libro_id);
-          return puntaje == null ? suma : suma + puntaje;
-        }, 0);
+      const puntaje_acumulado = Math.min(
+        usuario.favorito
+          .filter((f) => f.estado_lectura === 'leido')
+          .reduce((suma, f) => {
+            const puntaje = puntajePorLibro.get(f.libro_id);
+            return puntaje == null ? suma : suma + puntaje;
+          }, 0),
+        minimo
+      );
 
       return {
         usuario_id: usuario.usuario_id,
