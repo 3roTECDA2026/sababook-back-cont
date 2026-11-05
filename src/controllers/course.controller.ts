@@ -463,6 +463,11 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
     return;
   }
 
+  if (!('puntaje' in req.body)) {
+    res.status(400).json({ error: 'El puntaje es obligatorio.' });
+    return;
+  }
+
   const { valido, puntaje } = validarPuntaje(req.body?.puntaje);
   if (!valido) {
     res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });

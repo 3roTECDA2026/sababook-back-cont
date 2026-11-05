@@ -47,9 +47,9 @@ router.post('/:id/students', verifyToken, requireAdmin, inscribirAlumno);
 router.put('/:id/students/:userId', verifyToken, requireAdmin, moverAlumno);
 router.delete('/:id/students/:userId', verifyToken, requireAdmin, quitarAlumno);
 
-// Libros del curso: administrador o docente asignado al curso (lo valida el service)
 router.get('/:id/students/progress', verifyToken, obtenerPuntajesCurso);
 
+// Libros del curso: administrador o docente asignado al curso (lo valida el service)
 router.get('/:id/books', verifyToken, obtenerLibrosDelCurso);
 router.post('/:id/books', verifyToken, asignarLibro);
 router.put('/:id/books/:bookId', verifyToken, actualizarPuntajeLibro);

@@ -454,7 +454,7 @@ export const obtenerProgresoAlumnoDB = async (
   }
 
   const { puntaje_anual, ...curso } = inscripcion.curso;
-  const minimo = puntaje_anual ?? PUNTAJE_ANUAL_POR_DEFECTO;
+  const minimo = puntaje_anual;
 
   const asignados = await prisma.curso_libro.findMany({
     where: { curso_id: inscripcion.curso_id },
@@ -517,7 +517,7 @@ export const obtenerPuntajesCursoDB = async (
   ]);
 
   const puntajePorLibro = new Map(libros.map((l) => [l.libro_id, l.puntaje]));
-  const minimo = curso.puntaje_anual ?? PUNTAJE_ANUAL_POR_DEFECTO;
+  const minimo = curso.puntaje_anual;
 
   const alumnos = inscripciones
     .map(({ usuario }) => {
