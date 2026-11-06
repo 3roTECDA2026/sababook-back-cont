@@ -25,6 +25,7 @@ import {
   actualizarPuntajeLibroDB,
   quitarLibroDB,
   actualizarPuntajeAnualDB,
+  updateAnnualScoreVisibilityDB,
   obtenerProgresoAlumnoDB,
   obtenerPuntajesCursoDB,
   obtenerAsignacionesAnterioresDB,
@@ -246,8 +247,24 @@ class CourseService {
     return await actualizarPuntajeAnualDB(curso_id, puntaje_anual);
   }
 
-  async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number) {
-    return await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo);
+  async updateAnnualScoreVisibility(curso_id: number, visible: boolean, usuario_id?: number) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+    return await updateAnnualScoreVisibilityDB(curso_id, visible);
+  }
+
+  // SAB-144: si el puntaje está oculto, el alumno no lo recibe aunque llame directo a la API.
+  // El docente y el administrador siempre lo ven.
+  async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number, isStudent: boolean = false) {
+    const progreso = await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo);
+    if (!isStudent || progreso.score_visible) return progreso;
+
+    return {
+      ...progreso,
+      puntaje_acumulado: null,
+      minimo_requerido: null,
+      faltante: null,
+      cumplido: null,
+    };
   }
 
   async obtenerPuntajesCurso(curso_id: number, usuario_id?: number) {

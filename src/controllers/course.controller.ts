@@ -542,6 +542,30 @@ export const actualizarPuntajeAnual = async (req: AuthRequest, res: Response): P
   }
 };
 
+// SAB-144: el docente del curso o el administrador muestran u ocultan el puntaje a los alumnos
+export const updateAnnualScoreVisibility = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'El ID del curso no es válido.' });
+    return;
+  }
+
+  const visible = req.body?.visible;
+  if (typeof visible !== 'boolean') {
+    res.status(400).json({ error: 'El campo visible debe ser verdadero o falso.' });
+    return;
+  }
+
+  try {
+    const curso = await courseService.updateAnnualScoreVisibility(id, visible, req.userId);
+    res.status(200).json(curso);
+  } catch (err) {
+    if (responderError(res, err, { P2025: CURSO_NO_ENCONTRADO })) return;
+    console.error('Error al actualizar la visibilidad del puntaje:', err);
+    res.status(500).json({ error: 'Error interno al actualizar la visibilidad del puntaje.' });
+  }
+};
+
 export const quitarLibro = async (req: AuthRequest, res: Response): Promise<void> => {
   const id = parsearId(req.params.id);
   const libroId = parsearId(req.params.bookId);
@@ -628,7 +652,11 @@ export const obtenerProgresoAlumno = async (req: AuthRequest, res: Response): Pr
   }
 
   try {
-    const progreso = await courseService.obtenerProgresoAlumno(alumnoId, anioLectivo);
+    const progreso = await courseService.obtenerProgresoAlumno(
+      alumnoId,
+      anioLectivo,
+      req.userRole === TipoRol.ALUMNO
+    );
     res.status(200).json(progreso);
   } catch (err) {
     console.error('Error al obtener el progreso del alumno:', err);
@@ -714,6 +742,7 @@ export default {
   asignarLibro,
   actualizarPuntajeLibro,
   actualizarPuntajeAnual,
+  updateAnnualScoreVisibility,
   quitarLibro,
   obtenerHistorial,
   obtenerProgresoAlumno,

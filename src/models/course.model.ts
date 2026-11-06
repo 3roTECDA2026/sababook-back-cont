@@ -28,6 +28,7 @@ export interface CursoResumen {
   division: string;
   anio_lectivo: number;
   puntaje_anual: number;
+  show_annual_score: boolean;
   materia: MateriaCurso;
   cantidad_docentes: number;
   cantidad_libros: number;
@@ -56,6 +57,7 @@ export interface CursoDetalle {
   division: string;
   anio_lectivo: number;
   puntaje_anual: number;
+  show_annual_score: boolean;
   materia: MateriaCurso;
   docentes: DocenteCurso[];
   libros: LibroCurso[];
@@ -110,6 +112,7 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
     division: c.division,
     anio_lectivo: c.anio_lectivo,
     puntaje_anual: c.puntaje_anual,
+    show_annual_score: c.show_annual_score,
     materia: c.materia,
     cantidad_docentes: c._count.curso_docente,
     cantidad_libros: c._count.curso_libro,
@@ -141,6 +144,7 @@ export const obtenerCursoPorIdDB = async (curso_id: number): Promise<CursoDetall
     division: c.division,
     anio_lectivo: c.anio_lectivo,
     puntaje_anual: c.puntaje_anual,
+    show_annual_score: c.show_annual_score,
     materia: c.materia,
     docentes: c.curso_docente.map((cd) => cd.usuario),
     libros: c.curso_libro.map((cl) => ({ ...cl.libro, puntaje: cl.puntaje })),
@@ -400,9 +404,22 @@ export const actualizarPuntajeAnualDB = async (
   });
 };
 
+export const updateAnnualScoreVisibilityDB = async (
+  curso_id: number,
+  visible: boolean
+): Promise<{ curso_id: number; show_annual_score: boolean }> => {
+  return await prisma.curso.update({
+    where: { curso_id },
+    data: { show_annual_score: visible },
+    select: { curso_id: true, show_annual_score: true },
+  });
+};
+
 export interface ProgresoAlumno {
   anio_lectivo: number;
   curso: { curso_id: number; anio: number; division: string } | null;
+  // SAB-144: si el docente habilitó que los alumnos del curso vean su puntaje
+  score_visible: boolean;
   puntaje_acumulado: number;
   minimo_requerido: number;
   faltante: number;
@@ -425,6 +442,7 @@ export interface CursoPuntajes {
     division: string;
     anio_lectivo: number;
     puntaje_anual: number;
+    show_annual_score: boolean;
   };
   alumnos: PuntajeAlumno[];
 }
@@ -437,7 +455,13 @@ export const obtenerProgresoAlumnoDB = async (
     where: { usuario_id_anio_lectivo: { usuario_id: alumno_id, anio_lectivo } },
     include: {
       curso: {
-        select: { curso_id: true, anio: true, division: true, puntaje_anual: true },
+        select: {
+          curso_id: true,
+          anio: true,
+          division: true,
+          puntaje_anual: true,
+          show_annual_score: true,
+        },
       },
     },
   });
@@ -446,6 +470,7 @@ export const obtenerProgresoAlumnoDB = async (
     return {
       anio_lectivo,
       curso: null,
+      score_visible: false,
       puntaje_acumulado: 0,
       minimo_requerido: PUNTAJE_ANUAL_POR_DEFECTO,
       faltante: PUNTAJE_ANUAL_POR_DEFECTO,
@@ -453,7 +478,7 @@ export const obtenerProgresoAlumnoDB = async (
     };
   }
 
-  const { puntaje_anual, ...curso } = inscripcion.curso;
+  const { puntaje_anual, show_annual_score, ...curso } = inscripcion.curso;
   const minimo = puntaje_anual;
 
   const asignados = await prisma.curso_libro.findMany({
@@ -477,6 +502,7 @@ export const obtenerProgresoAlumnoDB = async (
   return {
     anio_lectivo,
     curso,
+    score_visible: show_annual_score,
     puntaje_acumulado,
     minimo_requerido: minimo,
     faltante: Math.max(0, minimo - puntaje_acumulado),
@@ -495,6 +521,7 @@ export const obtenerPuntajesCursoDB = async (
       division: true,
       anio_lectivo: true,
       puntaje_anual: true,
+      show_annual_score: true,
     },
   });
 
