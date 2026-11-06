@@ -1,7 +1,7 @@
 // src/models/course.model.ts
 import { prisma } from '../db/connect/db';
 import { AccionAsignacion } from '@prisma/client';
-import type { Prisma, curso, curso_docente, curso_libro, TipoRol } from '@prisma/client';
+import type { Prisma, curso, curso_docente, curso_libro, inscripcion, TipoRol } from '@prisma/client';
 
 export interface DatosCurso {
   anio: number;
@@ -14,6 +14,7 @@ export interface FiltrosCursos {
   anio_lectivo?: number;
   materia_id?: number;
   docente_id?: number;
+  alumno_id?: number;
 }
 
 export interface MateriaCurso {
@@ -29,6 +30,8 @@ export interface CursoResumen {
   materia: MateriaCurso;
   cantidad_docentes: number;
   cantidad_libros: number;
+  // SAB-117: cada curso tiene un solo docente (null si todavía no tiene)
+  docente: DocenteCurso | null;
 }
 
 export interface DocenteCurso {
@@ -42,6 +45,7 @@ export interface LibroCurso {
   titulo: string;
   autor: string;
   portada_url: string | null;
+  pdf_path: string | null;
   puntaje: number;
 }
 
@@ -83,9 +87,16 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
       curso_docente: filtros.docente_id
         ? { some: { usuario_id: filtros.docente_id } }
         : undefined,
+      // SAB-116: cursos en los que está inscripto un alumno
+      inscripcion: filtros.alumno_id
+        ? { some: { usuario_id: filtros.alumno_id } }
+        : undefined,
     },
     include: {
       materia: { select: { materia_id: true, nombre: true } },
+      curso_docente: {
+        include: { usuario: { select: { usuario_id: true, nombre: true, email: true } } },
+      },
       _count: { select: { curso_docente: true, curso_libro: true } },
     },
     orderBy: [{ anio_lectivo: 'desc' }, { anio: 'asc' }, { division: 'asc' }],
@@ -99,6 +110,7 @@ export const obtenerCursosDB = async (filtros: FiltrosCursos): Promise<CursoResu
     materia: c.materia,
     cantidad_docentes: c._count.curso_docente,
     cantidad_libros: c._count.curso_libro,
+    docente: c.curso_docente[0]?.usuario ?? null,
   }));
 };
 
@@ -112,7 +124,7 @@ export const obtenerCursoPorIdDB = async (curso_id: number): Promise<CursoDetall
       },
       curso_libro: {
         include: {
-          libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true } },
+          libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true, pdf_path: true } },
         },
       },
     },
@@ -169,6 +181,15 @@ export const asignarDocenteDB = async (
   return await prisma.curso_docente.create({ data: { curso_id, usuario_id } });
 };
 
+// Docente actual del curso (como máximo uno, por el índice único de SAB-117)
+export const findCourseTeacherDB = async (curso_id: number): Promise<DocenteCurso | null> => {
+  const asignacion = await prisma.curso_docente.findUnique({
+    where: { curso_id },
+    include: { usuario: { select: { usuario_id: true, nombre: true, email: true } } },
+  });
+  return asignacion?.usuario ?? null;
+};
+
 export const quitarDocenteDB = async (curso_id: number, usuario_id: number): Promise<void> => {
   await prisma.curso_docente.delete({
     where: { curso_id_usuario_id: { curso_id, usuario_id } },
@@ -178,6 +199,47 @@ export const quitarDocenteDB = async (curso_id: number, usuario_id: number): Pro
 export const esDocenteDelCursoDB = async (curso_id: number, usuario_id: number): Promise<boolean> => {
   const cantidad = await prisma.curso_docente.count({ where: { curso_id, usuario_id } });
   return cantidad > 0;
+};
+
+// ---------- Alumnos del curso (SAB-116) ----------
+
+export const obtenerAnioLectivoCursoDB = async (curso_id: number): Promise<number | null> => {
+  const c = await prisma.curso.findUnique({ where: { curso_id }, select: { anio_lectivo: true } });
+  return c?.anio_lectivo ?? null;
+};
+
+// Inscripción del alumno en un año lectivo (como máximo una, por el índice único de inscripcion)
+export const findStudentEnrollmentDB = async (usuario_id: number, anio_lectivo: number) => {
+  return await prisma.inscripcion.findUnique({
+    where: { usuario_id_anio_lectivo: { usuario_id, anio_lectivo } },
+    include: { curso: { select: { curso_id: true, anio: true, division: true } } },
+  });
+};
+
+export const inscribirAlumnoDB = async (
+  curso_id: number,
+  usuario_id: number,
+  anio_lectivo: number
+): Promise<inscripcion> => {
+  return await prisma.inscripcion.create({ data: { curso_id, usuario_id, anio_lectivo } });
+};
+// Inscribe al alumno en el curso, o lo pasa a ese curso si ya tenía otro en el año.
+// Es una sola operación en la base: el alumno nunca queda sin curso a mitad de camino.
+export const moverAlumnoDB = async (
+  curso_id: number,
+  usuario_id: number,
+  anio_lectivo: number
+): Promise<inscripcion> => {
+  return await prisma.inscripcion.upsert({
+    where: { usuario_id_anio_lectivo: { usuario_id, anio_lectivo } },
+    update: { curso_id, fecha_inscripcion: new Date() },
+    create: { curso_id, usuario_id, anio_lectivo },
+  });
+};
+// Devuelve cuántas inscripciones borró (0 si el alumno no estaba en ese curso)
+export const quitarAlumnoDB = async (curso_id: number, usuario_id: number): Promise<number> => {
+  const { count } = await prisma.inscripcion.deleteMany({ where: { curso_id, usuario_id } });
+  return count;
 };
 
 // ---------- Historial de asignaciones ----------
@@ -249,7 +311,7 @@ export const obtenerLibrosDelCursoDB = async (curso_id: number): Promise<LibroCu
   const filas = await prisma.curso_libro.findMany({
     where: { curso_id },
     include: {
-      libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true } },
+      libro: { select: { libro_id: true, titulo: true, autor: true, portada_url: true, pdf_path: true } },
     },
     orderBy: { libro: { titulo: 'asc' } },
   });
@@ -422,4 +484,25 @@ export const obtenerAsignacionesAnterioresDB = async (
     anio_lectivo: r.anio_lectivo,
     curso: r.curso,
   }));
+};
+
+// ---------- Alumnos del curso (SAB-135) ----------
+
+export interface CourseStudent {
+  usuario_id: number;
+  nombre: string;
+  email: string;
+}
+
+// Alumnos inscriptos en el curso, ordenados por nombre. Devuelve null si el curso no existe.
+export const getCourseStudentsDB = async (curso_id: number): Promise<CourseStudent[] | null> => {
+  if (!(await existeCursoDB(curso_id))) return null;
+
+  const enrollments = await prisma.inscripcion.findMany({
+    where: { curso_id },
+    include: { usuario: { select: { usuario_id: true, nombre: true, email: true } } },
+    orderBy: { usuario: { nombre: 'asc' } },
+  });
+
+  return enrollments.map((enrollment) => enrollment.usuario);
 };

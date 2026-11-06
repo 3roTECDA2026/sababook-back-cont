@@ -11,8 +11,14 @@ import {
   eliminarCursoDB,
   obtenerRolUsuarioDB,
   asignarDocenteDB,
+  findCourseTeacherDB,
   quitarDocenteDB,
   esDocenteDelCursoDB,
+  obtenerAnioLectivoCursoDB,
+  findStudentEnrollmentDB,
+  inscribirAlumnoDB,
+  moverAlumnoDB,
+  quitarAlumnoDB,
   obtenerHistorialDB,
   obtenerLibrosDelCursoDB,
   asignarLibroDB,
@@ -21,6 +27,7 @@ import {
   obtenerPuntajeMinimoAnualDB,
   obtenerProgresoAlumnoDB,
   obtenerAsignacionesAnterioresDB,
+  getCourseStudentsDB,
 } from '../models/course.model';
 import { TipoRol } from '@prisma/client';
 
@@ -64,11 +71,85 @@ class CourseService {
     if (usuario.rol !== TipoRol.DOCENTE) {
       throw new ErrorNegocio(400, 'El usuario indicado no tiene rol docente.');
     }
+
+    // SAB-117: cada curso tiene un solo docente
+    const docenteActual = await findCourseTeacherDB(curso_id);
+    if (docenteActual?.usuario_id === usuario_id) {
+      throw new ErrorNegocio(409, 'El docente ya está asignado a este curso.');
+    }
+    if (docenteActual) {
+      throw new ErrorNegocio(
+        409,
+        `El curso ya tiene asignado a ${docenteActual.nombre}. Quitalo antes de asignar otro docente.`
+      );
+    }
+
     return await asignarDocenteDB(curso_id, usuario_id);
   }
 
   async quitarDocente(curso_id: number, usuario_id: number) {
     await quitarDocenteDB(curso_id, usuario_id);
+  }
+
+  // SAB-116: solo se inscriben usuarios con rol alumno, en un solo curso por año lectivo
+  async inscribirAlumno(curso_id: number, usuario_id: number) {
+    const usuario = await obtenerRolUsuarioDB(usuario_id);
+    if (!usuario) {
+      throw new ErrorNegocio(404, 'Usuario no encontrado.');
+    }
+    if (usuario.rol !== TipoRol.ALUMNO) {
+      throw new ErrorNegocio(400, 'El usuario indicado no tiene rol alumno.');
+    }
+
+    const anio_lectivo = await obtenerAnioLectivoCursoDB(curso_id);
+    if (anio_lectivo === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    const inscripcionActual = await findStudentEnrollmentDB(usuario_id, anio_lectivo);
+    if (inscripcionActual?.curso_id === curso_id) {
+      throw new ErrorNegocio(409, 'El alumno ya está inscripto en este curso.');
+    }
+    if (inscripcionActual) {
+      const { anio, division } = inscripcionActual.curso;
+      throw new ErrorNegocio(
+        409,
+        `El alumno ya está inscripto en ${anio}° ${division} este año. Quitalo de ese curso antes de inscribirlo en otro.`
+      );
+    }
+
+    return await inscribirAlumnoDB(curso_id, usuario_id, anio_lectivo);
+  }
+
+  // SAB-116: pone al alumno en este curso. Si ya estaba en otro del mismo año, lo pasa
+  // en una sola operación (no hace falta quitarlo antes)
+  async moverAlumno(curso_id: number, usuario_id: number) {
+    const usuario = await obtenerRolUsuarioDB(usuario_id);
+    if (!usuario) {
+      throw new ErrorNegocio(404, 'Usuario no encontrado.');
+    }
+    if (usuario.rol !== TipoRol.ALUMNO) {
+      throw new ErrorNegocio(400, 'El usuario indicado no tiene rol alumno.');
+    }
+
+    const anio_lectivo = await obtenerAnioLectivoCursoDB(curso_id);
+    if (anio_lectivo === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    const inscripcionActual = await findStudentEnrollmentDB(usuario_id, anio_lectivo);
+    if (inscripcionActual?.curso_id === curso_id) {
+      throw new ErrorNegocio(409, 'El alumno ya está inscripto en este curso.');
+    }
+
+    return await moverAlumnoDB(curso_id, usuario_id, anio_lectivo);
+  }
+
+  async quitarAlumno(curso_id: number, usuario_id: number) {
+    const quitados = await quitarAlumnoDB(curso_id, usuario_id);
+    if (quitados === 0) {
+      throw new ErrorNegocio(404, 'El alumno no está inscripto en este curso.');
+    }
   }
 
   // El administrador gestiona los libros de cualquier curso;
@@ -161,6 +242,33 @@ class CourseService {
   async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number) {
     const minimo = await obtenerPuntajeMinimoAnualDB();
     return await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo, minimo);
+  }
+
+  // Alumnos inscriptos en el curso (SAB-135).
+  // El administrador ve los de cualquier curso; el docente, solo los de su curso.
+  async getStudents(curso_id: number, usuario_id?: number) {
+    if (!usuario_id) {
+      throw new ErrorNegocio(401, 'Autenticación requerida.');
+    }
+
+    const user = await obtenerRolUsuarioDB(usuario_id);
+    const isAdmin = user?.rol === TipoRol.ADMINISTRADOR;
+    const isCourseTeacher =
+      user?.rol === TipoRol.DOCENTE && (await esDocenteDelCursoDB(curso_id, usuario_id));
+
+    if (!isAdmin && !isCourseTeacher) {
+      throw new ErrorNegocio(
+        403,
+        'Acceso denegado. Solo el administrador o el docente del curso pueden ver sus alumnos.'
+      );
+    }
+
+    const students = await getCourseStudentsDB(curso_id);
+    if (students === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    return students;
   }
 }
 

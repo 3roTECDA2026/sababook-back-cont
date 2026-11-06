@@ -55,7 +55,10 @@ Se cargan desde `.env` (ignorado por git). La plantilla es `.env.example`.
 | `DATABASE_URL` | Conexión de la app vía pooler de Supabase (puerto **6543**, modo transacción) |
 | `DIRECT_URL` | Conexión directa/sesión (puerto **5432**). Usar para comandos de migración |
 | `SUPABASE_URL`, `SUPABASE_KEY` | Cliente de Supabase |
+| `SUPABASE_SECRET_KEY` | Clave secreta de Supabase (solo back). La usa Storage para los PDFs (SAB-67) |
+| `SUPABASE_PDF_BUCKET` | Bucket privado de los PDFs de material de lectura (por defecto `material-lectura`) |
 | `ADMIN_INITIAL_KEY` | Alta inicial de administrador |
+| `CORS_ORIGINS` | Orígenes extra permitidos por CORS, separados por coma (ej. la URL de Netlify). Se suma a la lista fija de `server.ts`. Se lee al arrancar: tras cambiarla hay que reiniciar |
 
 ## 5. Estructura
 
@@ -64,7 +67,7 @@ server.ts                  # Express: CORS, JSON, montaje de rutas en /api/v1, a
 prisma/
   schema.prisma            # modelo de datos (fuente de verdad del cliente)
   migrations/              # una carpeta por migración, cada una con migration.sql
-  seed.sql                 # datos de desarrollo (¡TRUNCA tablas! solo bases locales)
+  seed.ts                 # carga datos de prueba con upsert (no borra nada).
 src/
   routes/        *.routes.ts       # define endpoints y middlewares
   controllers/   *.controller.ts   # valida entrada, arma la respuesta HTTP
@@ -174,8 +177,7 @@ ahí **solo a través de las migraciones incluidas en los PR**.
    aplicar a mano lo que faltó: la marca como aplicada pero no la ejecuta.
 7. Al agregar columnas `NOT NULL` con default, pensar qué valor deben tomar las filas
    existentes (puede requerir un `UPDATE` en la misma migración).
-8. `prisma/seed.sql` empieza con `TRUNCATE ... CASCADE`: borra todos los datos de tu base.
-   Usarlo solo para empezar de cero.
+8. `prisma/seed.ts` no borra datos: crea o actualiza (upsert), así que se puede correr varias veces.
 
 ### Flujo para un cambio de esquema
 
@@ -225,7 +227,8 @@ Base: `/api/v1`. Recursos principales:
 por compatibilidad con el front. No borrarlos sin verificar que el front no los use.
 Las rutas fijas deben declararse **antes** que las paramétricas (`/history` antes de `/:id`).
 
-CORS: los orígenes permitidos están en `server.ts`. Agregar ahí cualquier dominio nuevo del front.
+CORS: `server.ts` tiene una lista fija de orígenes (producción y desarrollo local). Para habilitar otro dominio del front, como el Netlify de un despliegue propio, **no se edita `server.ts`**: se carga la variable `CORS_ORIGINS` (ver sección 4) y se reinicia el servicio.
+
 
 ## 10. Git y Pull Requests
 

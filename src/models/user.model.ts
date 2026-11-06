@@ -1,13 +1,85 @@
 import { prisma } from '../db/connect/db';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../utils/password';
 import { PaginationParams, Paginated, buildPaginated } from '../utils/pagination';
-import { TipoRol } from '@prisma/client';
+import { unaccentContains } from '../utils/search';
+import { Prisma, TipoRol } from '@prisma/client';
+import type { ReadingStatus } from './favorite.model';
 
+// SAB-122: filtros del listado de usuarios
+export interface UserFilters {
+  q?: string;
+  rol?: TipoRol; // SAB-119
+  // SAB-060
+  anio_lectivo?: number;
+  anio?: number;
+  curso_id?: number;
+  libro_id?: number;
+  estado_lectura?: ReadingStatus;
+}
+
+// Alumnos inscriptos o docentes asignados a los cursos que cumplen el filtro de año/curso.
+// Los administradores no tienen curso: con este filtro no aparecen.
+const buildCourseWhere = (filters: UserFilters): Prisma.usuarioWhereInput | null => {
+  if (!filters.anio && !filters.curso_id) return null;
+
+  const course: Prisma.cursoWhereInput = {
+    ...(filters.anio_lectivo ? { anio_lectivo: filters.anio_lectivo } : {}),
+    ...(filters.anio ? { anio: filters.anio } : {}),
+  };
+  const byCourseId = filters.curso_id ? { curso_id: filters.curso_id } : {};
+
+  const students: Prisma.usuarioWhereInput = {
+    inscripcion: { some: { ...byCourseId, curso: course } },
+  };
+  const teachers: Prisma.usuarioWhereInput = {
+    curso_docente: { some: { ...byCourseId, curso: course } },
+  };
+
+  if (filters.rol === TipoRol.ALUMNO) return students;
+  if (filters.rol === TipoRol.DOCENTE) return teachers;
+  if (filters.rol === TipoRol.ADMINISTRADOR) return { usuario_id: { in: [] } };
+  return { OR: [students, teachers] };
+};
+
+// IDs de usuarios cuyo nombre o email contiene el texto, sin distinguir tildes ni mayúsculas
+const findUserIdsByText = async (text: string): Promise<number[]> => {
+  const rows = await prisma.$queryRaw<{ usuario_id: number }[]>`
+    SELECT usuario_id FROM usuario WHERE ${unaccentContains(['nombre', 'email'], text)}
+  `;
+  return rows.map((row) => row.usuario_id);
+};
+
+// Los filtros se combinan entre sí (AND)
+const buildUserWhere = async (filters: UserFilters): Promise<Prisma.usuarioWhereInput> => {
+  const conditions: Prisma.usuarioWhereInput[] = [];
+
+  if (filters.q) conditions.push({ usuario_id: { in: await findUserIdsByText(filters.q) } });
+  if (filters.rol) conditions.push({ rol: filters.rol });
+
+  // SAB-060: año de cursada / curso
+  const courseWhere = buildCourseWhere(filters);
+  if (courseWhere) conditions.push(courseWhere);
+
+  // SAB-060: libro y estado de lectura (con libro: ese libro en ese estado; sin libro: alguno)
+  if (filters.libro_id || filters.estado_lectura) {
+    conditions.push({
+      favorito: {
+        some: {
+          ...(filters.libro_id ? { libro_id: filters.libro_id } : {}),
+          ...(filters.estado_lectura ? { estado_lectura: filters.estado_lectura } : {}),
+        },
+      },
+    });
+  }
+
+  return conditions.length > 0 ? { AND: conditions } : {};
+};
+
+// SAB-136: datos públicos del usuario. Nunca incluye la contraseña.
 export interface User {
   usuario_id: number;
   nombre: string;
   email: string;
-  contrasena: string;
   rol: TipoRol;
   fecha_registro: Date;
   perfil_completo: boolean;
@@ -44,12 +116,27 @@ interface NewUserResult {
   rol: TipoRol;
 }
 
-type UpdateUserData = Partial<Omit<User, 'usuario_id'>>;
+// Campos que se pueden actualizar. El servicio decide cuáles según quién edita (SAB-136).
+export type UpdateUserData = Partial<
+  Pick<Prisma.usuarioUpdateInput, 'nombre' | 'email' | 'rol' | 'avatar_url' | 'nivel_educativo' | 'contrasena'>
+>;
+
+const PUBLIC_USER_SELECT = {
+  usuario_id: true,
+  nombre: true,
+  email: true,
+  rol: true,
+  fecha_registro: true,
+  perfil_completo: true,
+  avatar_url: true,
+  nivel_educativo: true,
+} satisfies Prisma.usuarioSelect;
 
 class UserModel {
-  async getAllUsers(): Promise<UserConRol[]> {
+  async getAllUsers(filters: UserFilters = {}): Promise<UserConRol[]> {
     try {
       const users = await prisma.usuario.findMany({
+        where: await buildUserWhere(filters),
         orderBy: {
           usuario_id: 'asc',
         },
@@ -72,7 +159,6 @@ class UserModel {
   }
 
   async createUser(userData: CreateUserData): Promise<NewUserResult> {
-    const saltRounds = 10;
     const {
       nombre,
       email,
@@ -86,7 +172,7 @@ class UserModel {
     const fecha_registro = new Date();
 
     try {
-      const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
+      const hashedPassword = await hashPassword(contrasena);
 
       const newUser = await prisma.usuario.create({
         data: {
@@ -118,30 +204,23 @@ class UserModel {
     }
   }
 
+  // Recibe datos ya validados por el servicio. Devuelve el usuario sin la contraseña (SAB-136).
   async updateUser(userId: number, userData: UpdateUserData): Promise<User> {
-    const dataToUpdate: Record<string, any> = {};
-    Object.keys(userData).forEach((key) => {
-      const val = (userData as any)[key];
-      if (val !== undefined) {
-        dataToUpdate[key] = val;
-      }
-    });
-
-    if (Object.keys(dataToUpdate).length === 0) {
+    if (Object.keys(userData).length === 0) {
       throw new Error('No data provided for update.');
     }
 
     try {
       const updatedUser = await prisma.usuario.update({
         where: { usuario_id: userId },
-        data: dataToUpdate,
+        data: userData,
+        select: PUBLIC_USER_SELECT,
       });
 
       return {
         usuario_id: updatedUser.usuario_id,
         nombre: updatedUser.nombre,
         email: updatedUser.email,
-        contrasena: updatedUser.contrasena,
         rol: updatedUser.rol,
         fecha_registro: updatedUser.fecha_registro ?? new Date(),
         perfil_completo: updatedUser.perfil_completo ?? false,
@@ -200,15 +279,21 @@ class UserModel {
     }
   }
 
-  async getUsersPaginated(pagination: PaginationParams): Promise<Paginated<UserConRol>> {
+  async getUsersPaginated(
+    pagination: PaginationParams,
+    filters: UserFilters = {}
+  ): Promise<Paginated<UserConRol>> {
     try {
+      // El mismo where en findMany y count, para que total y totalPages sean del resultado
+      const where = await buildUserWhere(filters);
       const [users, total] = await prisma.$transaction([
         prisma.usuario.findMany({
+          where,
           orderBy: { usuario_id: 'asc' },
           skip: pagination.skip,
           take: pagination.limit,
         }),
-        prisma.usuario.count(),
+        prisma.usuario.count({ where }),
       ]);
 
       const data = users.map((u) => ({
@@ -231,3 +316,15 @@ class UserModel {
 }
 
 export const userModel = new UserModel();
+
+
+// SAB-136: rol actual del usuario (null si no existe)
+export const getUserRoleDB = async (usuario_id: number): Promise<TipoRol | null> => {
+  const user = await prisma.usuario.findUnique({ where: { usuario_id }, select: { rol: true } });
+  return user?.rol ?? null;
+};
+
+// SAB-116: inscripciones del usuario en cualquier año lectivo
+export const countEnrollmentsDB = async (usuario_id: number): Promise<number> => {
+  return await prisma.inscripcion.count({ where: { usuario_id } });
+};

@@ -128,6 +128,38 @@ export const obtenerCursos = async (req: AuthRequest, res: Response): Promise<vo
     filtros.docente_id = req.userId;
   }
 
+  // ?docente_id=X devuelve los cursos de otro docente: solo para el administrador (SAB-117)
+  if (req.query.docente_id !== undefined) {
+    const teacherId = parsearId(req.query.docente_id);
+    if (teacherId === null) {
+      res.status(400).json({ error: 'El filtro docente_id no es válido.' });
+      return;
+    }
+    if (req.query.mine === 'true') {
+      res.status(400).json({ error: 'Usá mine o docente_id, no los dos a la vez.' });
+      return;
+    }
+    if (req.userRole !== TipoRol.ADMINISTRADOR) {
+      res.status(403).json({ error: 'Solo el administrador puede consultar los cursos de otro docente.' });
+      return;
+    }
+    filtros.docente_id = teacherId;
+  }
+
+  // ?alumno_id=X devuelve los cursos de un alumno: solo para el administrador (SAB-116)
+  if (req.query.alumno_id !== undefined) {
+    const studentId = parsearId(req.query.alumno_id);
+    if (studentId === null) {
+      res.status(400).json({ error: 'El filtro alumno_id no es válido.' });
+      return;
+    }
+    if (req.userRole !== TipoRol.ADMINISTRADOR) {
+      res.status(403).json({ error: 'Solo el administrador puede consultar los cursos de un alumno.' });
+      return;
+    }
+    filtros.alumno_id = studentId;
+  }
+
   try {
     const cursos = await courseService.obtenerTodos(filtros);
     res.status(200).json(cursos);
@@ -256,7 +288,8 @@ export const asignarDocente = async (req: AuthRequest, res: Response): Promise<v
   } catch (err) {
     if (
       responderError(res, err, {
-        P2002: { status: 409, mensaje: 'El docente ya está asignado a este curso.' },
+        // Solo llega acá si otra asignación se guardó al mismo tiempo (índice único de SAB-117)
+        P2002: { status: 409, mensaje: 'El curso ya tiene un docente asignado. Actualizá la página.' },
         P2003: CURSO_NO_ENCONTRADO,
       })
     ) {
@@ -291,6 +324,74 @@ export const quitarDocente = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
+// ---------- Alumnos del curso (SAB-116) ----------
+
+export const inscribirAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  const usuarioId = parsearId(req.body?.usuario_id);
+  if (!id || !usuarioId) {
+    res.status(400).json({ error: 'El ID del curso o del alumno no es válido.' });
+    return;
+  }
+
+  try {
+    await courseService.inscribirAlumno(id, usuarioId);
+    res.status(201).json({ message: 'Alumno inscripto correctamente.' });
+  } catch (err) {
+    if (
+      responderError(res, err, {
+        // Solo llega acá si otra inscripción del mismo año se guardó al mismo tiempo
+        P2002: { status: 409, mensaje: 'El alumno ya está inscripto en un curso este año. Actualizá la página.' },
+        P2003: CURSO_NO_ENCONTRADO,
+      })
+    ) {
+      return;
+    }
+    console.error('Error al inscribir al alumno:', err);
+    res.status(500).json({ error: 'Error interno al inscribir al alumno.' });
+  }
+};
+
+// Pone al alumno en este curso; si tenía otro en el mismo año, lo pasa en una sola operación
+export const moverAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  const usuarioId = parsearId(req.params.userId);
+  if (!id || !usuarioId) {
+    res.status(400).json({ error: 'El ID del curso o del alumno no es válido.' });
+    return;
+  }
+
+  try {
+    await courseService.moverAlumno(id, usuarioId);
+    res.status(200).json({ message: 'Curso del alumno actualizado correctamente.' });
+  } catch (err) {
+    if (responderError(res, err, { P2003: CURSO_NO_ENCONTRADO })) {
+      return;
+    }
+    console.error('Error al cambiar el curso del alumno:', err);
+    res.status(500).json({ error: 'Error interno al cambiar el curso del alumno.' });
+  }
+};
+
+export const quitarAlumno = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  const usuarioId = parsearId(req.params.userId);
+  if (!id || !usuarioId) {
+    res.status(400).json({ error: 'El ID del curso o del alumno no es válido.' });
+    return;
+  }
+
+  try {
+    await courseService.quitarAlumno(id, usuarioId);
+    res.status(200).json({ message: 'Alumno quitado del curso correctamente.' });
+  } catch (err) {
+    if (responderError(res, err)) {
+      return;
+    }
+    console.error('Error al quitar al alumno:', err);
+    res.status(500).json({ error: 'Error interno al quitar al alumno.' });
+  }
+};
 // ---------- Libros del curso ----------
 
 export const obtenerLibrosDelCurso = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -487,6 +588,26 @@ export const obtenerAsignacionesAnteriores = async (
     res.status(500).json({ error: 'Error interno al obtener asignaciones anteriores.' });
   }
 };
+
+// ---------- Alumnos del curso (SAB-135) ----------
+
+export const getCourseStudents = async (req: AuthRequest, res: Response): Promise<void> => {
+  const courseId = parsearId(req.params.id);
+  if (!courseId) {
+    res.status(400).json({ error: 'El ID del curso no es válido.' });
+    return;
+  }
+
+  try {
+    const students = await courseService.getStudents(courseId, req.userId);
+    res.status(200).json(students);
+  } catch (err) {
+    if (responderError(res, err)) return;
+    console.error('Error al obtener los alumnos del curso:', err);
+    res.status(500).json({ error: 'Error interno al obtener los alumnos del curso.' });
+  }
+};
+
 export default {
   obtenerCursos,
   obtenerCurso,
@@ -495,6 +616,9 @@ export default {
   eliminarCurso,
   asignarDocente,
   quitarDocente,
+  inscribirAlumno,
+  moverAlumno,
+  quitarAlumno,
   obtenerLibrosDelCurso,
   asignarLibro,
   actualizarPuntajeLibro,
@@ -502,4 +626,5 @@ export default {
   obtenerHistorial,
   obtenerProgresoAlumno,
   obtenerAsignacionesAnteriores,
+  getCourseStudents,
 };

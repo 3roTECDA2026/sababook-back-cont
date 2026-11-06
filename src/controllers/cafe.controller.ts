@@ -13,6 +13,7 @@ import {
   obtenerAsistentesCafeDB,
   registrarVotoDB,
   obtenerVotoUsuarioDB,
+  obtenerFechaEventoDB,
 } from '../models/cafe.model';
 
 // Crear un Café Literario
@@ -151,6 +152,20 @@ export const toggleAsistencia = async (req: AuthRequest, res: Response) => {
     }
 
     const cafeId = parseInt(String(id), 10);
+    if (isNaN(cafeId)) {
+      return res.status(400).json({ mensaje: 'ID de café no válido' });
+    }
+
+    const fechaEvento = await obtenerFechaEventoDB(cafeId);
+    if (!fechaEvento) {
+      return res.status(404).json({ mensaje: 'Café Literario no encontrado' });
+    }
+    if (fechaEvento.getTime() <= Date.now()) {
+      return res.status(409).json({
+        mensaje: 'Este encuentro ya se realizó: no se puede modificar la asistencia.',
+      });
+    }
+
     const asistenciaExistente = await obtenerAsistenciaUsuarioDB(cafeId, usuario_id);
 
     // Si ya tenía el mismo estado y vuelve a apretar, hacemos toggle a cancelar
@@ -159,11 +174,7 @@ export const toggleAsistencia = async (req: AuthRequest, res: Response) => {
       return res.json({ mensaje: 'Asistencia cancelada', estado: null });
     }
 
-    const nuevaAsistencia = await registrarAsistenciaDB(
-      cafeId,
-      usuario_id,
-      estado
-    );
+    const nuevaAsistencia = await registrarAsistenciaDB(cafeId, usuario_id, estado);
     res.json({ mensaje: 'Asistencia registrada correctamente', asistencia: nuevaAsistencia });
   } catch (error) {
     console.error('❌ Error al gestionar asistencia:', error);
@@ -200,11 +211,22 @@ export const votarCafe = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ mensaje: 'El campo voto (boolean true/false) es obligatorio' });
     }
 
-    const votoRegistrado = await registrarVotoDB(
-      parseInt(String(id), 10),
-      usuario_id,
-      voto
-    );
+    const cafeId = parseInt(String(id), 10);
+    if (isNaN(cafeId)) {
+      return res.status(400).json({ mensaje: 'ID de café no válido' });
+    }
+
+    const fechaEvento = await obtenerFechaEventoDB(cafeId);
+    if (!fechaEvento) {
+      return res.status(404).json({ mensaje: 'Café Literario no encontrado' });
+    }
+    if (fechaEvento.getTime() > Date.now()) {
+      return res.status(409).json({
+        mensaje: 'Este encuentro todavía no ocurrió: la votación se habilita cuando termina.',
+      });
+    }
+
+    const votoRegistrado = await registrarVotoDB(cafeId, usuario_id, voto);
     res.json({ mensaje: 'Voto registrado con éxito', voto: votoRegistrado });
   } catch (error) {
     console.error('❌ Error al registrar voto:', error);

@@ -101,3 +101,39 @@ npm run dev
 
 El servidor estará disponible en `http://localhost:3001`.
 
+## Seed de datos de prueba
+
+Carga materias, cursos de 1° a 6° (divisiones A y B, año 2026), usuarios de prueba, los libros del APL 2026 con su puntaje por curso (393 libros y 780 asignaciones, con su registro en el historial), inscripciones, favoritos con estados de lectura y el mínimo anual de 140 puntos.
+
+**Solo para entornos locales o de prueba. Nunca contra una base de producción.**
+
+1. Aplicá las migraciones en una base vacía: `npx prisma migrate deploy`
+2. Corré el seed: `npx prisma db seed`
+
+El seed se puede correr varias veces sin duplicar datos. No borra nada: crea o actualiza.
+
+Para un resultado limpio, usá una base vacía: el seed no corrige puntajes de asignaciones que ya existían.
+
+Protección: aborta si `NODE_ENV=production` o si la base no es local. Para una base de prueba remota propia (por ejemplo, tu proyecto de Supabase), corré con `ALLOW_SEED=true`. **Nunca uses `ALLOW_SEED=true` en una base que sirva una app publicada**: el seed crea un administrador con contraseña conocida.
+
+Nota: para poder probar el progreso de lectura, el seed pone `paginas_totales = 200` a los libros usados en los favoritos de prueba, aunque el libro ya existiera con otro valor o sin páginas.
+
+En PowerShell, solo para esa terminal:
+
+```
+$env:DATABASE_URL="<connection string de tu base de prueba>"
+$env:ALLOW_SEED="true"
+npx prisma db seed
+```
+
+### Usuarios de prueba
+
+Contraseña de todos: `Test1234!`
+
+| Rol | Email |
+|---|---|
+| Administrador | admin@sababook.test |
+| Docente (1° a 6°) | docente1@sababook.test ... docente6@sababook.test |
+| Alumno | alumno.1a.1@sababook.test, alumno.1a.2@sababook.test, ... alumno.6b.2@sababook.test |
+
+Cada docente atiende un año (divisiones A y B). Hay 2 alumnos por curso.

@@ -8,6 +8,9 @@ import {
   eliminarCurso,
   asignarDocente,
   quitarDocente,
+  inscribirAlumno,
+  moverAlumno,
+  quitarAlumno,
   obtenerLibrosDelCurso,
   asignarLibro,
   actualizarPuntajeLibro,
@@ -15,6 +18,7 @@ import {
   obtenerHistorial,
   obtenerProgresoAlumno,
   obtenerAsignacionesAnteriores,
+  getCourseStudents,
 } from '../controllers/course.controller';
 import { verifyToken, requireAdmin } from '../middleware/auth.middleware';
 
@@ -37,6 +41,11 @@ router.delete('/:id', verifyToken, requireAdmin, eliminarCurso);
 router.post('/:id/teachers', verifyToken, requireAdmin, asignarDocente);
 router.delete('/:id/teachers/:userId', verifyToken, requireAdmin, quitarDocente);
 
+// Alumnos del curso: solo el administrador (SAB-116)
+router.post('/:id/students', verifyToken, requireAdmin, inscribirAlumno);
+router.put('/:id/students/:userId', verifyToken, requireAdmin, moverAlumno);
+router.delete('/:id/students/:userId', verifyToken, requireAdmin, quitarAlumno);
+
 // Libros del curso: administrador o docente asignado al curso (lo valida el service)
 router.get('/:id/books', verifyToken, obtenerLibrosDelCurso);
 router.post('/:id/books', verifyToken, asignarLibro);
@@ -45,5 +54,8 @@ router.delete('/:id/books/:bookId', verifyToken, quitarLibro);
 
 // Asignaciones del libro en años anteriores, para la alerta al asignar (SAB-066)
 router.get('/:id/books/:bookId/previous-assignments', verifyToken, obtenerAsignacionesAnteriores);
+
+// Alumnos inscriptos en el curso: administrador o docente del curso, lo valida el service (SAB-135)
+router.get('/:id/students', verifyToken, getCourseStudents);
 
 export default router;

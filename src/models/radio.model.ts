@@ -1,6 +1,7 @@
+
 // src/models/radio.model.ts
 import { prisma } from '../db/connect/db';
-import { TipoActividad } from '@prisma/client';
+import { Prisma, TipoActividad } from '@prisma/client';
 
 export interface EpisodioRadio {
   episodio_id: number;
@@ -88,6 +89,8 @@ export const obtenerEpisodioPorIdDB = async (
 };
 
 // Eliminar un episodio
+// P2025: episodio inexistente -> null (404 en controller)
+// Otros errores: se relanzan -> 500 en controller
 export const eliminarEpisodioDB = async (
   episodio_id: number
 ): Promise<{ episodio_id: number } | null> => {
@@ -98,8 +101,17 @@ export const eliminarEpisodioDB = async (
         episodio_id: true,
       },
     });
+
     return result;
   } catch (error) {
-    return null;
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      return null;
+    }
+
+    console.error('Error al eliminar episodio de Radio Sábato:', error);
+    throw error;
   }
 };

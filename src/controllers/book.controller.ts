@@ -4,6 +4,38 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { bookService } from '../services/book.service';
 import { parsePagination } from '../utils/pagination';
+import {
+  getEnumParam,
+  getStringParam,
+  QueryParamError,
+} from '../utils/queryParams';
+import { MAX_SEARCH_LENGTH } from '../utils/search';
+import { getCourseFilters } from '../utils/courseFilters';
+import { READING_STATUS_FILTERS } from '../models/favorite.model';
+import type { BuscarLibrosFiltros } from '../models/book.model';
+import { ErrorNegocio } from '../services/course.service';
+import { PdfStorageError } from '../utils/pdfStorage';
+
+const parseBookId = (value: unknown): number | null => {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+};
+
+// SAB-67: errores comunes a los endpoints del PDF
+const sendPdfError = (res: Response, error: unknown, contexto: string) => {
+  if (error instanceof ErrorNegocio) {
+    return res.status(error.status).json({ mensaje: error.message });
+  }
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+    return res.status(404).json({ mensaje: 'Libro no encontrado.' });
+  }
+  if (error instanceof PdfStorageError) {
+    console.error(`Error de Supabase Storage al ${contexto}:`, error.message);
+    return res.status(502).json({ mensaje: 'No se pudo acceder al almacenamiento de archivos. Probá de nuevo más tarde.' });
+  }
+  console.error(`Error al ${contexto}:`, error);
+  return res.status(500).json({ mensaje: `Error al ${contexto}.` });
+};
 
 const validarPaginas = (valor: unknown): boolean =>
   typeof valor === 'number' &&
@@ -11,20 +43,34 @@ const validarPaginas = (valor: unknown): boolean =>
   valor > 0 &&
   valor <= 2147483647;
 
+// SAB-123: páginas opcionales; si se informan deben ser enteras positivas.
+const validarPaginasOpcionales = (valor: unknown): boolean =>
+  valor === null || validarPaginas(valor);
+
+const tienePropiedad = (
+  objeto: Record<string, unknown>,
+  propiedad: string
+): boolean => Object.prototype.hasOwnProperty.call(objeto, propiedad);
+
 class BookController {
   async crear(req: Request, res: Response) {
     try {
-      const paginas = req.body?.paginas_totales ?? req.body?.paginasTotales;
+      const body = req.body ?? {};
+      const paginas = tienePropiedad(body, 'paginas_totales')
+        ? body.paginas_totales
+        : body.paginasTotales;
 
-      if (!validarPaginas(paginas)) {
+      const paginasNormalizadas = paginas === undefined ? null : paginas;
+
+      if (!validarPaginasOpcionales(paginasNormalizadas)) {
         return res.status(400).json({
-          mensaje: 'El número de páginas es obligatorio y debe ser un entero mayor que cero',
+          mensaje: 'El número de páginas debe ser un entero mayor que cero, o dejarse vacío.',
         });
       }
 
       const nuevoLibro = await bookService.crearLibro({
-        ...req.body,
-        paginas_totales: paginas,
+        ...body,
+        paginas_totales: paginasNormalizadas,
       });
 
       return res.status(201).json({
@@ -74,13 +120,32 @@ class BookController {
 
   async buscar(req: Request, res: Response) {
     try {
-      const { query, genero, nivel_educativo } = req.query as {
-        query?: string;
-        genero?: string;
-        nivel_educativo?: string;
+      // getStringParam rechaza los parámetros repetidos (?query=a&query=b)
+      const query = getStringParam(req.query, 'query');
+      const titulo = getStringParam(req.query, 'titulo');
+      const autor = getStringParam(req.query, 'autor');
+
+      const filtros: BuscarLibrosFiltros = {
+        query,
+        titulo,
+        autor,
+        genero: getStringParam(req.query, 'genero'),
+        nivel_educativo: getStringParam(req.query, 'nivel_educativo'),
+        // SAB-060: año de cursada, curso y estado de lectura
+        ...(await getCourseFilters(req.query)),
+        estado_lectura: getEnumParam(req.query, 'estado_lectura', READING_STATUS_FILTERS),
       };
 
-      const filtros = { query, genero, nivel_educativo };
+      if (
+        [query, titulo, autor].some(
+          (text) => text && text.length > MAX_SEARCH_LENGTH
+        )
+      ) {
+        return res.status(400).json({
+          mensaje: `La búsqueda no puede superar los ${MAX_SEARCH_LENGTH} caracteres.`,
+        });
+      }
+
       const pagination = parsePagination(req.query);
 
       if (pagination) {
@@ -88,12 +153,17 @@ class BookController {
           filtros,
           pagination
         );
+
         return res.json(resultado);
       }
 
       const libros = await bookService.buscarLibros(filtros);
+
       return res.json(libros);
     } catch (error) {
+      if (error instanceof QueryParamError) {
+        return res.status(400).json({ mensaje: error.message });
+      }
       console.error('Error al buscar libros:', error);
       return res.status(500).json({
         mensaje: 'Error al buscar libros',
@@ -107,20 +177,25 @@ class BookController {
     try {
       // Si se envía el campo, debe contener un valor válido.
       // Las actualizaciones de otros campos siguen permitidas.
+      const body = req.body ?? {};
+
+      // SAB-123: campo ausente = conservar; null = quitar; número = actualizar.
       const tienePaginas =
-        Object.prototype.hasOwnProperty.call(req.body ?? {}, 'paginas_totales') ||
-        Object.prototype.hasOwnProperty.call(req.body ?? {}, 'paginasTotales');
+        tienePropiedad(body, 'paginas_totales') ||
+        tienePropiedad(body, 'paginasTotales');
 
-      const paginas = req.body?.paginas_totales ?? req.body?.paginasTotales;
+      const paginas = tienePropiedad(body, 'paginas_totales')
+        ? body.paginas_totales
+        : body.paginasTotales;
 
-      if (tienePaginas && !validarPaginas(paginas)) {
+      if (tienePaginas && !validarPaginasOpcionales(paginas)) {
         return res.status(400).json({
-          mensaje: 'El número de páginas debe ser un entero mayor que cero',
+          mensaje: 'El número de páginas debe ser un entero mayor que cero, o dejarse vacío.',
         });
       }
 
       await bookService.actualizarLibro(id, {
-        ...req.body,
+        ...body,
         ...(tienePaginas ? { paginas_totales: paginas } : {}),
       });
 
@@ -138,6 +213,7 @@ class BookController {
       }
 
       console.error('Error al actualizar:', error);
+
       return res.status(500).json({
         mensaje: 'Error al actualizar libro',
       });
@@ -174,6 +250,7 @@ class BookController {
       }
 
       console.error('Error al eliminar:', error);
+
       return res.status(500).json({
         mensaje: 'Error al eliminar libro y sus dependencias',
       });
@@ -191,9 +268,57 @@ class BookController {
       });
     } catch (error) {
       console.error('Error al marcar como inactivo:', error);
+
       return res.status(500).json({
         mensaje: 'Error al marcar libro como inactivo',
       });
+    }
+  }
+
+  // SAB-67: subir o reemplazar el PDF del libro (multipart, campo "file")
+  async uploadPdf(req: Request, res: Response) {
+    const id = parseBookId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ mensaje: 'ID de libro no válido.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ mensaje: 'Falta el archivo PDF (campo "file").' });
+    }
+
+    try {
+      const libro = await bookService.attachPdf(id, req.file.buffer);
+      return res.status(200).json(libro);
+    } catch (error) {
+      return sendPdfError(res, error, 'subir el PDF');
+    }
+  }
+
+  async deletePdf(req: Request, res: Response) {
+    const id = parseBookId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ mensaje: 'ID de libro no válido.' });
+    }
+
+    try {
+      await bookService.removeBookPdf(id);
+      return res.status(204).send();
+    } catch (error) {
+      return sendPdfError(res, error, 'quitar el PDF');
+    }
+  }
+
+  // Devuelve una URL temporal para leer el PDF (el bucket es privado)
+  async getPdfUrl(req: Request, res: Response) {
+    const id = parseBookId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ mensaje: 'ID de libro no válido.' });
+    }
+
+    try {
+      const url = await bookService.getPdfUrl(id);
+      return res.status(200).json({ url });
+    } catch (error) {
+      return sendPdfError(res, error, 'obtener el PDF');
     }
   }
 }
