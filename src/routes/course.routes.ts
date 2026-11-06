@@ -14,9 +14,12 @@ import {
   obtenerLibrosDelCurso,
   asignarLibro,
   actualizarPuntajeLibro,
+  actualizarPuntajeAnual,
+  updateAnnualScoreVisibility,
   quitarLibro,
   obtenerHistorial,
   obtenerProgresoAlumno,
+  obtenerPuntajesCurso,
   obtenerAsignacionesAnteriores,
   getCourseStudents,
 } from '../controllers/course.controller';
@@ -46,11 +49,16 @@ router.post('/:id/students', verifyToken, requireAdmin, inscribirAlumno);
 router.put('/:id/students/:userId', verifyToken, requireAdmin, moverAlumno);
 router.delete('/:id/students/:userId', verifyToken, requireAdmin, quitarAlumno);
 
+router.get('/:id/students/progress', verifyToken, obtenerPuntajesCurso);
+
 // Libros del curso: administrador o docente asignado al curso (lo valida el service)
 router.get('/:id/books', verifyToken, obtenerLibrosDelCurso);
 router.post('/:id/books', verifyToken, asignarLibro);
 router.put('/:id/books/:bookId', verifyToken, actualizarPuntajeLibro);
 router.delete('/:id/books/:bookId', verifyToken, quitarLibro);
+
+router.put('/:id/annual-score', verifyToken, actualizarPuntajeAnual);
+router.put('/:id/annual-score-visibility', verifyToken, updateAnnualScoreVisibility);
 
 // Asignaciones del libro en años anteriores, para la alerta al asignar (SAB-066)
 router.get('/:id/books/:bookId/previous-assignments', verifyToken, obtenerAsignacionesAnteriores);

@@ -27,6 +27,10 @@ const responderError = (res: Response, error: unknown, mapa: MapaErrores = {}): 
   return false;
 };
 
+// Rangos válidos para el puntaje anual del curso
+const MIN_TARGET_POINTS = 140;
+const MAX_TARGET_POINTS = 200;
+
 // Convierte un valor en número entero, o null si no lo es
 const parsearEntero = (valor: unknown): number | null => {
   if (valor === undefined || valor === null || valor === '') return null;
@@ -94,10 +98,44 @@ const validarDatosCurso = (body: Record<string, unknown>, parcial: boolean) => {
   return { datos, error: null };
 };
 
-// Valida el puntaje (créditos) de un libro: entero entre 1 y 100
-const validarPuntaje = (valor: unknown): number | null => {
-  const puntaje = parsearEntero(valor);
-  return puntaje !== null && puntaje >= 1 && puntaje <= 100 ? puntaje : null;
+// Valida el puntaje (créditos) de un libro: entero entre 1 y 100.
+// Solo `null` explícito se acepta como "sin puntaje"; un campo omitido o vacío es 400.
+// Valores no numéricos (true, [60], '0xA', '1.6e1') responden 400.
+const validarPuntaje = (
+  valor: unknown
+): { valido: boolean; puntaje: number | null } => {
+  if (valor === undefined) {
+    return { valido: false, puntaje: null };
+  }
+  if (valor === null) {
+    return { valido: true, puntaje: null };
+  }
+  if (typeof valor === 'string') {
+    const trimmed = valor.trim();
+    if (trimmed === '') {
+      return { valido: false, puntaje: null };
+    }
+    if (!/^\d+$/.test(trimmed)) {
+      return { valido: false, puntaje: null };
+    }
+    const puntaje = Number(trimmed);
+    return puntaje >= 1 && puntaje <= 100 ? { valido: true, puntaje } : { valido: false, puntaje: null };
+  }
+  if (typeof valor === 'number' && Number.isInteger(valor)) {
+    return valor >= 1 && valor <= 100 ? { valido: true, puntaje: valor } : { valido: false, puntaje: null };
+  }
+  return { valido: false, puntaje: null };
+};
+
+const validarPuntajeAnual = (valor: unknown): number | null => {
+  if (valor === undefined || valor === null || valor === '') return null;
+  if (typeof valor === 'string') {
+    if (!/^\d+$/.test(valor.trim())) return null;
+  } else if (typeof valor !== 'number' || !Number.isInteger(valor)) {
+    return null;
+  }
+  const puntaje = Number(valor);
+  return puntaje >= MIN_TARGET_POINTS && puntaje <= MAX_TARGET_POINTS ? puntaje : null;
 };
 
 // ---------- Cursos ----------
@@ -419,8 +457,8 @@ export const asignarLibro = async (req: AuthRequest, res: Response): Promise<voi
     return;
   }
 
-  const puntaje = validarPuntaje(req.body?.puntaje);
-  if (puntaje === null) {
+  const { valido, puntaje } = validarPuntaje(req.body?.puntaje);
+  if (!valido) {
     res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
     return;
   }
@@ -450,13 +488,18 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
     return;
   }
 
-  const puntaje = validarPuntaje(req.body?.puntaje);
-  if (puntaje === null) {
-    res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
-    return;
-  }
-
   try {
+    if (!req.body || !('puntaje' in req.body)) {
+      res.status(400).json({ error: 'El puntaje es obligatorio.' });
+      return;
+    }
+
+    const { valido, puntaje } = validarPuntaje(req.body?.puntaje);
+    if (!valido) {
+      res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
+      return;
+    }
+
     const asignacion = await courseService.actualizarPuntajeLibro(id, libroId, puntaje, req.userId);
     res.status(200).json(asignacion);
   } catch (err) {
@@ -469,6 +512,57 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
     }
     console.error('Error al actualizar el puntaje:', err);
     res.status(500).json({ error: 'Error interno al actualizar el puntaje.' });
+  }
+};
+
+export const actualizarPuntajeAnual = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'El ID del curso no es válido.' });
+    return;
+  }
+
+  const puntajeAnual = validarPuntajeAnual(req.body?.puntaje_anual);
+  if (puntajeAnual === null) {
+    res
+      .status(400)
+      .json({
+        error: `El puntaje anual debe ser un número entero entre ${MIN_TARGET_POINTS} y ${MAX_TARGET_POINTS}.`,
+      });
+    return;
+  }
+
+  try {
+    const curso = await courseService.actualizarPuntajeAnual(id, puntajeAnual, req.userId);
+    res.status(200).json(curso);
+  } catch (err) {
+    if (responderError(res, err, { P2025: CURSO_NO_ENCONTRADO })) return;
+    console.error('Error al actualizar el puntaje anual:', err);
+    res.status(500).json({ error: 'Error interno al actualizar el puntaje anual.' });
+  }
+};
+
+// SAB-144: el docente del curso o el administrador muestran u ocultan el puntaje a los alumnos
+export const updateAnnualScoreVisibility = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'El ID del curso no es válido.' });
+    return;
+  }
+
+  const visible = req.body?.visible;
+  if (typeof visible !== 'boolean') {
+    res.status(400).json({ error: 'El campo visible debe ser verdadero o falso.' });
+    return;
+  }
+
+  try {
+    const curso = await courseService.updateAnnualScoreVisibility(id, visible, req.userId);
+    res.status(200).json(curso);
+  } catch (err) {
+    if (responderError(res, err, { P2025: CURSO_NO_ENCONTRADO })) return;
+    console.error('Error al actualizar la visibilidad del puntaje:', err);
+    res.status(500).json({ error: 'Error interno al actualizar la visibilidad del puntaje.' });
   }
 };
 
@@ -558,11 +652,36 @@ export const obtenerProgresoAlumno = async (req: AuthRequest, res: Response): Pr
   }
 
   try {
-    const progreso = await courseService.obtenerProgresoAlumno(alumnoId, anioLectivo);
+    const progreso = await courseService.obtenerProgresoAlumno(
+      alumnoId,
+      anioLectivo,
+      req.userRole === TipoRol.ALUMNO
+    );
     res.status(200).json(progreso);
   } catch (err) {
     console.error('Error al obtener el progreso del alumno:', err);
     res.status(500).json({ error: 'Error interno al obtener el progreso.' });
+  }
+};
+
+export const obtenerPuntajesCurso = async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = parsearId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'El ID del curso no es válido.' });
+    return;
+  }
+
+  try {
+    const puntajes = await courseService.obtenerPuntajesCurso(id, req.userId);
+    if (!puntajes) {
+      res.status(404).json({ error: CURSO_NO_ENCONTRADO.mensaje });
+      return;
+    }
+    res.status(200).json(puntajes);
+  } catch (err) {
+    if (responderError(res, err)) return;
+    console.error('Error al obtener los puntajes del curso:', err);
+    res.status(500).json({ error: 'Error interno al obtener los puntajes del curso.' });
   }
 };
 
@@ -622,9 +741,12 @@ export default {
   obtenerLibrosDelCurso,
   asignarLibro,
   actualizarPuntajeLibro,
+  actualizarPuntajeAnual,
+  updateAnnualScoreVisibility,
   quitarLibro,
   obtenerHistorial,
   obtenerProgresoAlumno,
+  obtenerPuntajesCurso,
   obtenerAsignacionesAnteriores,
   getCourseStudents,
 };

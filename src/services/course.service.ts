@@ -24,8 +24,10 @@ import {
   asignarLibroDB,
   actualizarPuntajeLibroDB,
   quitarLibroDB,
-  obtenerPuntajeMinimoAnualDB,
+  actualizarPuntajeAnualDB,
+  updateAnnualScoreVisibilityDB,
   obtenerProgresoAlumnoDB,
+  obtenerPuntajesCursoDB,
   obtenerAsignacionesAnterioresDB,
   getCourseStudentsDB,
 } from '../models/course.model';
@@ -201,18 +203,25 @@ class CourseService {
     return await obtenerLibrosDelCursoDB(curso_id);
   }
 
-  async asignarLibro(curso_id: number, libro_id: number, puntaje: number, usuario_id?: number) {
+  async asignarLibro(
+    curso_id: number,
+    libro_id: number,
+    puntaje: number | null,
+    usuario_id?: number
+  ) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
+
     return await asignarLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
 
   async actualizarPuntajeLibro(
     curso_id: number,
     libro_id: number,
-    puntaje: number,
+    puntaje: number | null,
     usuario_id?: number
   ) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
+
     return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
   async quitarLibro(curso_id: number, libro_id: number, usuario_id?: number) {
@@ -233,15 +242,34 @@ class CourseService {
     return anteriores;
   }
 
-  //Mínimo anual configurable
-  async obtenerPuntajeMinimoAnual() {
-    return await obtenerPuntajeMinimoAnualDB();
+  async actualizarPuntajeAnual(curso_id: number, puntaje_anual: number, usuario_id?: number) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+    return await actualizarPuntajeAnualDB(curso_id, puntaje_anual);
   }
 
-  //Progreso del alumno en un año lectivo
-  async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number) {
-    const minimo = await obtenerPuntajeMinimoAnualDB();
-    return await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo, minimo);
+  async updateAnnualScoreVisibility(curso_id: number, visible: boolean, usuario_id?: number) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+    return await updateAnnualScoreVisibilityDB(curso_id, visible);
+  }
+
+  // SAB-144: si el puntaje está oculto, el alumno no lo recibe aunque llame directo a la API.
+  // El docente y el administrador siempre lo ven.
+  async obtenerProgresoAlumno(alumno_id: number, anio_lectivo: number, isStudent: boolean = false) {
+    const progreso = await obtenerProgresoAlumnoDB(alumno_id, anio_lectivo);
+    if (!isStudent || progreso.score_visible) return progreso;
+
+    return {
+      ...progreso,
+      puntaje_acumulado: null,
+      minimo_requerido: null,
+      faltante: null,
+      cumplido: null,
+    };
+  }
+
+  async obtenerPuntajesCurso(curso_id: number, usuario_id?: number) {
+    await this.verificarPermisoLibros(curso_id, usuario_id);
+    return await obtenerPuntajesCursoDB(curso_id);
   }
 
   // Alumnos inscriptos en el curso (SAB-135).
