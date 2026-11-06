@@ -589,3 +589,24 @@ export const obtenerAsignacionesAnterioresDB = async (
     curso: r.curso,
   }));
 };
+
+// ---------- Alumnos del curso (SAB-135) ----------
+
+export interface CourseStudent {
+  usuario_id: number;
+  nombre: string;
+  email: string;
+}
+
+// Alumnos inscriptos en el curso, ordenados por nombre. Devuelve null si el curso no existe.
+export const getCourseStudentsDB = async (curso_id: number): Promise<CourseStudent[] | null> => {
+  if (!(await existeCursoDB(curso_id))) return null;
+
+  const enrollments = await prisma.inscripcion.findMany({
+    where: { curso_id },
+    include: { usuario: { select: { usuario_id: true, nombre: true, email: true } } },
+    orderBy: { usuario: { nombre: 'asc' } },
+  });
+
+  return enrollments.map((enrollment) => enrollment.usuario);
+};

@@ -652,6 +652,26 @@ export const obtenerAsignacionesAnteriores = async (
     res.status(500).json({ error: 'Error interno al obtener asignaciones anteriores.' });
   }
 };
+
+// ---------- Alumnos del curso (SAB-135) ----------
+
+export const getCourseStudents = async (req: AuthRequest, res: Response): Promise<void> => {
+  const courseId = parsearId(req.params.id);
+  if (!courseId) {
+    res.status(400).json({ error: 'El ID del curso no es válido.' });
+    return;
+  }
+
+  try {
+    const students = await courseService.getStudents(courseId, req.userId);
+    res.status(200).json(students);
+  } catch (err) {
+    if (responderError(res, err)) return;
+    console.error('Error al obtener los alumnos del curso:', err);
+    res.status(500).json({ error: 'Error interno al obtener los alumnos del curso.' });
+  }
+};
+
 export default {
   obtenerCursos,
   obtenerCurso,
@@ -672,4 +692,5 @@ export default {
   obtenerProgresoAlumno,
   obtenerPuntajesCurso,
   obtenerAsignacionesAnteriores,
+  getCourseStudents,
 };

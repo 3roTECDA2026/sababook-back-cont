@@ -20,6 +20,7 @@ import {
   obtenerProgresoAlumno,
   obtenerPuntajesCurso,
   obtenerAsignacionesAnteriores,
+  getCourseStudents,
 } from '../controllers/course.controller';
 import { verifyToken, requireAdmin } from '../middleware/auth.middleware';
 
@@ -59,5 +60,8 @@ router.put('/:id/annual-score', verifyToken, actualizarPuntajeAnual);
 
 // Asignaciones del libro en años anteriores, para la alerta al asignar (SAB-066)
 router.get('/:id/books/:bookId/previous-assignments', verifyToken, obtenerAsignacionesAnteriores);
+
+// Alumnos inscriptos en el curso: administrador o docente del curso, lo valida el service (SAB-135)
+router.get('/:id/students', verifyToken, getCourseStudents);
 
 export default router;
