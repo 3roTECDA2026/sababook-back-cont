@@ -27,6 +27,10 @@ const responderError = (res: Response, error: unknown, mapa: MapaErrores = {}): 
   return false;
 };
 
+// Rangos válidos para el puntaje anual del curso
+const MIN_TARGET_POINTS = 140;
+const MAX_TARGET_POINTS = 200;
+
 // Convierte un valor en número entero, o null si no lo es
 const parsearEntero = (valor: unknown): number | null => {
   if (valor === undefined || valor === null || valor === '') return null;
@@ -94,12 +98,19 @@ const validarDatosCurso = (body: Record<string, unknown>, parcial: boolean) => {
   return { datos, error: null };
 };
 
-// Valida el puntaje (créditos) de un libro: entero entre 1 y 100
+// Valida el puntaje (créditos) de un libro: entero entre 1 y 100.
+// Solo `null` explícito se acepta como "sin puntaje"; un campo omitido o vacío es 400.
 const validarPuntaje = (
   valor: unknown
 ): { valido: boolean; puntaje: number | null } => {
-  if (valor === undefined || valor === null || valor === '') {
+  if (valor === undefined) {
+    return { valido: false, puntaje: null };
+  }
+  if (valor === null) {
     return { valido: true, puntaje: null };
+  }
+  if (typeof valor === 'string' && valor.trim() === '') {
+    return { valido: false, puntaje: null };
   }
   const puntaje = parsearEntero(valor);
   if (puntaje === null || puntaje < 1 || puntaje > 100) {
@@ -109,8 +120,14 @@ const validarPuntaje = (
 };
 
 const validarPuntajeAnual = (valor: unknown): number | null => {
-  const puntaje = parsearEntero(valor);
-  return puntaje !== null && puntaje >= 140 && puntaje <= 200 ? puntaje : null;
+  if (valor === undefined || valor === null || valor === '') return null;
+  if (typeof valor === 'string') {
+    if (!/^\d+$/.test(valor.trim())) return null;
+  } else if (typeof valor !== 'number' || !Number.isInteger(valor)) {
+    return null;
+  }
+  const puntaje = Number(valor);
+  return puntaje >= MIN_TARGET_POINTS && puntaje <= MAX_TARGET_POINTS ? puntaje : null;
 };
 
 // ---------- Cursos ----------
@@ -463,18 +480,18 @@ export const actualizarPuntajeLibro = async (req: AuthRequest, res: Response): P
     return;
   }
 
-  if (!('puntaje' in req.body)) {
-    res.status(400).json({ error: 'El puntaje es obligatorio.' });
-    return;
-  }
-
-  const { valido, puntaje } = validarPuntaje(req.body?.puntaje);
-  if (!valido) {
-    res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
-    return;
-  }
-
   try {
+    if (!req.body || !('puntaje' in req.body)) {
+      res.status(400).json({ error: 'El puntaje es obligatorio.' });
+      return;
+    }
+
+    const { valido, puntaje } = validarPuntaje(req.body?.puntaje);
+    if (!valido) {
+      res.status(400).json({ error: 'El puntaje debe ser un número entero entre 1 y 100.' });
+      return;
+    }
+
     const asignacion = await courseService.actualizarPuntajeLibro(id, libroId, puntaje, req.userId);
     res.status(200).json(asignacion);
   } catch (err) {
@@ -501,7 +518,9 @@ export const actualizarPuntajeAnual = async (req: AuthRequest, res: Response): P
   if (puntajeAnual === null) {
     res
       .status(400)
-      .json({ error: 'El puntaje anual debe ser un número entero entre 140 y 200.' });
+      .json({
+        error: `El puntaje anual debe ser un número entero entre ${MIN_TARGET_POINTS} y ${MAX_TARGET_POINTS}.`,
+      });
     return;
   }
 

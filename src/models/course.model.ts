@@ -212,11 +212,6 @@ export const obtenerAnioLectivoCursoDB = async (curso_id: number): Promise<numbe
   return c?.anio_lectivo ?? null;
 };
 
-export const obtenerPuntajeAnualCursoDB = async (curso_id: number): Promise<number | null> => {
-  const c = await prisma.curso.findUnique({ where: { curso_id }, select: { puntaje_anual: true } });
-  return c?.puntaje_anual ?? null;
-};
-
 // Inscripción del alumno en un año lectivo (como máximo una, por el índice único de inscripcion)
 export const findStudentEnrollmentDB = async (usuario_id: number, anio_lectivo: number) => {
   return await prisma.inscripcion.findUnique({
