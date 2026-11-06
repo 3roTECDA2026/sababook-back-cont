@@ -15,6 +15,7 @@ import {
   asignarLibro,
   actualizarPuntajeLibro,
   actualizarPuntajeAnual,
+  updateAnnualScoreVisibility,
   quitarLibro,
   obtenerHistorial,
   obtenerProgresoAlumno,
@@ -57,6 +58,7 @@ router.put('/:id/books/:bookId', verifyToken, actualizarPuntajeLibro);
 router.delete('/:id/books/:bookId', verifyToken, quitarLibro);
 
 router.put('/:id/annual-score', verifyToken, actualizarPuntajeAnual);
+router.put('/:id/annual-score-visibility', verifyToken, updateAnnualScoreVisibility);
 
 // Asignaciones del libro en años anteriores, para la alerta al asignar (SAB-066)
 router.get('/:id/books/:bookId/previous-assignments', verifyToken, obtenerAsignacionesAnteriores);

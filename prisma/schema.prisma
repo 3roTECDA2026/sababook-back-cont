@@ -522,6 +522,8 @@ model curso {
   division      String          @db.VarChar(5)
   anio_lectivo  Int
   puntaje_anual Int             @default(140)
+  // SAB-144: si los alumnos del curso ven su puntaje anual en Inicio
+  show_annual_score Boolean     @default(false)
   materia_id    Int
   materia       materia         @relation(fields: [materia_id], references: [materia_id], onDelete: NoAction, onUpdate: NoAction)
   curso_docente curso_docente[]
