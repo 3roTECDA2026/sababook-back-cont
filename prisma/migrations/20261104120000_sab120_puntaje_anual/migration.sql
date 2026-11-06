@@ -12,7 +12,8 @@ BEGIN
     UPDATE "curso"
     SET "puntaje_anual" = LEAST(GREATEST(valor::INTEGER, 140), 200)
     FROM "configuracion_sistema"
-    WHERE "configuracion_sistema".clave = 'puntaje_minimo_anual';
+    WHERE "configuracion_sistema".clave = 'puntaje_minimo_anual'
+      AND "configuracion_sistema".valor ~ '^[0-9]+$';
   END IF;
 END $$;
 

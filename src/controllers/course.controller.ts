@@ -100,6 +100,7 @@ const validarDatosCurso = (body: Record<string, unknown>, parcial: boolean) => {
 
 // Valida el puntaje (créditos) de un libro: entero entre 1 y 100.
 // Solo `null` explícito se acepta como "sin puntaje"; un campo omitido o vacío es 400.
+// Valores no numéricos (true, [60], '0xA', '1.6e1') responden 400.
 const validarPuntaje = (
   valor: unknown
 ): { valido: boolean; puntaje: number | null } => {
@@ -109,14 +110,21 @@ const validarPuntaje = (
   if (valor === null) {
     return { valido: true, puntaje: null };
   }
-  if (typeof valor === 'string' && valor.trim() === '') {
-    return { valido: false, puntaje: null };
+  if (typeof valor === 'string') {
+    const trimmed = valor.trim();
+    if (trimmed === '') {
+      return { valido: false, puntaje: null };
+    }
+    if (!/^\d+$/.test(trimmed)) {
+      return { valido: false, puntaje: null };
+    }
+    const puntaje = Number(trimmed);
+    return puntaje >= 1 && puntaje <= 100 ? { valido: true, puntaje } : { valido: false, puntaje: null };
   }
-  const puntaje = parsearEntero(valor);
-  if (puntaje === null || puntaje < 1 || puntaje > 100) {
-    return { valido: false, puntaje: null };
+  if (typeof valor === 'number' && Number.isInteger(valor)) {
+    return valor >= 1 && valor <= 100 ? { valido: true, puntaje: valor } : { valido: false, puntaje: null };
   }
-  return { valido: true, puntaje };
+  return { valido: false, puntaje: null };
 };
 
 const validarPuntajeAnual = (valor: unknown): number | null => {
