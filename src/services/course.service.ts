@@ -28,6 +28,7 @@ import {
   obtenerProgresoAlumnoDB,
   obtenerPuntajesCursoDB,
   obtenerAsignacionesAnterioresDB,
+  obtenerPuntajeAnualCursoDB,
 } from '../models/course.model';
 import { TipoRol } from '@prisma/client';
 
@@ -208,6 +209,23 @@ class CourseService {
     usuario_id?: number
   ) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
+
+    const puntajeAnual = await obtenerPuntajeAnualCursoDB(curso_id);
+    if (puntajeAnual === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    const libros = await obtenerLibrosDelCursoDB(curso_id);
+    const sumaActual = libros.reduce((s, l) => s + (l.puntaje ?? 0), 0);
+    const sumaNueva = sumaActual + (puntaje ?? 0);
+
+    if (sumaNueva > puntajeAnual) {
+      throw new ErrorNegocio(
+        400,
+        `La suma de puntajes no puede superar el puntaje anual del curso (${puntajeAnual}).`
+      );
+    }
+
     return await asignarLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
 
@@ -218,6 +236,25 @@ class CourseService {
     usuario_id?: number
   ) {
     await this.verificarPermisoLibros(curso_id, usuario_id);
+
+    const puntajeAnual = await obtenerPuntajeAnualCursoDB(curso_id);
+    if (puntajeAnual === null) {
+      throw new ErrorNegocio(404, 'Curso no encontrado.');
+    }
+
+    const libros = await obtenerLibrosDelCursoDB(curso_id);
+    const libroActual = libros.find((l) => l.libro_id === libro_id);
+    const puntajeViejo = libroActual?.puntaje ?? 0;
+    const sumaActual = libros.reduce((s, l) => s + (l.puntaje ?? 0), 0);
+    const sumaNueva = sumaActual - puntajeViejo + (puntaje ?? 0);
+
+    if (sumaNueva > puntajeAnual) {
+      throw new ErrorNegocio(
+        400,
+        `La suma de puntajes no puede superar el puntaje anual del curso (${puntajeAnual}).`
+      );
+    }
+
     return await actualizarPuntajeLibroDB(curso_id, libro_id, puntaje, usuario_id);
   }
   async quitarLibro(curso_id: number, libro_id: number, usuario_id?: number) {
