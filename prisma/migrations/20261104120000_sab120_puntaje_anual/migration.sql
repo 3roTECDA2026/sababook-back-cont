@@ -10,11 +10,9 @@ BEGIN
     WHERE clave = 'puntaje_minimo_anual'
   ) THEN
     UPDATE "curso"
-    SET "puntaje_anual" = (
-      SELECT valor::INTEGER
-      FROM "configuracion_sistema"
-      WHERE clave = 'puntaje_minimo_anual'
-    );
+    SET "puntaje_anual" = LEAST(GREATEST(valor::INTEGER, 140), 200)
+    FROM "configuracion_sistema"
+    WHERE "configuracion_sistema".clave = 'puntaje_minimo_anual';
   END IF;
 END $$;
 
