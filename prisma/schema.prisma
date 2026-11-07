@@ -29,12 +29,19 @@ enum TipoRol {
   ALUMNO
 }
 
+// SAB-118: las cuentas creadas por invitación quedan pendientes hasta que el alumno define su contraseña.
+enum EstadoCuenta {
+  PENDIENTE
+  ACTIVA
+}
+
 model usuario {
   usuario_id            Int                     @id @default(autoincrement())
   nombre                String                  @db.VarChar(100)
   email                 String                  @unique @db.VarChar(255)
   contrasena            String
   rol                   TipoRol                 @default(ALUMNO)
+  estado_cuenta         EstadoCuenta            @default(ACTIVA)
   fecha_registro        DateTime                @default(now()) @db.Timestamptz(6)
   perfil_completo       Boolean                 @default(false)
   avatar_url            String?
@@ -62,10 +69,27 @@ model usuario {
   trivia_pregunta_docente  trivia_pregunta[] @relation("trivia_pregunta_docente")
   trivia_evaluacion_docente trivia_evaluacion[] @relation("trivia_evaluacion_docente")
   historial_asignacion  historial_asignacion[]
+  invitaciones          invitacion[]
 
   listas_creadas lista[] @relation("CreadorLista")
 
   @@index([rol])
+}
+
+// ------------------------------------------------------
+// INVITACIONES INSTITUCIONALES (SAB-118)
+// ------------------------------------------------------
+
+model invitacion {
+  invitacion_id  Int      @id @default(autoincrement())
+  usuario_id     Int
+  token          String   @unique @db.VarChar(128)
+  expira_en      DateTime @db.Timestamptz(6)
+  usada          Boolean  @default(false)
+  fecha_creacion DateTime @default(now()) @db.Timestamptz(6)
+  usuario        usuario  @relation(fields: [usuario_id], references: [usuario_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([usuario_id])
 }
 
 // ------------------------------------------------------
